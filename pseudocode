@@ -2,8 +2,8 @@
 
 Messages:
 
-- Join { TS }
-- JoinReply { mTS, mChildren, mLevel, mParentLatency, mAdditionalBootstrapPeers }
+- Join {}
+- JoinReply {mChildren, mLevel, mParentLatency, mAdditionalBootstrapPeers }
 - JoinLevel {mParent, mChildren}
 
 Constants
@@ -37,22 +37,22 @@ upon INIT:
     currJoinLevel = 0
     currLevelPeers = BOOTSTRAP_NODES
     for node in currLevelPeers:
-        ts := NewTimestamp()
-        send(Join{ts}, node)
+        send(Join{}, node)
     
 
-upon receive(Join{mTS}, sender):
+upon receive(Join{}, sender):
     if level = 0 {
-        send (JoinReply { mTS, children, level, -1, bootstrapNodes }, sender)
+        send (JoinReply {children, level, -1, bootstrapNodes }, sender)
         return
     }
     // level > 0
-    send (JoinReply{mTS, children , level, parentLatency, []})
+    send (JoinReply{children , level, parentLatency, []}, sender)
 
 
-upon receive(JoinReply{ mTS, mChildren, mLevel, mParentLatency, mAdditionalBootstrapPeers }, sender):
+upon receive(JoinReply{mChildren, mLevel, mParentLatency, mAdditionalBootstrapPeers }, sender):
 
-    myLatencies[sender] = calcLatency(mTS)
+    myLatencies[sender] = measureLatency(sender)
+
     currLevelPeersDone.append(sender)
     children[peer] = mChildren
     parentLatencies[peer] = mParentLatency
@@ -62,8 +62,7 @@ upon receive(JoinReply{ mTS, mChildren, mLevel, mParentLatency, mAdditionalBoots
             for peer in mAdditionalBootstrapPeers {
                 if !currLevelPeers.contains(peer) {
                     currLevelPeers.append(peer)
-                    ts := NewTimestamp()
-                    sendMessage(peer, Join{ts})
+                    sendMessage(peer, Join{})
                 }
             }
         } 
@@ -87,7 +86,7 @@ upon receive(JoinReply{ mTS, mChildren, mLevel, mParentLatency, mAdditionalBoots
             currJoinLevel += 1
             currLevelPeersDone = []
             for peer in currLevelPeers{
-                send(Join{ts}, node)
+                send(Join{}, node)
             }
             return
         }
@@ -128,7 +127,7 @@ upon receive(JoinReply{ mTS, mChildren, mLevel, mParentLatency, mAdditionalBoots
             currJoinLevel += 1
             currLevelPeersDone = []
             for peer in currLevelPeers{
-                send(Join{ts}, node)
+                send(Join{}, node)
             }
             return
         }
