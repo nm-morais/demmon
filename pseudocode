@@ -156,7 +156,10 @@ upon receive(JoinLevel{mParent, mChildren}, sender) :
 
 
 upon receive(JoinLevelReply{accepted}, sender) : 
-    if accepted {
-
+    if possibleChildren.contains(sender) {
+        children.append(sender)
+    }
+    if possibleParent == sender {
+        parent[self] = sender
     }
 }
