@@ -36,6 +36,7 @@ upon INIT:
     currJoinLevel = 0
     currLevelPeers = BOOTSTRAP_NODES
     for node in currLevelPeers:
+        parent[node] = null
         send(Join{}, node)
     
 
@@ -47,24 +48,24 @@ upon receive(Join{}, sender):
     send (JoinReply{children , level, parentLatency}, sender)
 
 
-upon receive(JoinReply{mChildren, mLevel, mParentLatency }, sender):
+upon receive(JoinReply{mChildren, mLevel, mParentLatency}, sender):
+
+    if mLevel != currJoinLevel {
+        return
+    }
 
     myLatencies[sender] = measureLatency(sender)
     currLevelPeersDone.append(sender)
     children[peer] = mChildren
     parentLatencies[peer] = mParentLatency
+    for child in mChildren {
+        parent[child] = sender
+    }
 
     if currLevelPeersDone.ContainsAll(currLevelPeers){
 
         // have contacted all nodes in this level
         lowestLatencyPeer  <- getLowestLatencyPeer(myLatencies, currLevelPeers)
-
-        if myLatencies[lowestLatencyPeer] > PARENT_LATENCY_THRESHOLD{
-            // join level
-            // should warn the children of the node ?
-            send (JoinLevel{parent[lowestLatencyPeer], []}, parent[lowestLatencyPeer])
-            return
-        }
 
         if currJoinLevel == 0 {
             // keep going down the tree
@@ -76,6 +77,14 @@ upon receive(JoinReply{mChildren, mLevel, mParentLatency }, sender):
             }
             return
         }
+
+        if myLatencies[lowestLatencyPeer] > PARENT_LATENCY_THRESHOLD{
+            // join level
+            // should warn the children of the node ?
+            send (JoinLevel{parent[lowestLatencyPeer], []}, parent[lowestLatencyPeer])
+            return
+        }
+
 
 
         if parentLatencies[lowestLatencyPeer] + GRAND_PARENT_LATENCY_INCREASE_TOLERANCE > myLatencies[parents[lowestLatencyPeer]] + myLatencies[lowestLatencyPeer] {
