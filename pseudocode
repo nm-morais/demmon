@@ -1,0 +1,151 @@
+
+
+Messages:
+
+- Join { TS }
+- JoinReply { mTS, mChildren, mLevel, mParentLatency, mAdditionalBootstrapPeers }
+- JoinLevel {mParent, mChildren}
+
+Constants
+
+- PARENT_LATENCY_THRESHOLD Int
+- GRAND_PARENT_LATENCY_INCREASE_TOLERANCE // represents how much additional latency is tolerated so that a joining node can join a position between a children and its parent   
+- BOOTSTRAP_NODES
+
+Join state:
+
+- currLevelPeers // []Peer
+- currLevelPeersDone // []Peer
+
+- currJoinLevel // number
+- myLatencies // map[Peer]Latency
+
+- parents // map[Peer]Peer
+- children // map[Peer][]Peer
+- parentLatencies // map[Peer]Latency
+
+Node state:
+
+- parentLatency Latency
+- bootstrapNodes []Peer
+- parent {Peer, Latency}
+- children // []Peer
+- level // int
+- self // Peer
+
+upon INIT:
+    currJoinLevel = 0
+    currLevelPeers = BOOTSTRAP_NODES
+    for node in currLevelPeers:
+        ts := NewTimestamp()
+        send(Join{ts}, node)
+    
+
+upon receive(Join{mTS}, sender):
+    if level = 0 {
+        send (JoinReply { mTS, children, level, -1, bootstrapNodes }, sender)
+        return
+    }
+    // level > 0
+    send (JoinReply{mTS, children , level, parentLatency, []})
+
+
+upon receive(JoinReply{ mTS, mChildren, mLevel, mParentLatency, mAdditionalBootstrapPeers }, sender):
+
+    myLatencies[sender] = calcLatency(mTS)
+    currLevelPeersDone.append(sender)
+    children[peer] = mChildren
+    parentLatencies[peer] = mParentLatency
+
+    if mLevel == 0 {
+        if len(mAdditionalBootstrapPeers) > 0 {
+            for peer in mAdditionalBootstrapPeers {
+                if !currLevelPeers.contains(peer) {
+                    currLevelPeers.append(peer)
+                    ts := NewTimestamp()
+                    sendMessage(peer, Join{ts})
+                }
+            }
+        } 
+    } 
+
+    if currLevelPeersDone.ContainsAll(currLevelPeers){
+
+        // have contacted all nodes in this level
+        lowestLatencyPeer  <- getLowestLatencyPeer(myLatencies, currLevelPeers)
+
+        if myLatencies[lowestLatencyPeer] > PARENT_LATENCY_THRESHOLD{
+            // join level
+            // should warn the children of the node ?
+            send (JoinLevel{parent[lowestLatencyPeer], []}, parent[lowestLatencyPeer])
+            return
+        }
+
+        if currJoinLevel == 0 {
+            // keep going down the tree
+            currLevelPeers = children[lowestLatencyPeer]
+            currJoinLevel += 1
+            currLevelPeersDone = []
+            for peer in currLevelPeers{
+                send(Join{ts}, node)
+            }
+            return
+        }
+
+
+        if parentLatencies[lowestLatencyPeer] + GRAND_PARENT_LATENCY_INCREASE_TOLERANCE > myLatencies[parents[lowestLatencyPeer]] + myLatencies[lowestLatencyPeer] {
+            // i can be the parent of this peer because i have a low latency in between him and his parent
+            // TODO check other peers in this level for the same condition 
+
+            possibleChildren = [lowestLatencyPeer]
+            for peer in currLevelPeersDone {
+                if peer == lowestLatencyPeer {
+                    continue
+                }
+
+                if parentLatencies[lowestLatencyPeer] + GRAND_PARENT_LATENCY_INCREASE_TOLERANCE > myLatencies[parents[lowestLatencyPeer]] + myLatencies[lowestLatencyPeer] {
+                    possibleChildren.append(peer)
+                }
+            }
+
+            send (JoinLevel{parent[lowestLatencyPeer], possibleChildren}, parent[lowestLatencyPeer])
+            return
+        }
+
+        if myLatencies[parent[lowestLatencyPeer]] < myLatencies[lowestLatencyPeer] {
+            // Join level as child, as i have better latency to the parent of this level vs the peer with lowest latency in this level
+            send (JoinLevel{}, parent[lowestLatencyPeer])
+            return
+        } else {
+            // explore the lowest latency nodes' children, because i have lower latency to him vs its parent
+
+            if children.isEmpty() {
+                send (JoinLevel{lowestLatencyPeer, []}, lowestLatencyPeer)
+                return
+            }
+
+            currLevelPeers = children[lowestLatencyPeer]
+            currJoinLevel += 1
+            currLevelPeersDone = []
+            for peer in currLevelPeers{
+                send(Join{ts}, node)
+            }
+            return
+        }
+    }
+
+
+upon receive() JoinLevel{mParent, mChildren}, sender) : 
+    if self == mParent {
+        children.append(sender)
+        for peerChild in mChildren {
+            if children.contains(peerChild) {
+                children.remove(peerChild)
+            }
+        }
+    }
+
+    if mChildren.contains(self) {
+        parent = mParent
+    }
+}
