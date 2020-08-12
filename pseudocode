@@ -3,7 +3,7 @@
 Messages:
 
 - Join {}
-- JoinReply {mChildren, mLevel, mParentLatency, mAdditionalBootstrapPeers }
+- JoinReply {mChildren, mLevel, mParentLatency }
 - JoinLevel {mParent, mChildren}
 
 Constants
@@ -27,7 +27,6 @@ Join state:
 Node state:
 
 - parentLatency Latency
-- bootstrapNodes []Peer
 - parent {Peer, Latency}
 - children // []Peer
 - level // int
@@ -42,31 +41,18 @@ upon INIT:
 
 upon receive(Join{}, sender):
     if level = 0 {
-        send (JoinReply {children, level, -1, bootstrapNodes }, sender)
+        send (JoinReply {children, level, -1}, sender)
         return
     }
-    // level > 0
-    send (JoinReply{children , level, parentLatency, []}, sender)
+    send (JoinReply{children , level, parentLatency}, sender)
 
 
-upon receive(JoinReply{mChildren, mLevel, mParentLatency, mAdditionalBootstrapPeers }, sender):
+upon receive(JoinReply{mChildren, mLevel, mParentLatency }, sender):
 
     myLatencies[sender] = measureLatency(sender)
-
     currLevelPeersDone.append(sender)
     children[peer] = mChildren
     parentLatencies[peer] = mParentLatency
-
-    if mLevel == 0 {
-        if len(mAdditionalBootstrapPeers) > 0 {
-            for peer in mAdditionalBootstrapPeers {
-                if !currLevelPeers.contains(peer) {
-                    currLevelPeers.append(peer)
-                    sendMessage(peer, Join{})
-                }
-            }
-        } 
-    } 
 
     if currLevelPeersDone.ContainsAll(currLevelPeers){
 
