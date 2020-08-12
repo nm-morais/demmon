@@ -5,6 +5,7 @@ Messages:
 - Join {}
 - JoinReply {mChildren, mLevel, mParentLatency }
 - JoinLevel {mParent, mChildren}
+- JoinLevelReply {accepted} // just an ack from the children
 
 Constants
 
@@ -18,11 +19,14 @@ Join state:
 - currLevelPeersDone // []Peer
 
 - currJoinLevel // number
-- myLatencies // map[Peer]Latency
+- myLatencies // map[Peer]Latency // my own latencies
 
-- parents // map[Peer]Peer
-- children // map[Peer][]Peer
-- parentLatencies // map[Peer]Latency
+- parents // map[Peer]Peer // holds the parents of each node
+- children // map[Peer][]Peer // map holding a the children of a node
+- parentLatencies // map[Peer]Latency // map of peer to the latencies
+
+- possibleChildren // array of possible children of joining node
+- possibleParent // array of possible children of joining node
 
 Node state:
 
@@ -85,21 +89,22 @@ upon receive(JoinReply{mChildren, mLevel, mParentLatency}, sender):
             return
         }
 
-
-
         if parentLatencies[lowestLatencyPeer] + GRAND_PARENT_LATENCY_INCREASE_TOLERANCE > myLatencies[parents[lowestLatencyPeer]] + myLatencies[lowestLatencyPeer] {
             // i can be the parent of this peer because i have a low latency in between him and his parent
             // TODO check other peers in this level for the same condition 
 
             possibleChildren = [lowestLatencyPeer]
+            possibleParent = parent[lowestLatencyPeer]
             for peer in currLevelPeersDone {
                 if peer == lowestLatencyPeer {
                     continue
                 }
-
                 if parentLatencies[lowestLatencyPeer] + GRAND_PARENT_LATENCY_INCREASE_TOLERANCE > myLatencies[parents[lowestLatencyPeer]] + myLatencies[lowestLatencyPeer] {
                     possibleChildren.append(peer)
                 }
+            }
+            for node in possibleChildren {
+                sendMessage(JoinLevel{parent[lowestLatencyPeer], possibleChildren}, node)
             }
 
             send (JoinLevel{parent[lowestLatencyPeer], possibleChildren}, parent[lowestLatencyPeer])
@@ -129,7 +134,7 @@ upon receive(JoinReply{mChildren, mLevel, mParentLatency}, sender):
     }
 
 
-upon receive() JoinLevel{mParent, mChildren}, sender) : 
+upon receive(JoinLevel{mParent, mChildren}, sender) : 
     if self == mParent {
         children.append(sender)
         for peerChild in mChildren {
@@ -137,9 +142,21 @@ upon receive() JoinLevel{mParent, mChildren}, sender) :
                 children.remove(peerChild)
             }
         }
+        sendMessage(JoinLevelReply{true}, sender)
+        return
     }
 
     if mChildren.contains(self) {
         parent = mParent
+        sendMessage(JoinLevelReply{true}, sender)
+        return
+    }
+}
+
+
+
+upon receive(JoinLevelReply{accepted}, sender) : 
+    if accepted {
+
     }
 }
