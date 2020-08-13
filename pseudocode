@@ -73,6 +73,7 @@ upon receive(JoinReply{mChildren, mLevel, mParentLatency}, sender):
         // have contacted all nodes in this level
         lowestLatencyPeer  <- getLowestLatencyPeer(myLatencies, currLevelPeersDone)
 
+
         if myLatencies[parent[lowestLatencyPeer]] < myLatencies[lowestLatencyPeer]{
             // join level as children, as it is not advantageous to become children of existing nodes
             // should warn the children of the node ?
