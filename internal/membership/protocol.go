@@ -57,6 +57,7 @@ func (d *DemmonTree) DialFailed(peer peer.Peer) {
 }
 
 func (d *DemmonTree) OutConnDown(peer peer.Peer) {
+	
 	panic("implement me")
 }
 
