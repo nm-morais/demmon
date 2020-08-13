@@ -32,12 +32,13 @@ Node state:
 
 - parentLatency Latency
 - parent {Peer, Latency}
+- grandParent {Peer, Latency}
 - children // []Peer
 - level // int
 - self // Peer
 
 upon INIT:
-    currJoinLevel = 0
+    currJoinLevel = 1
     currLevelPeers = BOOTSTRAP_NODES
     for node in currLevelPeers:
         parent[node] = null
@@ -67,23 +68,13 @@ upon receive(JoinReply{mChildren, mLevel, mParentLatency}, sender):
     }
 
     if currLevelPeersDone.ContainsAll(currLevelPeers){
+        currJoinLevel += 1
 
         // have contacted all nodes in this level
-        lowestLatencyPeer  <- getLowestLatencyPeer(myLatencies, currLevelPeers)
+        lowestLatencyPeer  <- getLowestLatencyPeer(myLatencies, currLevelPeersDone)
 
-        if currJoinLevel == 0 {
-            // keep going down the tree
-            currLevelPeers = children[lowestLatencyPeer]
-            currJoinLevel += 1
-            currLevelPeersDone = []
-            for peer in currLevelPeers{
-                send(Join{}, node)
-            }
-            return
-        }
-
-        if myLatencies[lowestLatencyPeer] > PARENT_LATENCY_THRESHOLD{
-            // join level
+        if myLatencies[parent[lowestLatencyPeer]] < myLatencies[lowestLatencyPeer]{
+            // join level as children, as it is not advantageous to become children of existing nodes
             // should warn the children of the node ?
             send (JoinLevel{parent[lowestLatencyPeer], []}, parent[lowestLatencyPeer])
             return
@@ -110,56 +101,47 @@ upon receive(JoinReply{mChildren, mLevel, mParentLatency}, sender):
             send (JoinLevel{parent[lowestLatencyPeer], possibleChildren}, parent[lowestLatencyPeer])
             return
         }
-
-        if myLatencies[parent[lowestLatencyPeer]] < myLatencies[lowestLatencyPeer] {
-            // Join level as child, as i have better latency to the parent of this level vs the peer with lowest latency in this level
-            send (JoinLevel{}, parent[lowestLatencyPeer])
-            return
-        } else {
-            // explore the lowest latency nodes' children, because i have lower latency to him vs its parent
-
-            if children.isEmpty() {
-                send (JoinLevel{lowestLatencyPeer, []}, lowestLatencyPeer)
-                return
-            }
-
-            currLevelPeers = children[lowestLatencyPeer]
-            currJoinLevel += 1
-            currLevelPeersDone = []
-            for peer in currLevelPeers{
-                send(Join{}, node)
-            }
+        
+        // base case,  explore the lowest latency nodes' children, because i have lower latency to him vs its parent
+        if children.isEmpty() {
+            // cannot progress level, join as children
+            send (JoinLevel{lowestLatencyPeer, []}, lowestLatencyPeer)
             return
         }
-    }
 
-
-upon receive(JoinLevel{mParent, mChildren}, sender) : 
-    if self == mParent {
-        children.append(sender)
-        for peerChild in mChildren {
-            if children.contains(peerChild) {
-                children.remove(peerChild)
-            }
+        currLevelPeers = children[lowestLatencyPeer]
+        currLevelPeersDone = []
+        for peer in currLevelPeers{
+            send(Join{}, node)
         }
-        sendMessage(JoinLevelReply{true}, sender)
         return
     }
 
-    if mChildren.contains(self) {
-        parent = mParent
-        sendMessage(JoinLevelReply{true}, sender)
-        return
+upon receive(JoinAsParent{mChildren, mLevel}, sender) : 
+    for peerChild in mChildren {
+        if children.contains(peerChild) {
+            children.remove(peerChild)
+        }
+    }
+
+    if sender != parent {
+        parent = sender
+        level = mLevel + 1
+        for peer in children {
+            send(UpdateParent{ parent ,self, level + 1})
+        }
     }
 }
 
-
-
-upon receive(JoinLevelReply{accepted}, sender) : 
-    if possibleChildren.contains(sender) {
-        children.append(sender)
+upon receive (UpdateParent{mGrandParent, mParent, level}, sender) {
+    grandParent = mGrandParent
+    parent = mParent
+    level = level
+    for peer in children {
+        send(UpdateParent{parent , self, level + 1})
     }
-    if possibleParent == sender {
-        parent[self] = sender
-    }
+}
+
+upon receive(JoinAsChildren{}, sender) : 
+    children.append(sender)
 }
