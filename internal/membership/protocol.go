@@ -15,6 +15,9 @@ const protoName = "DemonTree"
 type DemmonTree struct {
 	logger *logrus.Logger
 	config DemmonTreeConfig
+
+
+
 }
 
 func newDemmonTree(config DemmonTreeConfig) protocol.Protocol {
@@ -57,7 +60,7 @@ func (d *DemmonTree) DialFailed(peer peer.Peer) {
 }
 
 func (d *DemmonTree) OutConnDown(peer peer.Peer) {
-	
+
 	panic("implement me")
 }
 
