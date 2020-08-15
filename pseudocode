@@ -3,14 +3,13 @@
 Messages:
 
 - Join {}
-- JoinReply {mChildren, mLevel, mParentLatency }
-- JoinLevel {mParent, mChildren}
-- JoinLevelReply {accepted} // just an ack from the children
+- JoinReply {mChildren, mLevel, mParentLatency}
+- JoinAsParent{mChildren, mLevel}
+- JoinAsChildren{}
 
 Constants
 
-- PARENT_LATENCY_THRESHOLD Int
-- GRAND_PARENT_LATENCY_INCREASE_TOLERANCE // represents how much additional latency is tolerated so that a joining node can join a position between a children and its parent   
+- GRAND_PARENT_LATENCY_INCREASE_THRESHOLD // represents how much additional latency is tolerated so that a joining node can join a position between a children and its parent   
 - BOOTSTRAP_NODES
 
 Join state:
@@ -68,7 +67,6 @@ upon receive(JoinReply{mChildren, mLevel, mParentLatency}, sender):
     }
 
     if currLevelPeersDone.ContainsAll(currLevelPeers){
-        currJoinLevel += 1
 
         // have contacted all nodes in this level
         lowestLatencyPeer  <- getLowestLatencyPeer(myLatencies, currLevelPeersDone)
@@ -77,11 +75,11 @@ upon receive(JoinReply{mChildren, mLevel, mParentLatency}, sender):
         if myLatencies[parent[lowestLatencyPeer]] < myLatencies[lowestLatencyPeer]{
             // join level as children, as it is not advantageous to become children of existing nodes
             // should warn the children of the node ?
-            send (JoinLevel{parent[lowestLatencyPeer], []}, parent[lowestLatencyPeer])
+            send (JoinAsChildren{}, parent[lowestLatencyPeer])
             return
         }
 
-        if parentLatencies[lowestLatencyPeer] + GRAND_PARENT_LATENCY_INCREASE_TOLERANCE > myLatencies[parents[lowestLatencyPeer]] + myLatencies[lowestLatencyPeer] {
+        if parentLatencies[lowestLatencyPeer] + GRAND_PARENT_LATENCY_INCREASE_THRESHOLD > myLatencies[parents[lowestLatencyPeer]] + myLatencies[lowestLatencyPeer] {
             // i can be the parent of this peer because i have a low latency in between him and his parent
             // TODO check other peers in this level for the same condition 
 
@@ -95,26 +93,29 @@ upon receive(JoinReply{mChildren, mLevel, mParentLatency}, sender):
                     possibleChildren.append(peer)
                 }
             }
+
             for node in possibleChildren {
-                sendMessage(JoinLevel{parent[lowestLatencyPeer], possibleChildren}, node)
+                sendMessage(JoinAsParent{possibleChildren, currJoinLevel}, node)
             }
 
-            send (JoinLevel{parent[lowestLatencyPeer], possibleChildren}, parent[lowestLatencyPeer])
+            send (JoinAsChildren{}, parents[lowestLatencyPeer] )
             return
         }
         
         // base case,  explore the lowest latency nodes' children, because i have lower latency to him vs its parent
-        if children.isEmpty() {
+        if children[lowestLatencyPeer].isEmpty() {
             // cannot progress level, join as children
-            send (JoinLevel{lowestLatencyPeer, []}, lowestLatencyPeer)
+            send (JoinAsChildren{}, lowestLatencyPeer)
             return
         }
 
+        currJoinLevel += 1
         currLevelPeers = children[lowestLatencyPeer]
         currLevelPeersDone = []
         for peer in currLevelPeers{
             send(Join{}, node)
         }
+
         return
     }
 

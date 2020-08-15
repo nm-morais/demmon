@@ -23,9 +23,9 @@ type PeerCollectionWithLatency interface {
 	Contains(peer peer.Peer) bool
 	ContainsAll(peers []peer.Peer) bool
 
-	UpdatePeerLatency(peer peer.Peer, latency uint64) errors.Error
+	AddPeerWithLatency(peer peer.Peer, latency uint64)
 	GetLowestLatencyPeer() (*peerWithLatency, errors.Error)
-	GetPeersWithLatencyUnder(threshold uint64) []peer.Peer
+	GetPeersWithLatencyUnder(threshold uint64, exclusions ...peer.Peer) []peer.Peer
 }
 
 type peerMap struct {
@@ -56,15 +56,11 @@ func (p *peerMap) GetPeer(peer peer.Peer) (*peer.Peer, bool) {
 	return &p.peers[peer.ToString()].peer, true
 }
 
-func (p *peerMap) UpdatePeerLatency(peer peer.Peer, latency uint64) errors.Error {
-	if !p.Contains(peer) {
-		return errors.NonFatalError(404, "Peer not in collection", PeerCollectionCaller)
-	}
+func (p *peerMap) AddPeerWithLatency(peer peer.Peer, latency uint64) {
 	p.peers[peer.ToString()] = &peerWithLatency{
 		latency: latency,
 		peer:    peer,
 	}
-	return nil
 }
 
 func (p *peerMap) AddPeer(peer peer.Peer) errors.Error {
@@ -100,6 +96,15 @@ func (p *peerMap) ContainsAll(peers []peer.Peer) bool {
 	return true
 }
 
+func (p *peerMap) AllPeersHaveLatency() bool {
+	for _, curr := range p.peers {
+		if curr.latency == math.MaxUint64 {
+			return false
+		}
+	}
+	return true
+}
+
 func (p *peerMap) GetLowestLatencyPeer() (*peerWithLatency, errors.Error) {
 
 	if len(p.peers) == 0 {
@@ -118,6 +123,23 @@ func (p *peerMap) GetLowestLatencyPeer() (*peerWithLatency, errors.Error) {
 	return lowest, nil
 }
 
-func (p *peerMap) GetPeersWithLatencyUnder(threshold uint64) []peer.Peer {
-	panic("implement me")
+func (p *peerMap) GetPeersWithLatencyUnder(threshold uint64, exclusions ...peer.Peer) []peer.Peer {
+	toReturn := make([]peer.Peer, 0, len(p.peers))
+	added := 0
+	for _, currPeer := range p.peers {
+		if currPeer.latency < threshold {
+			excluded := false
+			for _, exclusion := range exclusions {
+				if exclusion.Equals(currPeer.peer) {
+					excluded = true
+					break
+				}
+			}
+			if !excluded {
+				toReturn[added] = currPeer.peer
+				added++
+			}
+		}
+	}
+	return toReturn
 }
