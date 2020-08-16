@@ -54,12 +54,14 @@ func main() {
 		landmarks = append(landmarks, peer)
 	}
 
-	conf := membership.DemmonTreeConfig{
+	demmonTreeConf := membership.DemmonTreeConfig{
+		ParentRefreshTickDuration:       1 * time.Second,
+		MaxRetriesJoinMsg:               3,
 		GParentLatencyIncreaseThreshold: 200,
 		Landmarks:                       landmarks,
 		NrSamplesForLatency:             5,
 	}
 
-	pkg.RegisterProtocol(membership.NewDemmonTree(conf))
+	pkg.RegisterProtocol(membership.NewDemmonTree(demmonTreeConf))
 	pkg.Start()
 }

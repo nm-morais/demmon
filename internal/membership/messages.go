@@ -2,9 +2,10 @@ package membership
 
 import (
 	"encoding/binary"
+	"net"
+
 	"github.com/nm-morais/go-babel/pkg/message"
 	"github.com/nm-morais/go-babel/pkg/peer"
-	"net"
 )
 
 // -------------- Join --------------
@@ -108,7 +109,7 @@ const UpdateParentMessageID = 1002
 type UpdateParentMessage struct {
 	Parent      peer.Peer
 	GrandParent peer.Peer
-	Level       uint16
+	ParentLevel uint16
 }
 
 func (UpdateParentMessage) Type() message.ID {
@@ -130,14 +131,24 @@ var updateParentMsgSerializer = UpdateParentMsgSerializer{}
 func (UpdateParentMsgSerializer) Serialize(msg message.Message) []byte {
 	uPMsg := msg.(UpdateParentMessage)
 	msgBytes := make([]byte, 4)
-	binary.BigEndian.PutUint16(msgBytes[0:2], uPMsg.Level)
-	binary.BigEndian.PutUint16(msgBytes[2:4], uint16(len(uPMsg.GrandParent.ToString())))
-	msgBytes = append([]byte(uPMsg.GrandParent.ToString()))
+	binary.BigEndian.PutUint16(msgBytes[0:2], uPMsg.ParentLevel)
 	aux := make([]byte, 2)
-	binary.BigEndian.PutUint16(aux[0:2], uint16(len(uPMsg.Parent.ToString())))
-	msgBytes = append(msgBytes, aux...)
-	msgBytes = append(msgBytes, []byte(uPMsg.Parent.ToString())...)
+	if uPMsg.GrandParent != nil {
+		binary.BigEndian.PutUint16(msgBytes[2:4], uint16(len(uPMsg.GrandParent.ToString())))
+		msgBytes = append(msgBytes, []byte(uPMsg.GrandParent.ToString())...)
+	} else {
+		binary.BigEndian.PutUint16(aux[0:2], 0)
+		msgBytes = append(msgBytes, aux...)
+	}
 
+	if uPMsg.Parent != nil {
+		binary.BigEndian.PutUint16(aux[0:2], uint16(len(uPMsg.Parent.ToString())))
+		msgBytes = append(msgBytes, aux...)
+		msgBytes = append(msgBytes, []byte(uPMsg.Parent.ToString())...)
+	} else {
+		binary.BigEndian.PutUint16(aux[0:2], 0)
+		msgBytes = append(msgBytes, aux...)
+	}
 	return msgBytes
 }
 
@@ -146,22 +157,31 @@ func (UpdateParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	level := binary.BigEndian.Uint16(msgBytes[bufPos : bufPos+2])
 	bufPos += 2
 	gparentSize := binary.BigEndian.Uint16(msgBytes[bufPos : bufPos+2])
-	bufPos += 2
-	gparentStr := string(msgBytes[bufPos:gparentSize])
-	bufPos += int(gparentSize)
-	gParent, err := net.ResolveTCPAddr("tcp", gparentStr)
-	if err != nil {
-		panic(err)
+	var gParent peer.Peer
+	var parent peer.Peer
+	if gparentSize != 0 {
+		bufPos += 2
+		gparentStr := string(msgBytes[bufPos:gparentSize])
+		bufPos += int(gparentSize)
+		gParentAddr, err := net.ResolveTCPAddr("tcp", gparentStr)
+		if err != nil {
+			panic(err)
+		}
+		gParent = peer.NewPeer(gParentAddr)
 	}
-	parentSize := binary.BigEndian.Uint16(msgBytes[bufPos : bufPos+2])
 	bufPos += 2
-	parentStr := string(msgBytes[bufPos : bufPos+int(parentSize)])
-	parent, err := net.ResolveTCPAddr("tcp", parentStr)
-	if err != nil {
-		panic(err)
+	parentSize := binary.BigEndian.Uint16(msgBytes[bufPos : bufPos+2])
+	if parentSize != 0 {
+		bufPos += 2
+		parentStr := string(msgBytes[bufPos : bufPos+int(parentSize)])
+		parentAddr, err := net.ResolveTCPAddr("tcp", parentStr)
+		if err != nil {
+			panic(err)
+		}
+		parent = peer.NewPeer(parentAddr)
 	}
 
-	return UpdateParentMessage{peer.NewPeer(parent), peer.NewPeer(gParent), level}
+	return UpdateParentMessage{parent, gParent, level}
 }
 
 // -------------- JoinAsParent --------------
@@ -229,6 +249,8 @@ func (JoinAsParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 		Children: children,
 	}
 }
+
+// -------------- Join As Child --------------
 
 const JoinAsChildMessageID = 1004
 
