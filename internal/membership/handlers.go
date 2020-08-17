@@ -28,7 +28,8 @@ func (d *DemmonTree) handleRefreshParentTimer(timer timer.Timer) {
 		return
 	}
 	pkg.RegisterTimer(d.ID(), NewParentRefreshTimer(1*time.Second, refreshTimer.Child))
-	d.sendMessage(UpdateParentMessage{GrandParent: d.myParent, Parent: pkg.SelfPeer()}, refreshTimer.Child)
+	toSend := UpdateParentMessage{GrandParent: d.myParent, Parent: pkg.SelfPeer(), ParentLevel: d.myLevel}
+	d.sendMessage(toSend, refreshTimer.Child)
 }
 
 // message handlers
@@ -65,7 +66,8 @@ func (d *DemmonTree) handleJoinReplyMessage(sender peer.Peer, msg message.Messag
 	for _, c := range replyMsg.Children {
 		d.children[sender.ToString()][c.ToString()] = c
 	}
-	d.parentLatencies[sender.ToString()] = replyMsg.ParentLatency
+
+	d.parentLatencies[sender.ToString()] = time.Duration(replyMsg.ParentLatency)
 	for _, children := range replyMsg.Children {
 		d.parents[children.ToString()] = sender
 	}
@@ -92,9 +94,20 @@ func (d *DemmonTree) handleJoinAsChildMessage(sender peer.Peer, m message.Messag
 func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Message) {
 	upMsg := m.(UpdateParentMessage)
 
+	d.myLevel = upMsg.ParentLevel + 1
 	d.myParent = upMsg.Parent
 	d.myGrandParent = upMsg.GrandParent
 
-	d.logger.Infof("My parent : %+v", d.myParent)
-	d.logger.Infof("My grandparent : %+v", d.myGrandParent)
+	d.logger.Infof("My level : %d", d.myLevel)
+
+	if d.myParent == nil {
+		d.logger.Infof("My parent : %+v", d.myParent)
+	} else {
+		d.logger.Infof("My parent : %s", d.myParent.ToString())
+	}
+	if d.myGrandParent == nil {
+		d.logger.Infof("My grandparent : %+v", d.myGrandParent)
+	} else {
+		d.logger.Infof("My grandparent : %s", d.myGrandParent.ToString())
+	}
 }

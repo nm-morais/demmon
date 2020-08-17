@@ -130,17 +130,18 @@ var updateParentMsgSerializer = UpdateParentMsgSerializer{}
 
 func (UpdateParentMsgSerializer) Serialize(msg message.Message) []byte {
 	uPMsg := msg.(UpdateParentMessage)
+	bufPos := 0
 	msgBytes := make([]byte, 4)
-	binary.BigEndian.PutUint16(msgBytes[0:2], uPMsg.ParentLevel)
-	aux := make([]byte, 2)
+	binary.BigEndian.PutUint16(msgBytes[bufPos:bufPos+2], uPMsg.ParentLevel)
+	bufPos += 2
 	if uPMsg.GrandParent != nil {
-		binary.BigEndian.PutUint16(msgBytes[2:4], uint16(len(uPMsg.GrandParent.ToString())))
+		binary.BigEndian.PutUint16(msgBytes[bufPos:bufPos+2], uint16(len(uPMsg.GrandParent.ToString())))
 		msgBytes = append(msgBytes, []byte(uPMsg.GrandParent.ToString())...)
 	} else {
-		binary.BigEndian.PutUint16(aux[0:2], 0)
-		msgBytes = append(msgBytes, aux...)
+		binary.BigEndian.PutUint16(msgBytes[bufPos:bufPos+2], 0)
 	}
 
+	aux := make([]byte, 2)
 	if uPMsg.Parent != nil {
 		binary.BigEndian.PutUint16(aux[0:2], uint16(len(uPMsg.Parent.ToString())))
 		msgBytes = append(msgBytes, aux...)
@@ -157,11 +158,11 @@ func (UpdateParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	level := binary.BigEndian.Uint16(msgBytes[bufPos : bufPos+2])
 	bufPos += 2
 	gparentSize := binary.BigEndian.Uint16(msgBytes[bufPos : bufPos+2])
+	bufPos += 2
 	var gParent peer.Peer
 	var parent peer.Peer
 	if gparentSize != 0 {
-		bufPos += 2
-		gparentStr := string(msgBytes[bufPos:gparentSize])
+		gparentStr := string(msgBytes[bufPos : bufPos+int(gparentSize)])
 		bufPos += int(gparentSize)
 		gParentAddr, err := net.ResolveTCPAddr("tcp", gparentStr)
 		if err != nil {
@@ -169,10 +170,9 @@ func (UpdateParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 		}
 		gParent = peer.NewPeer(gParentAddr)
 	}
-	bufPos += 2
 	parentSize := binary.BigEndian.Uint16(msgBytes[bufPos : bufPos+2])
+	bufPos += 2
 	if parentSize != 0 {
-		bufPos += 2
 		parentStr := string(msgBytes[bufPos : bufPos+int(parentSize)])
 		parentAddr, err := net.ResolveTCPAddr("tcp", parentStr)
 		if err != nil {

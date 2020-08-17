@@ -9,7 +9,7 @@ import (
 type DemmonTreeConfig = struct {
 	MaxRetriesJoinMsg               int
 	ParentRefreshTickDuration       time.Duration
-	GParentLatencyIncreaseThreshold uint64
+	GParentLatencyIncreaseThreshold time.Duration
 	NrSamplesForLatency             uint64
 	Landmarks                       []peer.Peer
 }
