@@ -1,0 +1,12 @@
+
+SWARM:
+
+source scripts/setupSwarm.sh 10.10.0.0/16 10.10.0.1 demmon_network demmon_volume
+
+CONTAINERS: 
+
+./scripts/setupContainers demmon:latest config/config100.txt
+
+START:
+
+./scripts/

@@ -6,13 +6,12 @@
 subnet=$1
 gateway=$2
 name=$3
-
 volume=$4
 
 
 if [ -z $subnet ] || [ -z $gateway ] || [ -z $name ] || [ -z $volume ]; then
-  echo "setup needs exactly 3 arguments"
-  echo "setup.sh <subnet> <gateway> <net_name> <volume_name>"
+  echo "setup needs exactly 4 arguments"
+  echo "source setup.sh <subnet> <gateway> <net_name> <volume_name>"
   exit
 fi
 

@@ -1,16 +1,27 @@
 #!/bin/bash
 
-# Credit : https://github.com/pedroAkos
-
-
 function help {
-    echo "usage: setupServer.sh <dockerImage> <path/to/configFile>"
+    echo "usage: setupContainers.sh <dockerImage> <path/to/configFile>"
 }
 
 image=$1
 config=$2
 net=$DOCKER_NET
 vol=$DOCKER_VOL
+
+n_nodes=$(uniq $OAR_FILE_NODES | wc -l)
+
+function nextnode {
+  local idx=$(($1 % n_nodes))
+  local i=0
+  for host in $(uniq $OAR_FILE_NODES); do
+    if [ $i -eq $idx ]; then
+      echo $host
+      break;
+    fi
+    i=$(($i +1))
+  done
+}
 
 if [ -z $net ]; then
   echo "Docker net is not setup, pls run setup first"
@@ -54,7 +65,9 @@ do
     ;;
   esac
 
-  docker run --rm -v ${vol}:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $net --ip $ip --name $name -h $name $image $i
+  node=$(nextnode $i)
+  echo "oarsh $node 'docker run --rm -v ${vol}:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $net --ip $ip --name $name -h $name $image $i'"
+  oarsh -n $node "docker run --rm -v ${vol}:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $net --ip $ip --name $name -h $name $image $i"
   echo "${i}. Container $name with ip $ip lauched"
   i=$((i+1))
 done < "$config"
