@@ -1,3 +1,3 @@
 #!/bin/bash
 
-docker build -f build/Dockerfile -t demmon:latest .
+docker build -f build/Dockerfile -t nmmorais/demmon:latest .
