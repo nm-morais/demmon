@@ -1,3 +1,3 @@
 #!/bin/bash
 
-docker build ./build -t deMMoN:latest
+docker build -f build/Dockerfile -t demmon:latest .
