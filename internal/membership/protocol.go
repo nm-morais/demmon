@@ -13,7 +13,6 @@ import (
 	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/protocol"
 	"github.com/nm-morais/go-babel/pkg/stream"
-	"github.com/prometheus/common/log"
 	"github.com/sirupsen/logrus"
 )
 
@@ -261,7 +260,7 @@ func (d *DemmonTree) progressToNextStep() {
 		}
 
 		lowestLatencyPeerParent := d.parents[lowestLatencyPeer.ToString()]
-		log.Info(d.myLatencies)
+		d.logger.Info(d.myLatencies)
 		lowestLatencyPeerParentLat := d.myLatencies[lowestLatencyPeerParent.ToString()]
 
 		if lowestLatencyPeerParentLat < peerLat {
