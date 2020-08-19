@@ -10,4 +10,5 @@ RUN GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /go/bin/deMMon cmd/memb
 
 FROM scratch
 COPY --from=builder /go/bin/deMMon /go/bin/deMMon
-ENTRYPOINT ["/go/bin/deMMon"]
+EXPOSE 1200
+ENTRYPOINT ["/go/bin/deMMon", "-p 1200"]
