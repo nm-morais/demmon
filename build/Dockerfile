@@ -13,6 +13,9 @@ FROM scratch
 COPY build/docker-entrypoint.sh /docker-entrypoint.sh
 COPY --from=builder /go/bin/deMMon /go/bin/deMMon
 
+RUN chmod +x /docker-entrypoint.sh
+RUN chmod +x /go/bin/deMMon
+
 EXPOSE 1200
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
