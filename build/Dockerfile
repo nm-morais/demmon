@@ -8,11 +8,15 @@ RUN cd ../; git clone https://github.com/nm-morais/go-babel.git # manually downl
 RUN go get -d -v ./...
 RUN GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /go/bin/deMMon cmd/membership/main.go
 
-FROM scratch
+FROM alpine:latest
 
+COPY scripts/setupTc.sh /setupTc.sh
 COPY build/docker-entrypoint.sh /docker-entrypoint.sh
+COPY ${LATENCY_MAP} /config/latencyMap.txt
+COPY ${IPS_MAP} /config/ips.txt
 COPY --from=builder /go/bin/deMMon /go/bin/deMMon
 
+RUN chmod +x /setupTc.sh
 RUN chmod +x /docker-entrypoint.sh
 RUN chmod +x /go/bin/deMMon
 

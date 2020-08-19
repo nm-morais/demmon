@@ -1,5 +1,6 @@
 #!/bin/sh
 
-./setuptc.sh
+set -e
 
-./go/bin/deMMon -p 1200
+./setupTc $1
+./go/bin/deMMon -p $PORT 
