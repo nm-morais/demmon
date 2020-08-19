@@ -8,3 +8,6 @@ for node in $(oarprint host); do
     oarsh $node "docker swarm leave --force"
   fi
 done
+
+docker network rm $SWARM_NET
+docker volume rm $SWARM_VOL
