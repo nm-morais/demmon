@@ -1,8 +1,12 @@
 
-GET CFG : 
+
+BUID_IMAGES : 
+
+./scripts/buildImage.sh
+
+CONFIG : 
 
 source config/swarmConfig.sh
-
 
 SWARM:
 
@@ -10,9 +14,9 @@ SWARM:
 
 CONTAINERS: 
 
-./scripts/setupContainers.sh demmon:latest config/config100.txt
+./scripts/setupContainers.sh
 
 START:
 
-./scripts/startContainers.sh config/config100.txt
+./scripts/startContainers.sh 
 
