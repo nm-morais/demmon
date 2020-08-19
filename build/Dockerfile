@@ -24,7 +24,4 @@ RUN chmod +x /setupTc.sh
 RUN chmod +x /docker-entrypoint.sh
 RUN chmod +x /go/bin/deMMon
 
-EXPOSE ${LISTEN_PORT}/tcp
-EXPOSE ${LISTEN_PORT}/udp
-
 ENTRYPOINT ["/docker-entrypoint.sh"]
