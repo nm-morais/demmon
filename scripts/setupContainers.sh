@@ -6,8 +6,8 @@ function help {
 
 image=$1
 config=$2
-net=$DOCKER_NET
-vol=$DOCKER_VOL
+net=$SWARM_NET
+vol=$SWARM_VOL
 
 n_nodes=$(uniq $OAR_FILE_NODES | wc -l)
 

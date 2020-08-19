@@ -1,12 +1,18 @@
 
+GET CFG : 
+
+source config/swarmConfig.sh
+
+
 SWARM:
 
-source scripts/setupSwarm.sh 10.10.0.0/16 10.10.0.1 demmon_network demmon_volume
+./scripts/setupSwarm.sh
 
 CONTAINERS: 
 
-./scripts/setupContainers demmon:latest config/config100.txt
+./scripts/setupContainers.sh demmon:latest config/config100.txt
 
 START:
 
 ./scripts/startContainers.sh config/config100.txt
+
