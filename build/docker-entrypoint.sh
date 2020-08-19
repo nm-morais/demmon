@@ -2,5 +2,5 @@
 
 set -e
 
-./setupTc $1
+./setupTc.sh $1
 ./go/bin/deMMon -p $PORT 
