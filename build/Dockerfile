@@ -1,3 +1,6 @@
+ARG LATENCY_MAP=config/inet100Latencies_x0.005.txt
+ARG IPS_MAP=config/ips100.txt
+
 FROM golang:alpine AS builder
 
 RUN apk update && apk add --no-cache git
