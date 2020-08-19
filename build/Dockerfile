@@ -9,6 +9,11 @@ RUN go get -d -v ./...
 RUN GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /go/bin/deMMon cmd/membership/main.go
 
 FROM scratch
+
+COPY build/docker-entrypoint.sh docker-entrypoint.sh
 COPY --from=builder /go/bin/deMMon /go/bin/deMMon
+
 EXPOSE 1200
-ENTRYPOINT ["/go/bin/deMMon", "-p 1200"]
+
+ENTRYPOINT [ "/docker-entrypoint.sh" ]
+CMD ["/go/bin/deMMon -p 1200"]
