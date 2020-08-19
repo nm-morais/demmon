@@ -1,13 +1,10 @@
 #!/bin/bash
 
+set -e
+
 function help {
     echo "usage: setupContainers.sh <dockerImage> <path/to/configFile>"
 }
-
-image=$1
-config=$2
-net=$SWARM_NET
-vol=$SWARM_VOL
 
 n_nodes=$(uniq $OAR_FILE_NODES | wc -l)
 
@@ -23,8 +20,8 @@ function nextnode {
   done
 }
 
-if [ -z $net ]; then
-  echo "Docker net is not setup, pls run setup first"
+if [ -z $SWARM_NET ]; then
+  echo "Docker SWARM_NET is not setup, pls run setup first"
   help
   exit
 fi
@@ -66,8 +63,8 @@ do
   esac
 
   node=$(nextnode $i)
-  echo "oarsh $node 'docker run --rm -v ${vol}:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $net --ip $ip --name $name -h $name $image $i'"
-  oarsh -n $node "docker run --rm -v ${vol}:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $net --ip $ip --name $name -h $name $image $i"
+  echo "oarsh $node 'docker run --rm -v ${SWARM_VOL}:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $net --ip $ip --name $name -h $name $image $i'"
+  oarsh -n $node "docker run --rm -v ${SWARM_VOL}:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $net --ip $ip --name $name -h $name $image $i"
   echo "${i}. Container $name with ip $ip lauched"
   i=$((i+1))
 done < "$config"
