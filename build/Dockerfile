@@ -1,6 +1,3 @@
-ARG LATENCY_MAP=config/inet100Latencies_x0.005.txt
-ARG IPS_MAP=config/ips100.txt
-
 FROM golang:alpine AS builder
 
 RUN apk update && apk add --no-cache git
@@ -16,6 +13,9 @@ FROM alpine:latest
 COPY scripts/setupTc.sh /setupTc.sh
 COPY build/docker-entrypoint.sh /docker-entrypoint.sh
 COPY --from=builder /go/bin/deMMon /go/bin/deMMon
+
+ARG LATENCY_MAP=config/inet100Latencies_x0.005.txt
+ARG IPS_MAP=config/ips100.txt
 
 COPY ${LATENCY_MAP} /latencyMap.txt
 COPY ${IPS_MAP} /ips.txt
