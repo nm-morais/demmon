@@ -9,4 +9,4 @@ CONTAINERS:
 
 START:
 
-./scripts/
+./scripts/startContainers.sh config/config100.txt
