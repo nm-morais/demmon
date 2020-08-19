@@ -47,5 +47,3 @@ do
 done < "$latencyMap"
 
 echo "Done."
-
-/bin/sh

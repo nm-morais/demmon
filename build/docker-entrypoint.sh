@@ -1,6 +1,8 @@
 #!/bin/sh
 
-set -e
-
+echo "Bootstraping TC"
 ./setupTc.sh $1
-./go/bin/deMMon -p $PORT 
+
+
+echo "Bootstraping deMMon"
+./go/bin/deMMon -p 1200

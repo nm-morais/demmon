@@ -1,6 +1,5 @@
 ARG LATENCY_MAP=config/inet100Latencies_x0.005.txt
 ARG IPS_MAP=config/ips100.txt
-ARG LISTEN_PORT=1200
 
 FROM golang:alpine AS builder
 
