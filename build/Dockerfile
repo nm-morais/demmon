@@ -15,12 +15,10 @@ FROM alpine:latest
 
 COPY scripts/setupTc.sh /setupTc.sh
 COPY build/docker-entrypoint.sh /docker-entrypoint.sh
+COPY --from=builder /go/bin/deMMon /go/bin/deMMon
 COPY ${LATENCY_MAP} /config/latencyMap.txt
 COPY ${IPS_MAP} /config/ips.txt
-COPY --from=builder /go/bin/deMMon /go/bin/deMMon
 
-RUN chmod +x /setupTc.sh
-RUN chmod +x /docker-entrypoint.sh
-RUN chmod +x /go/bin/deMMon
+RUN chmod +x /setupTc.sh /docker-entrypoint.sh /go/bin/deMMon
 
 ENTRYPOINT ["/docker-entrypoint.sh"]

@@ -33,6 +33,8 @@ function setuptc {
     eval $cmd
     j=$((j+1))
   done
+
+  echo "Set up delays to $j nodes"
 }
 
 i=0
@@ -40,6 +42,7 @@ echo "Setting up tc emulated network..."
 while read -r line
 do
   if [ $idx -eq $i ]; then
+    echo "Setting up with line $line"
     setuptc "$line"
     break
   fi
