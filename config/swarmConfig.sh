@@ -5,5 +5,5 @@ export SWARM_SUBNET="10.10.0.0/16"
 export SWARM_NET="demmon_network"
 export SWARM_VOL="demmon_volume"
 
-export SWARM_IMAGE="nm-morais/demmon:latest"
+export DOCKER_IMAGE="nm-morais/demmon:latest"
 export CONFIG_FILE="config/config100.txt"
