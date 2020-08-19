@@ -26,13 +26,13 @@ if [ -z $SWARM_NET ]; then
   exit
 fi
 
-if [ -z $image ]; then
+if [ -z $DOCKER_IMAGE ]; then
   echo "Pls specify a Docker image"
   help
   exit
 fi
 
-if [ -z $config ]; then
+if [ -z $CONFIG_FILE ]; then
   echo "Pls specify config file"
   help
   exit
@@ -67,5 +67,5 @@ do
   oarsh -n $node "docker run --rm -v ${SWARM_VOL}:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $net --ip $ip --name $name -h $name $image $i"
   echo "${i}. Container $name with ip $ip lauched"
   i=$((i+1))
-done < "$config"
+done < "$CONFIG_FILE"
 
