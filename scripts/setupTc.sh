@@ -2,9 +2,10 @@
 
 # Credit : https://github.com/pedroAkos
 
-idx=$1
-latencyMap="config/latencyMap.txt"
-ipsMap="config/ips.txt"
+latencyMap=$1
+ipsMap=$2
+idx=$3
+
 
 ips=""
 while read -r ip

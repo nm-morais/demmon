@@ -17,5 +17,7 @@ for node in $(oarprint host); do
   fi
 done
 
-docker volume create $SWARM_VOL
+rm -rf /tmp/demmon_logs/; mkdir /tmp/demmon_logs/
+
+docker volume create $SWARM_VOL --opt type=none --opt device=/tmp/demmon_logs/ --opt o=bind
 docker network create -d overlay --attachable --subnet $SWARM_SUBNET --gateway $SWARM_GATEWAY $SWARM_NET

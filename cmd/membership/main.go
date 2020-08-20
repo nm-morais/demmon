@@ -29,20 +29,22 @@ func main() {
 		portVar = rand.Intn(maxPort-minPort) + minPort
 	}
 
-	listenAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("localhost:%d", portVar))
+	listenAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", GetLocalIP(), portVar))
 	if err != nil {
 		panic(err)
 	}
-	config := configs.ProtocolManagerConfig{
-		LogFolder:             "/Users/nunomorais/go/src/github.com/nm-morais/DeMMon/logs/",
+
+	config := configs.ProtocolManagerConfig{ // TODO extract from JSON would be okay
+		LogFolder:             "/code/logs",
 		HandshakeTimeout:      1 * time.Second,
 		HeartbeatTickDuration: 1 * time.Second,
 		DialTimeout:           1 * time.Second,
 		ConnectionReadTimeout: 5 * time.Second,
 	}
+
 	pkg.InitProtoManager(config, stream.NewTCPListener(listenAddr))
 
-	landmarksStr := []string{"127.0.0.1:1200", "127.0.0.1:1700"}
+	landmarksStr := []string{"10.10.0.17:1200", "10.10.68.23:1200", "10.10.4.26:1200"}
 	landmarks := make([]peer.Peer, 0, len(landmarksStr))
 
 	for _, landmarkStr := range landmarksStr {
@@ -64,4 +66,20 @@ func main() {
 
 	pkg.RegisterProtocol(membership.NewDemmonTree(demmonTreeConf))
 	pkg.Start()
+}
+
+func GetLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, address := range addrs {
+		// check the address type and if it is not a loopback the display it
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return ""
 }

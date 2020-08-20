@@ -10,6 +10,8 @@ RUN GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /go/bin/deMMon cmd/memb
 
 FROM alpine:latest
 
+RUN apk add iproute2
+
 COPY scripts/setupTc.sh /setupTc.sh
 COPY build/docker-entrypoint.sh /docker-entrypoint.sh
 COPY --from=builder /go/bin/deMMon /go/bin/deMMon
@@ -22,4 +24,4 @@ COPY ${IPS_MAP} /ips.txt
 
 RUN chmod +x /setupTc.sh /docker-entrypoint.sh /go/bin/deMMon
 
-CMD ["/docker-entrypoint.sh"]
+ENTRYPOINT ["/docker-entrypoint.sh", "/latencyMap.txt", "/ips.txt"]
