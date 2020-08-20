@@ -38,6 +38,17 @@ if [ -z $CONFIG_FILE ]; then
   exit
 fi
 
+currdir=$(pwd)
+cmd="cd ${currdir}; ./scripts/buildImage.sh"
+host=$(hostname)
+./scripts/buildImage.sh & 
+for node in $(oarprint host); do
+  if [ $node != $host ]; then
+    oarsh $node $cmd &
+  fi
+done
+wait
+
 maxcpu=$(nproc)
 
 i=0
@@ -63,8 +74,8 @@ do
   esac
 
   node=$(nextnode $i)
-  echo "oarsh $node 'docker run --rm -v $SWARM_VOL:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $SWARM_NET --ip $ip --name $name -h $name $DOCKER_IMAGE $i'"
-  oarsh -n $node "docker run --rm -v $SWARM_VOL:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $SWARM_NET --ip $ip --name $name -h $name $DOCKER_IMAGE $i"
+  echo "oarsh $node 'docker run -v $SWARM_VOL:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $SWARM_NET --ip $ip --name $name -h $name $DOCKER_IMAGE $i'"
+  oarsh -n $node "docker run -v $SWARM_VOL:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $SWARM_NET --ip $ip --name $name -h $name $DOCKER_IMAGE $i"
   echo "${i}. Container $name with ip $ip lauched"
   i=$((i+1))
 
