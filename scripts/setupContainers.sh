@@ -78,6 +78,6 @@ do
   oarsh -n $node "docker run -v $SWARM_VOL:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $SWARM_NET --ip $ip --name $name -h $name $DOCKER_IMAGE $i"
   echo "${i}. Container $name with ip $ip lauched"
   i=$((i+1))
+  sleep 2
 
 done < "$CONFIG_FILE"
-

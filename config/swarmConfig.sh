@@ -8,6 +8,6 @@ export SWARM_VOL_DIR="/tmp/demmon_logs/"
 
 export DOCKER_IMAGE="nmmorais/demmon:latest"
 
-export CONFIG_FILE="config/config25.txt"
-export LATENCY_MAP="config/inet100Latencies_x0.005.txt"
+export CONFIG_FILE="config/config7.txt"
+export LATENCY_MAP="config/customLatencies.txt"
 export IPS_MAP="config/ips100.txt"

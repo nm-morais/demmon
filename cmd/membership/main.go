@@ -44,7 +44,7 @@ func main() {
 
 	pkg.InitProtoManager(config, stream.NewTCPListener(listenAddr))
 
-	landmarksStr := []string{"10.10.0.17:1200", "10.10.68.23:1200", "10.10.4.26:1200"}
+	landmarksStr := []string{"10.10.0.17:1200", "10.10.68.23:1200"}
 	landmarks := make([]peer.Peer, 0, len(landmarksStr))
 
 	for _, landmarkStr := range landmarksStr {
