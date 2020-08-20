@@ -6,7 +6,7 @@ export SWARM_NET="demmon_network"
 export SWARM_VOL="demmon_volume"
 
 export DOCKER_IMAGE="nmmorais/demmon:latest"
-export CONFIG_FILE="config/config100.txt"
+export CONFIG_FILE="config/config25.txt"
 
 export LATENCY_MAP="config/inet100Latencies_x0.005.txt"
-export IPS_MAP="config/ips100.txt"
+export IPS_MAP="config/ips.txt"

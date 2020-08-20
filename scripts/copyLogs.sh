@@ -11,5 +11,3 @@ for node in $nodes
 do
 	ssh $hostname "rm -rf /tmp/demmon_logs; mkdir /tmp/demmon_logs; scp -r $node:$logsFolder/* /tmp/demmon_logs/"
 done
-
-

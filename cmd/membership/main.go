@@ -35,7 +35,7 @@ func main() {
 	}
 
 	config := configs.ProtocolManagerConfig{ // TODO extract from JSON would be okay
-		LogFolder:             "/code/logs",
+		LogFolder:             "/code/logs/",
 		HandshakeTimeout:      1 * time.Second,
 		HeartbeatTickDuration: 1 * time.Second,
 		DialTimeout:           1 * time.Second,

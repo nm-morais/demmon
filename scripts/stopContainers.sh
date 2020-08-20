@@ -3,6 +3,11 @@
 config=$1
 n_nodes=$(uniq $OAR_FILE_NODES | wc -l)
 
+if [ -z $config ]; then
+  echo "usage <config>"
+  exit
+fi
+
 function nextnode {
   local idx=$(($1 % n_nodes))
   local i=0

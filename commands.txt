@@ -20,5 +20,13 @@ START:
 
 ./scripts/startContainers.sh 
 
+STOP :
+
+./scripts/stopContainers.sh 
+
 LEAVE: 
+
+./scripts/startContainers.sh 
+
+COPY LOGS:
 
