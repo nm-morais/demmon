@@ -12,13 +12,9 @@ SWARM:
 
 ./scripts/setupSwarm.sh
 
-CONTAINERS: 
+SETUP CONTAINERS: 
 
 ./scripts/setupContainers.sh
-
-START:
-
-./scripts/startContainers.sh 
 
 STOP :
 
