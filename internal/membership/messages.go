@@ -3,6 +3,7 @@ package membership
 import (
 	"encoding/binary"
 	"net"
+	"time"
 
 	"github.com/nm-morais/go-babel/pkg/message"
 	"github.com/nm-morais/go-babel/pkg/peer"
@@ -277,4 +278,99 @@ func (JoinAsChildMsgSerializer) Serialize(msg message.Message) []byte { return [
 
 func (JoinAsChildMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	return JoinAsChildMessage{}
+}
+
+// -------------- Ping --------------
+
+func NewPingMessage() Ping {
+	return Ping{
+		Timestamp: time.Now(),
+	}
+
+}
+
+const PingMessageType message.ID = 1005
+
+type Ping struct {
+	Timestamp time.Time
+}
+
+type PingSerializer struct {
+}
+
+var pingSerializer = PingSerializer{}
+
+func (Ping) Type() message.ID {
+	return PingMessageType
+}
+
+func (msg Ping) Serializer() message.Serializer {
+	return pingSerializer
+}
+
+func (msg Ping) Deserializer() message.Deserializer {
+	return pingSerializer
+}
+
+func (PingSerializer) Serialize(message message.Message) []byte {
+	pMsg := message.(Ping)
+	tsBytes, err := pMsg.Timestamp.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	return tsBytes
+
+}
+
+func (PingSerializer) Deserialize(toDeserialize []byte) message.Message {
+
+	var tm time.Time
+	err := tm.UnmarshalBinary(toDeserialize)
+	if err != nil {
+		panic(err)
+	}
+
+	return Ping{Timestamp: tm}
+}
+
+// -------------- Pong --------------
+
+const PongMessageType message.ID = 1006
+
+type Pong struct {
+	Timestamp time.Time
+}
+
+type PongSerializer struct{}
+
+var pongSerializer = PongSerializer{}
+
+func (Pong) Type() message.ID {
+	return PongMessageType
+}
+
+func (msg Pong) Serializer() message.Serializer {
+	return pongSerializer
+}
+
+func (msg Pong) Deserializer() message.Deserializer {
+	return pongSerializer
+}
+
+func (PongSerializer) Serialize(message message.Message) []byte {
+	pMsg := message.(Pong)
+	tsBytes, err := pMsg.Timestamp.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	return tsBytes
+}
+
+func (PongSerializer) Deserialize(toDeserialize []byte) message.Message {
+	var tm time.Time
+	err := tm.UnmarshalBinary(toDeserialize)
+	if err != nil {
+		panic(err)
+	}
+	return Pong{Timestamp: tm}
 }

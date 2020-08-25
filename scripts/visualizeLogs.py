@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
+from matplotlib.pyplot import figure
 import matplotlib.pyplot as plt
+import random as rand
 import networkx as nx
 import argparse
 import os
@@ -50,7 +52,7 @@ def parse_files(file_paths):
                 latencies.append((ip, int(latency)))
 
         if node_level == -1:
-            xPos = landmarks
+            xPos = landmarks * 10000
             landmarks += 1
             yPos = 0
             nodes[node_ip] = {
@@ -79,17 +81,26 @@ def parse_files(file_paths):
                 currChildren[parent] = 1
 
     pos = {}
-    latencyEdges = []
+    landmark_list = []
     parentEdges = []
+    latencyEdges = {}
     latencyEdgeLabels = {}
     nodeLabels = {}
+
+    minLat = 1000000000
+    maxLat = -1
 
     for node in sorted(nodes, key=lambda x: nodes[x]["node_level"], reverse=False):
         if nodes[node]["node_level"] == 0:
             nodeLabels[node] = node
             pos[node] = nodes[node]["pos"]
-            pos[node][0] = pos[node][0] / landmarks
+            try:
+                nChildren = children[node]
+            except KeyError:
+                nChildren = 0
+            landmark_list.append(node)
             print(pos[node])
+
         else:
             nodeLabels[node] = node
             parentId = nodes[node]["parent"]
@@ -98,14 +109,17 @@ def parse_files(file_paths):
 
             curr = currChildren[parentId]
 
-            nChildren = children[parentId]
+            try:
+                nChildren = children[node]
+            except KeyError:
+                nChildren = 0
+            try:
+                parent_children = children[parentId]
+            except KeyError:
+                parent_children = 0
 
-            if curr % 2 == 0:
-                nodePos = [parentPos[0] - curr /
-                           nChildren / 5, nodes[node]["node_level"]]
-            else:
-                nodePos = [parentPos[0] + curr /
-                           nChildren / 5, nodes[node]["node_level"]]
+            nodePos = [(parentPos[0] - parent_children * 100) +
+                       curr * 100, parentPos[1] + 2 + 5 * min(max(nChildren, 2), 10)]
 
             nodes[node]["pos"] = nodePos
             pos[node] = nodePos
@@ -114,32 +128,56 @@ def parse_files(file_paths):
             parentEdges.append((parentId, node))
 
         for latencyPair in nodes[node]["latencies"]:
+
             # G.add_edge(node, latencyPair[0], weight=latencyPair[1],
             #           parent=False, latency=True, label=latencyPair[1])
-            latencyEdges.append((node, latencyPair[0]))
-            latencyEdgeLabels[(node, latencyPair[0])] = latencyPair[1]
-    
+            if int(latencyPair[1]) / 1000 < minLat:
+                minLat = int(latencyPair[1]) / 1000
+
+            if int(latencyPair[1]) / 1000 > maxLat:
+                maxLat = int(latencyPair[1]) / 1000
+
+            latencyEdges[(latencyPair[0], node)] = int(
+                latencyPair[1]) / 1000
+
+            latencyEdgeLabels[(latencyPair[0], node)] = str(int(
+                latencyPair[1]) / 1000)[:-4]
+            print(int(latencyPair[1]) / 1000)
+
+    '''
+    latVals = [latencyEdges[l] for l in latencyEdgeLabels]
+    print(latVals)
+
+    n, bins, patches = plt.hist(latVals, 50, normed=1, facecolor='green', alpha=0.75)
+    plt.show()
+    '''
+
     for p in pos:
         aux = int(pos[p][1])
-        pos[p][1] = max_level - aux
+        pos[p][1] = (max_level - aux)
 
-     
-
-    ax = plt.gca()
-    plt.axis([-0.5, 1, -1 ,2.5])
-    
-    print(pos)
+    fig, ax = plt.subplots(figsize=(25, 10))
+    fig.tight_layout()
 
     node_list = [n for n in pos]
 
-    nx.draw_networkx_nodes(G, pos, nodelist=node_list ,node_size=500, ax=ax, node_shape="o")
-    nx.draw_networkx_labels(G, pos, nodeLabels, font_size=7, ax=ax)
-    nx.draw_networkx_edges(G, pos, edgelist=parentEdges, width=2, ax=ax)
-    nx.draw_networkx_edges(G, pos, edgelist=latencyEdges, width=1, alpha=0.5, edge_color="b", style="dashed", ax=ax)
-    nx.draw_networkx_edge_labels(G, pos, latencyEdgeLabels, font_color='red', label_pos=0.3 , font_size=7, ax=ax)
-    print(G.nodes)
-    
-    plt.axis('off')
+    edge_colors = [latencyEdges[l] for l in latencyEdges]
+    parent_colors = [latencyEdges[p] for p in parentEdges]
+
+    print(minLat, maxLat)
+    print(latencyEdges)
+    print(edge_colors)
+
+    #pos = nx.spring_layout(node_list, pos=pos, iterations=10000)
+
+    nx.draw_networkx_nodes(G, pos, nodelist=node_list,
+                           node_size=300, ax=ax, node_shape="o")
+    nx .draw_networkx_labels(G, pos, nodeLabels, font_size=4, ax=ax)
+    nx.draw_networkx_edges(G, pos, edgelist=parentEdges,
+                           edge_color=parent_colors, edge_cmap=plt.cm.rainbow, edge_vmin=minLat, edge_vmax=80000, width=2, ax=ax)
+    nx.draw_networkx_edges(G, pos, edgelist=latencyEdges, width=1,
+                           alpha=0.5, edge_color=edge_colors, edge_cmap=plt.cm.rainbow, edge_vmin=minLat, edge_vmax=80000, ax=ax)
+    #nx.draw_networkx_edge_labels(G, pos, latencyEdgeLabels,  label_pos=0.66 , alpha=0.5, font_size=5, ax=ax)
     plt.show()
 
 

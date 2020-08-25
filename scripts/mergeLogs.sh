@@ -1,5 +1,12 @@
 set -e
 
+
+if [ -z $SWARM_VOL_DIR ]; then
+  echo "env var SWARM_VOL_DIR not defined"
+  exit
+fi
+
+
 rm -rf logs/ ; mkdir logs
 
 host=$(hostname)

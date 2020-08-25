@@ -40,13 +40,16 @@ fi
 
 currdir=$(pwd)
 cmd="cd ${currdir}; ./scripts/buildImage.sh"
+cmd2="docker run --rm -it -v demmon_volume:/data/ ubuntu 'rm -rf /data/*'"
 host=$(hostname)
+
 ./scripts/buildImage.sh & 
 for node in $(oarprint host); do
   if [ $node != $host ]; then
-    oarsh $node $cmd &
+    oarsh $node "$cmd ; $cmd2" &
   fi
 done
+
 wait
 
 maxcpu=$(nproc)

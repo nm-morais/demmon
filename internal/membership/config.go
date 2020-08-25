@@ -10,6 +10,8 @@ type DemmonTreeConfig = struct {
 	MaxRetriesJoinMsg               int
 	ParentRefreshTickDuration       time.Duration
 	GParentLatencyIncreaseThreshold time.Duration
-	NrSamplesForLatency             uint64
+	NrSamplesForLatency             int
+	MaxRetriesForLatency            int
+	BootstrapRetryTimeout           time.Duration
 	Landmarks                       []peer.Peer
 }

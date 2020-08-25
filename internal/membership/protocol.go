@@ -3,7 +3,6 @@ package membership
 import (
 	"math"
 	"reflect"
-	"sync"
 	"time"
 
 	"github.com/nm-morais/go-babel/pkg"
@@ -41,12 +40,16 @@ type DemmonTree struct {
 
 	joinLevel uint16
 
-	advanceLevel       *sync.Mutex
 	currLevelPeersDone []map[string]peer.Peer
 	currLevelPeers     []map[string]peer.Peer
 
-	retries     map[string]int
-	myLatencies map[string]time.Duration
+	retries map[string]int
+
+	myLatencies map[string]struct {
+		nrMeasurements int
+		measurements   []time.Duration
+		currValue      time.Duration
+	}
 }
 
 func NewDemmonTree(config DemmonTreeConfig) protocol.Protocol {
@@ -54,7 +57,6 @@ func NewDemmonTree(config DemmonTreeConfig) protocol.Protocol {
 
 		parents:            make(map[string]peer.Peer),
 		children:           make(map[string]map[string]peer.Peer),
-		advanceLevel:       &sync.Mutex{},
 		currLevelPeers:     []map[string]peer.Peer{},
 		currLevelPeersDone: []map[string]peer.Peer{},
 		myPendingChildren:  map[string]peer.Peer{},
@@ -62,11 +64,15 @@ func NewDemmonTree(config DemmonTreeConfig) protocol.Protocol {
 		joinLevel:          1,
 		retries:            map[string]int{},
 		myChildren:         map[string]peer.Peer{},
-		myLatencies:        make(map[string]time.Duration),
-		myParent:           nil,
-		parentLatencies:    make(map[string]time.Duration),
-		logger:             logs.NewLogger(protoName),
-		config:             config,
+		myLatencies: make(map[string]struct {
+			nrMeasurements int
+			measurements   []time.Duration
+			currValue      time.Duration
+		}, 10),
+		myParent:        nil,
+		parentLatencies: make(map[string]time.Duration),
+		logger:          logs.NewLogger(protoName),
+		config:          config,
 	}
 }
 
@@ -102,6 +108,9 @@ func (d *DemmonTree) Init() {
 	pkg.RegisterMessageHandler(d.ID(), JoinAsChildMessage{}, d.handleJoinAsChildMessage)
 	pkg.RegisterMessageHandler(d.ID(), JoinAsParentMessage{}, d.handleJoinAsParentMessage)
 	pkg.RegisterMessageHandler(d.ID(), UpdateParentMessage{}, d.handleUpdateParentMessage)
+	pkg.RegisterMessageHandler(d.ID(), Ping{}, d.handlePingMessage)
+	pkg.RegisterMessageHandler(d.ID(), Pong{}, d.handlePongMessage)
+
 	pkg.RegisterTimerHandler(d.ID(), joinTimerID, d.handleJoinTimer)
 	pkg.RegisterTimerHandler(d.ID(), parentRefreshTimerID, d.handleRefreshParentTimer)
 
@@ -194,11 +203,16 @@ func (d *DemmonTree) MessageDeliveryErr(message message.Message, peer peer.Peer,
 		if !ok {
 			d.retries[peer.ToString()] = 0
 		}
+
 		d.retries[peer.ToString()]++
 		if d.retries[peer.ToString()] >= d.config.MaxRetriesJoinMsg {
 			d.logger.Warnf("Deleting peer %s from currLevelPeers because it exceeded max retries (%d)", peer.ToString(), d.config.MaxRetriesJoinMsg)
 			delete(d.currLevelPeers[d.joinLevel-1], peer.ToString())
 			delete(d.retries, peer.ToString())
+
+			if d.canProgressToNextLevel() {
+				d.progressToNextStep()
+			}
 			return
 		}
 		d.sendMessageAndMeasureLatency(message, peer)
@@ -230,13 +244,13 @@ func (d *DemmonTree) progressToNextStep() {
 	d.logger.Infof("Lowest Latency Peer: %s , Latency: %d", lowestLatencyPeer.ToString(), peerLat)
 	if d.joinLevel > 1 {
 		if d.parentLatencies[lowestLatencyPeer.ToString()]+d.config.GParentLatencyIncreaseThreshold >
-			d.myLatencies[d.parents[lowestLatencyPeer.ToString()].ToString()] {
+			d.myLatencies[d.parents[lowestLatencyPeer.ToString()].ToString()].currValue {
 
 			aux := make([]peer.Peer, 0, len(d.currLevelPeersDone[d.joinLevel]))
 
 			for peerID, p := range d.currLevelPeersDone[d.joinLevel] {
 				if d.parentLatencies[peerID]+d.config.GParentLatencyIncreaseThreshold >
-					d.myLatencies[d.parents[peerID].ToString()] {
+					d.myLatencies[d.parents[peerID].ToString()].currValue {
 					aux = append(aux, p)
 				}
 			}
@@ -250,11 +264,11 @@ func (d *DemmonTree) progressToNextStep() {
 
 			for _, possibleChild := range aux {
 				d.myPendingChildren[possibleChild.ToString()] = possibleChild
-				d.sendMessageTmpChan(toSendToChildren, possibleChild)
+				d.sendMessageTmpTCPChan(toSendToChildren, possibleChild)
 			}
 
 			d.myPendingParent = d.parents[lowestLatencyPeer.ToString()]
-			d.sendMessageTmpChan(JoinAsChildMessage{}, d.parents[lowestLatencyPeer.ToString()])
+			d.sendMessageTmpTCPChan(JoinAsChildMessage{}, d.parents[lowestLatencyPeer.ToString()])
 			d.logger.Infof("Joining level %d with %s as parent and as parent of %s", d.joinLevel, d.myPendingParent.ToString(), aux)
 			return
 		}
@@ -263,14 +277,14 @@ func (d *DemmonTree) progressToNextStep() {
 		d.logger.Info(d.myLatencies)
 		lowestLatencyPeerParentLat := d.myLatencies[lowestLatencyPeerParent.ToString()]
 
-		if lowestLatencyPeerParentLat < peerLat {
+		if lowestLatencyPeerParentLat.currValue < peerLat {
 			toSend := JoinAsChildMessage{}
 			d.logger.Infof("Latency to (%s:%d) is higher than the latency to the parent (%s:%d nanoSec)",
 				lowestLatencyPeer.ToString(), peerLat, lowestLatencyPeerParent.ToString(), lowestLatencyPeerParentLat)
 			d.logger.Infof("Joining level %d", d.joinLevel-1)
 			d.myLevel = d.joinLevel
 			d.myPendingParent = d.parents[lowestLatencyPeer.ToString()]
-			d.sendMessageTmpChan(toSend, d.parents[lowestLatencyPeer.ToString()])
+			d.sendMessageTmpTCPChan(toSend, d.parents[lowestLatencyPeer.ToString()])
 			return
 		}
 	}
@@ -282,7 +296,7 @@ func (d *DemmonTree) progressToNextStep() {
 		d.logger.Infof("Joining level %d", d.joinLevel)
 		d.myLevel = d.joinLevel
 		d.myPendingParent = lowestLatencyPeer
-		d.sendMessageTmpChan(JoinAsChildMessage{}, lowestLatencyPeer)
+		d.sendMessageTmpTCPChan(JoinAsChildMessage{}, lowestLatencyPeer)
 		return
 	}
 
@@ -344,10 +358,16 @@ func (d *DemmonTree) canProgressToNextLevel() (res bool) {
 			return
 		}
 
-		_, ok = d.myLatencies[p.ToString()]
+		mylats, ok := d.myLatencies[p.ToString()]
 		if !ok {
 			res = false
 			d.logger.Infof("Cannot progress because missing latency measurent from: %s", p.ToString())
+			return
+		}
+
+		if mylats.nrMeasurements < d.config.NrSamplesForLatency {
+			d.logger.Infof("Cannot progress because do not have enough latency measurements from: %s", p.ToString())
+			res = false
 			return
 		}
 	}
@@ -358,32 +378,59 @@ func (d *DemmonTree) canProgressToNextLevel() (res bool) {
 
 // aux functions
 
-func (d *DemmonTree) sendMessageTmpChan(toSend message.Message, destPeer peer.Peer) {
+func (d *DemmonTree) sendMessageTmpTCPChan(toSend message.Message, destPeer peer.Peer) {
 	pkg.SendMessageSideStream(toSend, destPeer, d.ID(), []protocol.ID{d.ID()}, stream.NewTCPDialer())
 }
 
+func (d *DemmonTree) sendMessageTmpUDPChan(toSend message.Message, destPeer peer.Peer) {
+	pkg.SendMessageSideStream(toSend, destPeer, d.ID(), []protocol.ID{d.ID()}, stream.NewUDPDialer())
+}
+
 func (d *DemmonTree) sendMessageAndMeasureLatency(toSend message.Message, destPeer peer.Peer) {
-	d.sendMessageTmpChan(toSend, destPeer)
-	pkg.MeasureLatencyTo(int(d.config.NrSamplesForLatency), destPeer,
-		func(p peer.Peer, durations []time.Duration) {
+	d.sendMessageTmpTCPChan(toSend, destPeer)
+	d.sendMessageTmpUDPChan(Ping{Timestamp: time.Now()}, destPeer)
+	d.myLatencies[destPeer.ToString()] = struct {
+		nrMeasurements int
+		measurements   []time.Duration
+		currValue      time.Duration
+	}{
+		nrMeasurements: 0,
+		measurements:   make([]time.Duration, 0, 5),
+		currValue:      0,
+	}
+	/*
+		pkg.MeasureLatencyTo(int(d.config.NrSamplesForLatency), int(d.config.MaxRetriesForLatency), time.Duration(0), destPeer,
+			func(p peer.Peer, durations []time.Duration, err errors.Error) {
+				if err != nil {
+					d.logger.Warnf("Could not measure latency to %s, marking as math.MaxInt64", p.ToString())
+					d.advanceLevel.Lock()
+					d.myLatencies[p.ToString()] = time.Duration(math.MaxInt64) // TODO ask
+					if d.canProgressToNextLevel() {
+						d.progressToNextStep()
+					}
+					d.advanceLevel.Unlock()
+					return
+				}
 
-			if len(durations) == 0 {
-				panic("Durations is empty")
-			}
+				if len(durations) == 0 {
+					panic("Durations is empty")
+				}
 
-			var avg float64 = 0
-			for _, duration := range durations {
-				avg += float64(duration.Nanoseconds()) / float64(len(durations))
-			}
+				var avg float64 = 0
+				for _, duration := range durations {
+					avg += float64(duration.Nanoseconds()) / float64(len(durations))
+				}
 
-			d.logger.Infof("Latency to %s: %d nano (%d measurements)", destPeer.ToString(), int(avg), len(durations))
-			d.advanceLevel.Lock()
-			d.myLatencies[p.ToString()] = time.Duration(avg)
-			if d.canProgressToNextLevel() {
-				d.progressToNextStep()
-			}
-			d.advanceLevel.Unlock()
-		})
+				d.logger.Infof("Latency to %s: %d nano (%d measurements)", destPeer.ToString(), int(avg), len(durations))
+				d.advanceLevel.Lock()
+				d.myLatencies[p.ToString()] = time.Duration(avg)
+				if d.canProgressToNextLevel() {
+					d.progressToNextStep()
+				}
+				d.advanceLevel.Unlock()
+			})
+	*/
+
 }
 
 func (d *DemmonTree) sendMessage(toSend message.Message, destPeer peer.Peer) {
@@ -400,7 +447,7 @@ func (d *DemmonTree) getPeersWithLatencyUnder(level uint16, threshold time.Durat
 			d.logger.Panicf("Do not have latency measurement for %s", currPeer.ToString())
 		}
 
-		if latency < threshold {
+		if latency.currValue < threshold {
 			excluded := false
 			for _, exclusion := range exclusions {
 				if exclusion.Equals(currPeer) {
@@ -432,9 +479,9 @@ func (d *DemmonTree) getLowestLatencyPeer(level uint16) (peer.Peer, time.Duratio
 			d.logger.Panicf("Do not have latency measurement for %s", currPeer.ToString())
 		}
 
-		if latency < lowestLat {
+		if latency.currValue < lowestLat {
 			lowestLatPeer = currPeer
-			lowestLat = latency
+			lowestLat = latency.currValue
 		}
 	}
 

@@ -29,22 +29,35 @@ func main() {
 		portVar = rand.Intn(maxPort-minPort) + minPort
 	}
 
-	listenAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", GetLocalIP(), portVar))
+	/*
+		listenAddrTcp, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", GetLocalIP(), portVar))
+		if err != nil {
+			panic(err)
+		}
+	*/
+
+	listenAddrTcp, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("localhost:%d", portVar))
+	if err != nil {
+		panic(err)
+	}
+
+	listenAddrUdp, err := net.ResolveUDPAddr("udp", fmt.Sprintf("localhost:%d", portVar))
 	if err != nil {
 		panic(err)
 	}
 
 	config := configs.ProtocolManagerConfig{ // TODO extract from JSON would be okay
-		LogFolder:             "/code/logs/",
+		LogFolder:             "logs",
 		HandshakeTimeout:      1 * time.Second,
 		HeartbeatTickDuration: 1 * time.Second,
 		DialTimeout:           1 * time.Second,
 		ConnectionReadTimeout: 5 * time.Second,
 	}
 
-	pkg.InitProtoManager(config, stream.NewTCPListener(listenAddr))
+	pkg.InitProtoManager(config, listenAddrTcp)
 
-	landmarksStr := []string{"10.10.0.17:1200", "10.10.68.23:1200"}
+	landmarksStr := []string{"localhost:1200", "localhost:1201", "localhost:1202"}
+	//landmarksStr := []string{"10.10.0.17:1200", "10.10.68.23:1200", "10.10.0.61:1200", "10.10.0.154:1200", "10.10.0.29:1200", "10.10.0.189:1200"}
 	landmarks := make([]peer.Peer, 0, len(landmarksStr))
 
 	for _, landmarkStr := range landmarksStr {
@@ -59,12 +72,18 @@ func main() {
 	demmonTreeConf := membership.DemmonTreeConfig{
 		ParentRefreshTickDuration:       1 * time.Second,
 		MaxRetriesJoinMsg:               3,
+		BootstrapRetryTimeout:           1 * time.Second,
 		GParentLatencyIncreaseThreshold: 200,
 		Landmarks:                       landmarks,
 		NrSamplesForLatency:             5,
+		MaxRetriesForLatency:            5,
 	}
 
+	pkg.RegisterListener(stream.NewTCPListener(listenAddrTcp))
+	pkg.RegisterListener(stream.NewUDPListener(listenAddrUdp))
+
 	pkg.RegisterProtocol(membership.NewDemmonTree(demmonTreeConf))
+
 	pkg.Start()
 }
 

@@ -6,6 +6,7 @@ import (
 	"github.com/nm-morais/go-babel/pkg"
 	"github.com/nm-morais/go-babel/pkg/message"
 	"github.com/nm-morais/go-babel/pkg/peer"
+	"github.com/nm-morais/go-babel/pkg/protocol"
 	"github.com/nm-morais/go-babel/pkg/stream"
 	"github.com/nm-morais/go-babel/pkg/timer"
 )
@@ -43,7 +44,7 @@ func (d *DemmonTree) handleJoinMessage(sender peer.Peer, msg message.Message) {
 		i++
 	}
 
-	d.sendMessageTmpChan(JoinReplyMessage{
+	d.sendMessageTmpTCPChan(JoinReplyMessage{
 		Children:      aux,
 		Level:         d.myLevel,
 		ParentLatency: d.parentLatency,
@@ -72,11 +73,9 @@ func (d *DemmonTree) handleJoinReplyMessage(sender peer.Peer, msg message.Messag
 		d.parents[children.ToString()] = sender
 	}
 
-	d.advanceLevel.Lock()
 	if d.canProgressToNextLevel() {
 		d.progressToNextStep()
 	}
-	d.advanceLevel.Unlock()
 }
 
 func (d *DemmonTree) handleJoinAsParentMessage(sender peer.Peer, m message.Message) {
@@ -89,6 +88,46 @@ func (d *DemmonTree) handleJoinAsChildMessage(sender peer.Peer, m message.Messag
 	d.logger.Infof("Peer %s wants to be my children", sender.ToString())
 	d.myPendingChildren[sender.ToString()] = sender
 	pkg.Dial(sender, d.ID(), stream.NewTCPDialer())
+}
+
+func (d *DemmonTree) handlePingMessage(sender peer.Peer, m message.Message) {
+	reply := Pong{Timestamp: m.(Ping).Timestamp}
+	d.logger.Infof("Got ping from %s, sending pong", sender.ToString())
+	pkg.SendMessageSideStream(reply, sender, d.ID(), []protocol.ID{d.ID()}, stream.NewUDPDialer())
+}
+
+func (d *DemmonTree) handlePongMessage(sender peer.Peer, m message.Message) {
+	d.logger.Infof("Got pong from %s", sender.ToString())
+	pongMsg := m.(Pong)
+	values := d.myLatencies[sender.ToString()]
+
+	timeTaken := time.Since(pongMsg.Timestamp)
+	values.nrMeasurements++
+	values.measurements = append(values.measurements, timeTaken)
+
+	if values.nrMeasurements < d.config.NrSamplesForLatency {
+		d.myLatencies[sender.ToString()] = values
+		d.sendMessageTmpUDPChan(NewPingMessage(), sender)
+		return
+		//TODO setup timer ?
+	}
+	var total int64 = 0
+
+	for _, measurement := range values.measurements {
+		total += measurement.Nanoseconds() / int64(values.nrMeasurements)
+	}
+	values.currValue = time.Duration(total)
+
+	d.myLatencies[sender.ToString()] = values
+
+	for p, l := range d.myLatencies {
+		d.logger.Infof("Latency to %s: %d nano (%d measurements)", p, l.currValue, l.nrMeasurements)
+	}
+
+	if d.canProgressToNextLevel() {
+		d.progressToNextStep()
+	}
+
 }
 
 func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Message) {
