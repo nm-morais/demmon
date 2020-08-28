@@ -2,7 +2,6 @@ package membership
 
 import (
 	"encoding/binary"
-	"net"
 	"time"
 
 	"github.com/nm-morais/go-babel/pkg/message"
@@ -47,7 +46,7 @@ const JoinReplyMessageID = 1001
 type JoinReplyMessage struct {
 	Children      []peer.Peer
 	Level         uint16
-	ParentLatency uint64
+	ParentLatency time.Duration
 }
 
 func (JoinReplyMessage) Type() message.ID {
@@ -70,37 +69,17 @@ func (JoinReplyMsgSerializer) Serialize(msg message.Message) []byte {
 	jrMsg := msg.(JoinReplyMessage)
 	msgBytes := make([]byte, 12)
 	binary.BigEndian.PutUint16(msgBytes[0:2], jrMsg.Level)
-	binary.BigEndian.PutUint64(msgBytes[2:10], jrMsg.ParentLatency)
-	binary.BigEndian.PutUint16(msgBytes[10:12], uint16(len(jrMsg.Children)))
-	for _, addr := range jrMsg.Children {
-		hostSizeBytes := make([]byte, 4)
-		hostBytes := []byte(addr.Addr().String())
-		binary.BigEndian.PutUint32(hostSizeBytes[0:4], uint32(len(hostBytes)))
-		msgBytes = append(msgBytes, hostSizeBytes...)
-		msgBytes = append(msgBytes, hostBytes...)
-	}
+	binary.BigEndian.PutUint64(msgBytes[2:10], uint64(jrMsg.ParentLatency))
+	msgBytes = append(msgBytes, peer.SerializePeerArray(jrMsg.Children)...)
 	return msgBytes
 }
 
 func (JoinReplyMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 
 	level := binary.BigEndian.Uint16(msgBytes[0:2])
-	parentLatency := binary.BigEndian.Uint64(msgBytes[2:10])
-	nrHosts := binary.BigEndian.Uint16(msgBytes[10:12])
-	hosts := make([]peer.Peer, nrHosts)
-	bufPos := 12
-	for i := 0; uint16(i) < nrHosts; i++ {
-		addrSize := int(binary.BigEndian.Uint32(msgBytes[bufPos : bufPos+4]))
-		bufPos += 4
-		addr := string(msgBytes[bufPos : bufPos+addrSize])
-		bufPos += addrSize
-		resolved, err := net.ResolveTCPAddr("tcp", addr)
-		if err != nil {
-			panic(err)
-		}
-		hosts[i] = peer.NewPeer(resolved)
-	}
-	return JoinReplyMessage{hosts, level, parentLatency}
+	parentLatency := time.Duration(binary.BigEndian.Uint64(msgBytes[2:10]))
+	_, hosts := peer.DeserializePeerArray(msgBytes[10:])
+	return JoinReplyMessage{Children: hosts, Level: level, ParentLatency: parentLatency}
 }
 
 // -------------- Update parent --------------
@@ -136,21 +115,25 @@ func (UpdateParentMsgSerializer) Serialize(msg message.Message) []byte {
 	binary.BigEndian.PutUint16(msgBytes[bufPos:bufPos+2], uPMsg.ParentLevel)
 	bufPos += 2
 	if uPMsg.GrandParent != nil {
-		binary.BigEndian.PutUint16(msgBytes[bufPos:bufPos+2], uint16(len(uPMsg.GrandParent.ToString())))
-		msgBytes = append(msgBytes, []byte(uPMsg.GrandParent.ToString())...)
+		msgBytes[bufPos] = 1
+		bufPos++
+		gParentBytes := uPMsg.GrandParent.SerializeToBinary()
+		msgBytes = append(msgBytes, gParentBytes...)
+		bufPos += len(gParentBytes)
 	} else {
-		binary.BigEndian.PutUint16(msgBytes[bufPos:bufPos+2], 0)
+		msgBytes[bufPos] = 0
+		bufPos++
 	}
 
-	aux := make([]byte, 2)
-	if uPMsg.Parent != nil {
-		binary.BigEndian.PutUint16(aux[0:2], uint16(len(uPMsg.Parent.ToString())))
-		msgBytes = append(msgBytes, aux...)
-		msgBytes = append(msgBytes, []byte(uPMsg.Parent.ToString())...)
+	if uPMsg.GrandParent != nil {
+		msgBytes[bufPos] = 1
+		bufPos++
+		parentBytes := uPMsg.Parent.SerializeToBinary()
+		msgBytes = append(msgBytes, parentBytes...)
 	} else {
-		binary.BigEndian.PutUint16(aux[0:2], 0)
-		msgBytes = append(msgBytes, aux...)
+		msgBytes[bufPos] = 0
 	}
+
 	return msgBytes
 }
 
@@ -158,31 +141,24 @@ func (UpdateParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	bufPos := 0
 	level := binary.BigEndian.Uint16(msgBytes[bufPos : bufPos+2])
 	bufPos += 2
-	gparentSize := binary.BigEndian.Uint16(msgBytes[bufPos : bufPos+2])
-	bufPos += 2
-	var gParent peer.Peer
-	var parent peer.Peer
-	if gparentSize != 0 {
-		gparentStr := string(msgBytes[bufPos : bufPos+int(gparentSize)])
-		bufPos += int(gparentSize)
-		gParentAddr, err := net.ResolveTCPAddr("tcp", gparentStr)
-		if err != nil {
-			panic(err)
-		}
-		gParent = peer.NewPeer(gParentAddr)
-	}
-	parentSize := binary.BigEndian.Uint16(msgBytes[bufPos : bufPos+2])
-	bufPos += 2
-	if parentSize != 0 {
-		parentStr := string(msgBytes[bufPos : bufPos+int(parentSize)])
-		parentAddr, err := net.ResolveTCPAddr("tcp", parentStr)
-		if err != nil {
-			panic(err)
-		}
-		parent = peer.NewPeer(parentAddr)
+	var parentFinal peer.Peer
+	if msgBytes[bufPos] == 1 {
+		bufPos++
+		parentSize, parent := peer.DeserializePeer(msgBytes[bufPos:])
+		parentFinal = parent
+		bufPos += parentSize
+	} else {
+		bufPos++
 	}
 
-	return UpdateParentMessage{parent, gParent, level}
+	var gParentFinal peer.Peer
+	if msgBytes[bufPos] == 1 {
+		bufPos++
+		_, gParent := peer.DeserializePeer(msgBytes[bufPos:])
+		gParentFinal = gParent
+	}
+
+	return UpdateParentMessage{GrandParent: gParentFinal, Parent: parentFinal, ParentLevel: level}
 }
 
 // -------------- JoinAsParent --------------
@@ -215,36 +191,15 @@ func (JoinAsParentMsgSerializer) Serialize(msg message.Message) []byte {
 	toSend := make([]byte, 4)
 	bufPos := 0
 	binary.BigEndian.PutUint16(toSend[bufPos:bufPos+2], japMsg.Level)
-	bufPos += 2
-	binary.BigEndian.PutUint16(toSend[bufPos:bufPos+2], japMsg.Level)
-	for _, child := range japMsg.Children {
-		childBytes := []byte(child.ToString())
-		binary.BigEndian.PutUint16(toSend[bufPos:bufPos+2], uint16(len(childBytes)))
-		bufPos += 2
-		toSend = append(toSend, childBytes...)
-	}
-	return []byte{}
+	toSend = append(toSend, peer.SerializePeerArray(japMsg.Children)...)
+	return toSend
 }
 
 func (JoinAsParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	bufPos := 0
 	level := binary.BigEndian.Uint16(msgBytes[bufPos : bufPos+2])
 	bufPos += 2
-	nrChildren := int(binary.BigEndian.Uint16(msgBytes[bufPos : bufPos+2]))
-	bufPos += 2
-	children := make([]peer.Peer, nrChildren)
-	for i := 0; i < nrChildren; i++ {
-		childSize := binary.BigEndian.Uint16(msgBytes[bufPos : bufPos+2])
-		bufPos += 2
-		childBytes := msgBytes[bufPos : bufPos+int(childSize)]
-		child, err := net.ResolveTCPAddr("tcp", string(childBytes))
-		if err != nil {
-			panic(err)
-		}
-		children[i] = peer.NewPeer(child)
-		bufPos += int(childSize)
-	}
-
+	_, children := peer.DeserializePeerArray(msgBytes[bufPos:])
 	return JoinAsParentMessage{
 		Level:    level,
 		Children: children,
@@ -278,99 +233,4 @@ func (JoinAsChildMsgSerializer) Serialize(msg message.Message) []byte { return [
 
 func (JoinAsChildMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	return JoinAsChildMessage{}
-}
-
-// -------------- Ping --------------
-
-func NewPingMessage() Ping {
-	return Ping{
-		Timestamp: time.Now(),
-	}
-
-}
-
-const PingMessageType message.ID = 1005
-
-type Ping struct {
-	Timestamp time.Time
-}
-
-type PingSerializer struct {
-}
-
-var pingSerializer = PingSerializer{}
-
-func (Ping) Type() message.ID {
-	return PingMessageType
-}
-
-func (msg Ping) Serializer() message.Serializer {
-	return pingSerializer
-}
-
-func (msg Ping) Deserializer() message.Deserializer {
-	return pingSerializer
-}
-
-func (PingSerializer) Serialize(message message.Message) []byte {
-	pMsg := message.(Ping)
-	tsBytes, err := pMsg.Timestamp.MarshalBinary()
-	if err != nil {
-		panic(err)
-	}
-	return tsBytes
-
-}
-
-func (PingSerializer) Deserialize(toDeserialize []byte) message.Message {
-
-	var tm time.Time
-	err := tm.UnmarshalBinary(toDeserialize)
-	if err != nil {
-		panic(err)
-	}
-
-	return Ping{Timestamp: tm}
-}
-
-// -------------- Pong --------------
-
-const PongMessageType message.ID = 1006
-
-type Pong struct {
-	Timestamp time.Time
-}
-
-type PongSerializer struct{}
-
-var pongSerializer = PongSerializer{}
-
-func (Pong) Type() message.ID {
-	return PongMessageType
-}
-
-func (msg Pong) Serializer() message.Serializer {
-	return pongSerializer
-}
-
-func (msg Pong) Deserializer() message.Deserializer {
-	return pongSerializer
-}
-
-func (PongSerializer) Serialize(message message.Message) []byte {
-	pMsg := message.(Pong)
-	tsBytes, err := pMsg.Timestamp.MarshalBinary()
-	if err != nil {
-		panic(err)
-	}
-	return tsBytes
-}
-
-func (PongSerializer) Deserialize(toDeserialize []byte) message.Message {
-	var tm time.Time
-	err := tm.UnmarshalBinary(toDeserialize)
-	if err != nil {
-		panic(err)
-	}
-	return Pong{Timestamp: tm}
 }

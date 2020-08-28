@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/nm-morais/DeMMon/internal/membership"
-	"github.com/nm-morais/go-babel/configs"
 	"github.com/nm-morais/go-babel/pkg"
 	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/stream"
@@ -16,89 +15,94 @@ import (
 
 func main() {
 	rand.Seed(time.Now().Unix() + rand.Int63())
-	minPort := 8000
-	maxPort := 9000
 
-	var portVar int
-	var randPort bool
-	flag.IntVar(&portVar, "p", -1, "port")
-	flag.BoolVar(&randPort, "r", false, "port")
+	minProtosPort := 7000
+	maxProtosPort := 8000
+
+	minAnalyticsPort := 8000
+	maxAnalyticsPort := 9000
+
+	var protosPortVar int
+	var analyticsPortVar int
+	var randProtosPort bool
+	var randAnalyticsPort bool
+
+	flag.IntVar(&protosPortVar, "protos", 1200, "protos")
+	flag.BoolVar(&randProtosPort, "rprotos", false, "port")
+
+	flag.IntVar(&analyticsPortVar, "analytics", 1201, "analytics")
+	flag.BoolVar(&randAnalyticsPort, "ranalytics", false, "port")
 	flag.Parse()
 
-	if randPort {
-		portVar = rand.Intn(maxPort-minPort) + minPort
+	if randProtosPort {
+		protosPortVar = rand.Intn(maxProtosPort-minProtosPort) + minProtosPort
 	}
 
-	/*
-		listenAddrTcp, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", GetLocalIP(), portVar))
-		if err != nil {
-			panic(err)
-		}
-	*/
-
-	listenAddrTcp, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("localhost:%d", portVar))
-	if err != nil {
-		panic(err)
+	if randAnalyticsPort {
+		analyticsPortVar = rand.Intn(maxAnalyticsPort-minAnalyticsPort) + minAnalyticsPort
 	}
 
-	listenAddrUdp, err := net.ResolveUDPAddr("udp", fmt.Sprintf("localhost:%d", portVar))
-	if err != nil {
-		panic(err)
-	}
-
-	config := configs.ProtocolManagerConfig{ // TODO extract from JSON would be okay
-		LogFolder:             "logs",
+	protoManagerConf := pkg.ProtocolManagerConfig{
+		LogFolder:             "/Users/nunomorais/go/src/github.com/nm-morais/go-babel/logs/",
 		HandshakeTimeout:      1 * time.Second,
 		HeartbeatTickDuration: 1 * time.Second,
 		DialTimeout:           1 * time.Second,
 		ConnectionReadTimeout: 5 * time.Second,
+		Peer:                  peer.NewPeer(GetLocalIP(), uint16(protosPortVar), uint16(analyticsPortVar)),
 	}
 
-	pkg.InitProtoManager(config, listenAddrTcp)
+	fmt.Println("Self peer: ", protoManagerConf.Peer.ToString())
 
-	landmarksStr := []string{"localhost:1200", "localhost:1201", "localhost:1202"}
-	//landmarksStr := []string{"10.10.0.17:1200", "10.10.68.23:1200", "10.10.0.61:1200", "10.10.0.154:1200", "10.10.0.29:1200", "10.10.0.189:1200"}
-	landmarks := make([]peer.Peer, 0, len(landmarksStr))
+	nodeWatcherConf := pkg.NodeWatcherConf{
+		MaxRedials:              3,
+		HbTickDuration:          1 * time.Second,
+		MinSamplesFaultDetector: 5,
+		NewLatencyWeight:        0.1,
+		NrTestMessagesToSend:    3,
+		NrTestMessagesToReceive: 1,
+		OldLatencyWeight:        0.9,
+		TcpTestTimeout:          5 * time.Second,
+		UdpTestTimeout:          5 * time.Second,
+		WindowSize:              5,
+	}
 
-	for _, landmarkStr := range landmarksStr {
-		landmarkAddr, err := net.ResolveTCPAddr("tcp", landmarkStr)
-		if err != nil {
-			panic(err)
-		}
-		peer := peer.NewPeer(landmarkAddr)
-		landmarks = append(landmarks, peer)
+	landmarks := []peer.Peer{
+		peer.NewPeer(net.IPv4(127, 0, 0, 1), 1200, 1300),
+		peer.NewPeer(net.IPv4(127, 0, 0, 1), 1201, 1301),
+		peer.NewPeer(net.IPv4(127, 0, 0, 1), 1202, 1302),
 	}
 
 	demmonTreeConf := membership.DemmonTreeConfig{
+		MaxTimeToProgressToNextLevel:    5 * time.Second,
 		ParentRefreshTickDuration:       1 * time.Second,
 		MaxRetriesJoinMsg:               3,
 		BootstrapRetryTimeout:           1 * time.Second,
-		GParentLatencyIncreaseThreshold: 200,
+		GParentLatencyIncreaseThreshold: 15 * time.Millisecond,
 		Landmarks:                       landmarks,
 		NrSamplesForLatency:             5,
 		MaxRetriesForLatency:            5,
 	}
 
-	pkg.RegisterListener(stream.NewTCPListener(listenAddrTcp))
-	pkg.RegisterListener(stream.NewUDPListener(listenAddrUdp))
-
+	pkg.InitProtoManager(protoManagerConf)
+	pkg.RegisterListener(stream.NewTCPListener(&net.TCPAddr{IP: protoManagerConf.Peer.IP(), Port: int(protoManagerConf.Peer.ProtosPort())}))
+	pkg.RegisterListener(stream.NewUDPListener(&net.UDPAddr{IP: protoManagerConf.Peer.IP(), Port: int(protoManagerConf.Peer.ProtosPort())}))
+	pkg.InitNodeWatcher(nodeWatcherConf)
 	pkg.RegisterProtocol(membership.NewDemmonTree(demmonTreeConf))
-
 	pkg.Start()
 }
 
-func GetLocalIP() string {
+func GetLocalIP() net.IP {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
-		return ""
+		panic(err)
 	}
 	for _, address := range addrs {
 		// check the address type and if it is not a loopback the display it
 		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
 			if ipnet.IP.To4() != nil {
-				return ipnet.IP.String()
+				return ipnet.IP
 			}
 		}
 	}
-	return ""
+	panic("no available loopback interfaces")
 }
