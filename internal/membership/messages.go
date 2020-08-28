@@ -87,7 +87,6 @@ func (JoinReplyMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 const UpdateParentMessageID = 1002
 
 type UpdateParentMessage struct {
-	Parent      peer.Peer
 	GrandParent peer.Peer
 	ParentLevel uint16
 }
@@ -124,16 +123,6 @@ func (UpdateParentMsgSerializer) Serialize(msg message.Message) []byte {
 		msgBytes[bufPos] = 0
 		bufPos++
 	}
-
-	if uPMsg.GrandParent != nil {
-		msgBytes[bufPos] = 1
-		bufPos++
-		parentBytes := uPMsg.Parent.SerializeToBinary()
-		msgBytes = append(msgBytes, parentBytes...)
-	} else {
-		msgBytes[bufPos] = 0
-	}
-
 	return msgBytes
 }
 
@@ -141,24 +130,17 @@ func (UpdateParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	bufPos := 0
 	level := binary.BigEndian.Uint16(msgBytes[bufPos : bufPos+2])
 	bufPos += 2
-	var parentFinal peer.Peer
+	var gParentFinal peer.Peer
 	if msgBytes[bufPos] == 1 {
 		bufPos++
 		parentSize, parent := peer.DeserializePeer(msgBytes[bufPos:])
-		parentFinal = parent
+		gParentFinal = parent
 		bufPos += parentSize
 	} else {
 		bufPos++
 	}
 
-	var gParentFinal peer.Peer
-	if msgBytes[bufPos] == 1 {
-		bufPos++
-		_, gParent := peer.DeserializePeer(msgBytes[bufPos:])
-		gParentFinal = gParent
-	}
-
-	return UpdateParentMessage{GrandParent: gParentFinal, Parent: parentFinal, ParentLevel: level}
+	return UpdateParentMessage{GrandParent: gParentFinal, ParentLevel: level}
 }
 
 // -------------- JoinAsParent --------------

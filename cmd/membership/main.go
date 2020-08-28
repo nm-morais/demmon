@@ -51,11 +51,9 @@ func main() {
 		Peer:                  peer.NewPeer(GetLocalIP(), uint16(protosPortVar), uint16(analyticsPortVar)),
 	}
 
-	fmt.Println("Self peer: ", protoManagerConf.Peer.ToString())
-
 	nodeWatcherConf := pkg.NodeWatcherConf{
 		MaxRedials:              3,
-		HbTickDuration:          1 * time.Second,
+		HbTickDuration:          250 * time.Millisecond,
 		MinSamplesFaultDetector: 5,
 		NewLatencyWeight:        0.1,
 		NrTestMessagesToSend:    3,
@@ -67,9 +65,9 @@ func main() {
 	}
 
 	landmarks := []peer.Peer{
-		peer.NewPeer(net.IPv4(127, 0, 0, 1), 1200, 1300),
-		peer.NewPeer(net.IPv4(127, 0, 0, 1), 1201, 1301),
-		peer.NewPeer(net.IPv4(127, 0, 0, 1), 1202, 1302),
+		peer.NewPeer(net.IPv4(10, 171, 238, 164), 1200, 1300),
+		peer.NewPeer(net.IPv4(10, 171, 238, 164), 1201, 1301),
+		peer.NewPeer(net.IPv4(10, 171, 238, 164), 1202, 1302),
 	}
 
 	demmonTreeConf := membership.DemmonTreeConfig{
@@ -83,11 +81,12 @@ func main() {
 		MaxRetriesForLatency:            5,
 	}
 
+	fmt.Println("Self peer: ", protoManagerConf.Peer.ToString())
 	pkg.InitProtoManager(protoManagerConf)
+	pkg.RegisterProtocol(membership.NewDemmonTree(demmonTreeConf))
 	pkg.RegisterListener(stream.NewTCPListener(&net.TCPAddr{IP: protoManagerConf.Peer.IP(), Port: int(protoManagerConf.Peer.ProtosPort())}))
 	pkg.RegisterListener(stream.NewUDPListener(&net.UDPAddr{IP: protoManagerConf.Peer.IP(), Port: int(protoManagerConf.Peer.ProtosPort())}))
 	pkg.InitNodeWatcher(nodeWatcherConf)
-	pkg.RegisterProtocol(membership.NewDemmonTree(demmonTreeConf))
 	pkg.Start()
 }
 
