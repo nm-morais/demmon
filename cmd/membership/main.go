@@ -3,8 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"math/rand"
 	"net"
+	"os"
+	"os/signal"
+	"runtime/pprof"
 	"time"
 
 	"github.com/nm-morais/DeMMon/internal/membership"
@@ -14,6 +18,7 @@ import (
 )
 
 func main() {
+
 	rand.Seed(time.Now().Unix() + rand.Int63())
 
 	minProtosPort := 7000
@@ -26,13 +31,34 @@ func main() {
 	var analyticsPortVar int
 	var randProtosPort bool
 	var randAnalyticsPort bool
+	var cpuprofile string
 
 	flag.IntVar(&protosPortVar, "protos", 1200, "protos")
 	flag.BoolVar(&randProtosPort, "rprotos", false, "port")
-
+	flag.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to file")
 	flag.IntVar(&analyticsPortVar, "analytics", 1201, "analytics")
 	flag.BoolVar(&randAnalyticsPort, "ranalytics", false, "port")
 	flag.Parse()
+
+	if cpuprofile != "" {
+		f, err := os.Create(cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			panic(err)
+		}
+	}
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		for sig := range c {
+			fmt.Println("Sig:", sig)
+			pprof.StopCPUProfile()
+			os.Exit(0)
+		}
+	}()
 
 	if randProtosPort {
 		protosPortVar = rand.Intn(maxProtosPort-minProtosPort) + minProtosPort
@@ -43,7 +69,7 @@ func main() {
 	}
 
 	protoManagerConf := pkg.ProtocolManagerConfig{
-		LogFolder:             "/Users/nunomorais/go/src/github.com/nm-morais/go-babel/logs/",
+		LogFolder:             "/code/logs/",
 		HandshakeTimeout:      1 * time.Second,
 		HeartbeatTickDuration: 1 * time.Second,
 		DialTimeout:           1 * time.Second,
@@ -53,7 +79,7 @@ func main() {
 
 	nodeWatcherConf := pkg.NodeWatcherConf{
 		MaxRedials:              3,
-		HbTickDuration:          250 * time.Millisecond,
+		HbTickDuration:          300 * time.Millisecond,
 		MinSamplesFaultDetector: 5,
 		NewLatencyWeight:        0.1,
 		NrTestMessagesToSend:    3,
@@ -65,9 +91,9 @@ func main() {
 	}
 
 	landmarks := []peer.Peer{
-		peer.NewPeer(net.IPv4(10, 171, 238, 164), 1200, 1300),
-		peer.NewPeer(net.IPv4(10, 171, 238, 164), 1201, 1301),
-		peer.NewPeer(net.IPv4(10, 171, 238, 164), 1202, 1302),
+		peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300),
+		peer.NewPeer(net.IPv4(10, 10, 68, 23), 1200, 1300),
+		peer.NewPeer(net.IPv4(10, 10, 4, 26), 1200, 1300),
 	}
 
 	demmonTreeConf := membership.DemmonTreeConfig{

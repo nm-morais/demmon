@@ -3,6 +3,7 @@ package membership
 import (
 	"math"
 	"reflect"
+	"runtime"
 	"time"
 
 	"github.com/nm-morais/go-babel/pkg"
@@ -128,6 +129,7 @@ func (d *DemmonTree) handleRefreshParentTimer(timer timer.Timer) {
 		d.logger.Warnf("Stopped sending refreshParent messages to: %s", refreshTimer.Child.ToString())
 		return
 	}
+	d.logger.Infof("Nr goroutines: %d", runtime.NumGoroutine())
 	pkg.RegisterTimer(d.ID(), NewParentRefreshTimer(1*time.Second, refreshTimer.Child))
 	toSend := UpdateParentMessage{GrandParent: d.myParent, ParentLevel: d.myLevel}
 	d.sendMessage(toSend, refreshTimer.Child)
@@ -143,6 +145,7 @@ func (d *DemmonTree) handleJoinMessage(sender peer.Peer, msg message.Message) {
 		aux[i] = c
 		i++
 	}
+
 	parentLatency := time.Duration(math.MaxInt64)
 	if d.myParent != nil {
 		if info, err := pkg.GetNodeWatcher().GetNodeInfo(d.myParent); err == nil {
@@ -215,6 +218,8 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 	} else {
 		d.logger.Infof("My grandparent : %s", d.myGrandParent.ToString())
 	}
+
+	d.logger.Infof("Nr goroutines: %d", runtime.NumGoroutine())
 }
 
 func (d *DemmonTree) InConnRequested(peer peer.Peer) bool {
@@ -347,6 +352,7 @@ func (d *DemmonTree) progressToNextStep() {
 
 	if d.joinLevel > 1 {
 		nodeStats, err := pkg.GetNodeWatcher().GetNodeInfo(d.parents[lowestLatencyPeer.ToString()])
+		d.logger.Infof("Latency to %s : %d", lowestLatencyPeer.ToString(), nodeStats.LatencyCalc.CurrValue())
 		if err != nil && d.parentLatencies[lowestLatencyPeer.ToString()]+d.config.GParentLatencyIncreaseThreshold > nodeStats.LatencyCalc.CurrValue() {
 			aux := make([]peer.Peer, 0, len(d.currLevelPeersDone[d.joinLevel]))
 			for peerID, p := range d.currLevelPeersDone[d.joinLevel] {

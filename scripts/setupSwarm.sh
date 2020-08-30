@@ -7,10 +7,9 @@ if [ -z $SWARM_SUBNET ] || [ -z $SWARM_GATEWAY ] || [ -z $SWARM_NET ] || [ -z $S
   echo "source setup.sh <subnet> <gateway> <net_name> <volume_name>"
   exit
 fi
-
+host=$(hostname)
 docker swarm init
 JOIN_TOKEN=$(docker swarm join-token manager -q)
-host=$(hostname)
 for node in $(oarprint host); do
   if [ $node != $host ]; then
     oarsh $node "mkdir $SWARM_VOL_DIR; docker volume create $SWARM_VOL --opt type=none --opt device=$SWARM_VOL_DIR --opt o=bind"

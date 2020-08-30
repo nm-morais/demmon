@@ -24,6 +24,7 @@ def parse_files(file_paths):
     max_level = -1
 
     for file_path in file_paths:
+        print(file_path)
         f = open(file_path, "r")
         node_name = str(file_path.split("/")[-2])
         node_ip = node_name.split(":")[0][6:]
@@ -42,14 +43,17 @@ def parse_files(file_paths):
                 if node_level > max_level:
                     max_level = node_level
 
-            if "Latency to" in line:
-                if "is higher" in line:
+            if "Latency:" in line and "[NodeWatcher]" in line:
+                if "Lowest Latency Peer" in line:
                     continue
+                print(line)
                 split = line.split(" ")
-                ip_port = split[7][6:-1]
+                #print(split[6])
+                ip_port = split[6][6:-1]
                 ip = str(ip_port.split(":")[0])
-                latency = split[8]
-                latencies.append((ip, int(latency)))
+                latStr = split[12]
+                latStr2 = latStr[:-1]
+                latencies.append((ip,int(latStr2)))
 
         if node_level == -1:
             xPos = landmarks * 10000
@@ -187,11 +191,10 @@ def main():
     for node_folder in os.listdir(log_folder):
         node_path = "{}/{}".format(log_folder, node_folder)
         for node_file in os.listdir(node_path):
-            if node_file == "DemonTree.log":
+            if node_file == "all.log":
                 paths.append("{}/{}".format(node_path, node_file))
 
     parse_files(paths)
-
 
 if __name__ == "__main__":
     main()

@@ -67,11 +67,10 @@ var joinReplyMsgSerializer = JoinReplyMsgSerializer{}
 
 func (JoinReplyMsgSerializer) Serialize(msg message.Message) []byte {
 	jrMsg := msg.(JoinReplyMessage)
-	msgBytes := make([]byte, 12)
+	msgBytes := make([]byte, 10)
 	binary.BigEndian.PutUint16(msgBytes[0:2], jrMsg.Level)
 	binary.BigEndian.PutUint64(msgBytes[2:10], uint64(jrMsg.ParentLatency))
-	msgBytes = append(msgBytes, peer.SerializePeerArray(jrMsg.Children)...)
-	return msgBytes
+	return append(msgBytes, peer.SerializePeerArray(jrMsg.Children)...)
 }
 
 func (JoinReplyMsgSerializer) Deserialize(msgBytes []byte) message.Message {
@@ -115,13 +114,10 @@ func (UpdateParentMsgSerializer) Serialize(msg message.Message) []byte {
 	bufPos += 2
 	if uPMsg.GrandParent != nil {
 		msgBytes[bufPos] = 1
-		bufPos++
 		gParentBytes := uPMsg.GrandParent.SerializeToBinary()
 		msgBytes = append(msgBytes, gParentBytes...)
-		bufPos += len(gParentBytes)
 	} else {
 		msgBytes[bufPos] = 0
-		bufPos++
 	}
 	return msgBytes
 }
@@ -133,13 +129,9 @@ func (UpdateParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	var gParentFinal peer.Peer
 	if msgBytes[bufPos] == 1 {
 		bufPos++
-		parentSize, parent := peer.DeserializePeer(msgBytes[bufPos:])
+		_, parent := peer.DeserializePeer(msgBytes[bufPos:])
 		gParentFinal = parent
-		bufPos += parentSize
-	} else {
-		bufPos++
 	}
-
 	return UpdateParentMessage{GrandParent: gParentFinal, ParentLevel: level}
 }
 
