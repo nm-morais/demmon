@@ -32,7 +32,7 @@ echo "Killing apps..."
 while read -r layer ip name
 do
     node=$(nextnode $i)
-    killapp $node $name &
+    killapp $node $name
     i=$(($i+1))
 done < "$config"
 wait

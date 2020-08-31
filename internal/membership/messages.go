@@ -185,6 +185,7 @@ func (JoinAsParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 const JoinAsChildMessageID = 1004
 
 type JoinAsChildMessage struct {
+	Children []peer.Peer
 }
 
 func (JoinAsChildMessage) Type() message.ID {
@@ -203,8 +204,11 @@ type JoinAsChildMsgSerializer struct{}
 
 var joinAsChildMsgSerializer = JoinAsChildMsgSerializer{}
 
-func (JoinAsChildMsgSerializer) Serialize(msg message.Message) []byte { return []byte{} }
+func (JoinAsChildMsgSerializer) Serialize(msg message.Message) []byte {
+	return peer.SerializePeerArray(msg.(JoinAsChildMessage).Children)
+}
 
 func (JoinAsChildMsgSerializer) Deserialize(msgBytes []byte) message.Message {
-	return JoinAsChildMessage{}
+	_, children := peer.DeserializePeerArray(msgBytes)
+	return JoinAsChildMessage{Children: children}
 }

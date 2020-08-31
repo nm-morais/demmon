@@ -56,7 +56,7 @@ def parse_files(file_paths):
                 latencies.append((ip,int(latStr2)))
 
         if node_level == -1:
-            xPos = landmarks * 10000
+            xPos = landmarks * 2500
             landmarks += 1
             yPos = 0
             nodes[node_ip] = {
@@ -122,8 +122,8 @@ def parse_files(file_paths):
             except KeyError:
                 parent_children = 0
 
-            nodePos = [(parentPos[0] - parent_children * 100) +
-                       curr * 100, parentPos[1] + 2 + 5 * min(max(nChildren, 2), 10)]
+            nodePos = [(parentPos[0] - parent_children * 250) +
+                       curr * 250, parentPos[1] + 7]
 
             nodes[node]["pos"] = nodePos
             pos[node] = nodePos
@@ -148,14 +148,14 @@ def parse_files(file_paths):
                 latencyPair[1]) / 1000)[:-4]
             print(int(latencyPair[1]) / 1000)
 
+
     '''
     latVals = [latencyEdges[l] for l in latencyEdgeLabels]
     print(latVals)
 
-    n, bins, patches = plt.hist(latVals, 50, normed=1, facecolor='green', alpha=0.75)
+    n, bins, patches = plt.hist(latVals, 50,facecolor='green', alpha=0.75)
     plt.show()
     '''
-
     for p in pos:
         aux = int(pos[p][1])
         pos[p][1] = (max_level - aux)
@@ -175,15 +175,14 @@ def parse_files(file_paths):
     #pos = nx.spring_layout(node_list, pos=pos, iterations=10000)
 
     nx.draw_networkx_nodes(G, pos, nodelist=node_list,
-                           node_size=300, ax=ax, node_shape="o")
+                           node_size=200, ax=ax, node_shape="o")
     nx .draw_networkx_labels(G, pos, nodeLabels, font_size=4, ax=ax)
     nx.draw_networkx_edges(G, pos, edgelist=parentEdges,
-                           edge_color=parent_colors, edge_cmap=plt.cm.rainbow, edge_vmin=minLat, edge_vmax=80000, width=2, ax=ax)
+                           edge_color=parent_colors, edge_cmap=plt.cm.rainbow, edge_vmin=minLat, edge_vmax=120000, width=4, ax=ax)
     nx.draw_networkx_edges(G, pos, edgelist=latencyEdges, width=1,
-                           alpha=0.5, edge_color=edge_colors, edge_cmap=plt.cm.rainbow, edge_vmin=minLat, edge_vmax=80000, ax=ax)
+                           alpha=0.5, edge_color=edge_colors, edge_cmap=plt.cm.rainbow, edge_vmin=minLat, edge_vmax=120000, ax=ax)
     #nx.draw_networkx_edge_labels(G, pos, latencyEdgeLabels,  label_pos=0.66 , alpha=0.5, font_size=5, ax=ax)
     plt.show()
-
 
 def main():
     log_folder = parse_args()

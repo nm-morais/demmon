@@ -38,6 +38,8 @@ if [ -z $CONFIG_FILE ]; then
   exit
 fi
 
+echo "Building images..."
+
 currdir=$(pwd)
 cmd="cd ${currdir}; ./scripts/buildImage.sh"
 cmd2="docker run --rm -it -v demmon_volume:/data/ ubuntu 'rm -rf /data/*'"
@@ -46,10 +48,9 @@ host=$(hostname)
 ./scripts/buildImage.sh & 
 for node in $(oarprint host); do
   if [ $node != $host ]; then
-    oarsh $node "$cmd ; $cmd2" &
+    oarsh $node "$cmd ; $cmd2"
   fi
 done
-
 wait
 
 maxcpu=$(nproc)
@@ -77,10 +78,10 @@ do
   esac
 
   node=$(nextnode $i)
-  echo "oarsh $node 'docker run -v $SWARM_VOL:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $SWARM_NET --ip $ip --name $name -h $name $DOCKER_IMAGE $i'"
+  #echo "oarsh $node 'docker run -v $SWARM_VOL:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $SWARM_NET --ip $ip --name $name -h $name $DOCKER_IMAGE $i'"
   oarsh -n $node "docker run -v $SWARM_VOL:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $SWARM_NET --ip $ip --name $name -h $name $DOCKER_IMAGE $i"
   echo "${i}. Container $name with ip $ip lauched"
   i=$((i+1))
-  sleep 3
+  sleep 1
 
 done < "$CONFIG_FILE"
