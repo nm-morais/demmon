@@ -50,16 +50,18 @@ func main() {
 	}
 
 	nodeWatcherConf := pkg.NodeWatcherConf{
-		MaxRedials:              3,
-		HbTickDuration:          300 * time.Millisecond,
-		MinSamplesFaultDetector: 5,
-		NewLatencyWeight:        0.1,
-		NrTestMessagesToSend:    3,
-		NrTestMessagesToReceive: 1,
-		OldLatencyWeight:        0.9,
-		TcpTestTimeout:          5 * time.Second,
-		UdpTestTimeout:          5 * time.Second,
-		WindowSize:              5,
+		MaxRedials:                3,
+		HbTickDuration:            300 * time.Millisecond,
+		MinSamplesFaultDetector:   5,
+		NewLatencyWeight:          0.1,
+		NrTestMessagesToSend:      3,
+		NrTestMessagesToReceive:   1,
+		OldLatencyWeight:          0.9,
+		TcpTestTimeout:            5 * time.Second,
+		UdpTestTimeout:            5 * time.Second,
+		WindowSize:                5,
+		EvalConditionTickDuration: 500 * time.Millisecond,
+		MinSamplesLatencyEstimate: 5,
 	}
 
 	landmarks := []peer.Peer{

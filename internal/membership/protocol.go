@@ -43,7 +43,7 @@ type DemmonTree struct {
 	childrenTimers map[string]int
 
 	// join state
-
+	discardedPeers  map[string]peer.Peer
 	children        map[string]map[string]peer.Peer
 	parents         map[string]peer.Peer
 	parentLatencies map[string]time.Duration
@@ -72,6 +72,8 @@ func NewDemmonTree(config DemmonTreeConfig) protocol.Protocol {
 		parentLatencies:    make(map[string]time.Duration),
 		logger:             logs.NewLogger(protoName),
 		config:             config,
+		childrenTimers:     make(map[string]int),
+		discardedPeers:     make(map[string]peer.Peer),
 	}
 }
 
@@ -168,8 +170,20 @@ func (d *DemmonTree) handleJoinReplyMessage(sender peer.Peer, msg message.Messag
 	d.logger.Infof("Got joinReply: %+v", replyMsg)
 
 	if d.joinLevel-1 != replyMsg.Level {
-		d.logger.Warnf("Discarding old message %+v because joinLevel is too high: %d", replyMsg, d.joinLevel)
+		d.logger.Warnf("Discarding message %+v from because joinLevel is not mine: %d", replyMsg, d.joinLevel)
 		// discard old repeated messages
+		d.discardedPeers[sender.ToString()] = sender
+		delete(d.currLevelPeers[d.joinLevel-1], sender.ToString())
+		delete(d.currLevelPeersDone[d.joinLevel-1], sender.ToString())
+
+		if len(d.currLevelPeers[d.joinLevel-1]) == 0 {
+			d.fallbackToParent(sender)
+			return
+		}
+
+		if d.canProgressToNextLevel() {
+			d.progressToNextStep()
+		}
 		return
 	}
 
@@ -189,17 +203,17 @@ func (d *DemmonTree) handleJoinReplyMessage(sender peer.Peer, msg message.Messag
 	}
 }
 
-func (d *DemmonTree) handleJoinAsParentMessage(sender peer.Peer, m message.Message) {
-	japMsg := m.(JoinAsParentMessage)
-	d.logger.Infof("Peer %s wants to be my parent", sender.ToString())
-
-	for _, child := range japMsg.Children {
-		childStr := child.ToString()
-		if timerID, ok := d.childrenTimers[childStr]; ok {
-			pkg.CancelTimer(timerID)
-		}
+func (d *DemmonTree) fallbackToParent(node peer.Peer) {
+	peerParent, ok := d.parents[node.ToString()]
+	if !ok {
+		d.logger.Panicf("Peer %s has no parent", node.ToString())
 	}
+	toSend := JoinAsChildMessage{}
+	d.sendMessageTmpTCPChan(toSend, peerParent)
+}
 
+func (d *DemmonTree) handleJoinAsParentMessage(sender peer.Peer, m message.Message) {
+	d.logger.Infof("Peer %s wants to be my parent", sender.ToString())
 	d.myParent = nil
 	d.myPendingParent = sender
 	pkg.Dial(sender, d.ID(), stream.NewTCPDialer())
@@ -209,13 +223,28 @@ func (d *DemmonTree) handleJoinAsChildMessage(sender peer.Peer, m message.Messag
 	d.logger.Infof("Peer %s wants to be my children", sender.ToString())
 	d.myPendingChildren[sender.ToString()] = sender
 	pkg.Dial(sender, d.ID(), stream.NewTCPDialer())
+	jacMsg := m.(JoinAsChildMessage)
+
+	for _, child := range jacMsg.Children {
+		childStr := child.ToString()
+		d.logger.Infof("Removing child: %s", childStr)
+		if timerID, ok := d.childrenTimers[childStr]; ok {
+			if err := pkg.CancelTimer(timerID); err != nil {
+				d.logger.Panicf(err.Reason())
+			}
+		}
+		if _, ok := d.myChildren[childStr]; ok {
+			pkg.Disconnect(d.ID(), child)
+			delete(d.myChildren, childStr)
+		}
+	}
 }
 
 func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Message) {
 	upMsg := m.(UpdateParentMessage)
 
 	if d.myLevel != upMsg.ParentLevel+1 {
-		d.logger.Warnf("My level changed: (%d -> %d)", d.myLevel, upMsg.ParentLevel+1)
+		d.logger.Warnf("My level changed: (%d -> %d)", d.myLevel, upMsg.ParentLevel+1) // IMPORTANT FOR VISUALIZER
 	}
 	if upMsg.GrandParent != nil {
 		if d.myGrandParent == nil || !d.myGrandParent.Equals(upMsg.GrandParent) {
@@ -224,7 +253,8 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 	}
 
 	if d.myParent == nil || !d.myParent.Equals(sender) {
-		d.logger.Panicf("Received UpdateParentMessage from not my parent (parent:%+v sender:%+v)", d.myParent, sender)
+		d.logger.Warnf("Received UpdateParentMessage from not my parent (parent:%+v sender:%+v)", d.myParent, sender)
+		return
 	}
 
 	d.myLevel = upMsg.ParentLevel + 1
@@ -241,36 +271,13 @@ func (d *DemmonTree) InConnRequested(peer peer.Peer) bool {
 		return true
 	}
 
-	if d.myParent != nil && d.myParent.Equals(peer) {
-		d.logger.Infof("My parent dialed me back")
+	_, isPendingChildren := d.myPendingChildren[peer.ToString()]
+	if isPendingChildren {
+		d.logger.Infof("My pending children dialed me, dialing back %s", peer.ToString())
 		pkg.Dial(peer, d.ID(), stream.NewTCPDialer())
 		return true
 	}
 
-	_, isChildren := d.myChildren[peer.ToString()]
-	if isChildren {
-		d.logger.Infof("My children dialed me back")
-		return true
-	}
-
-	_, isPendingChildren := d.myPendingChildren[peer.ToString()]
-	if isPendingChildren {
-		delete(d.myPendingChildren, peer.ToString())
-		timerId := pkg.RegisterTimer(d.ID(), NewParentRefreshTimer(1*time.Second, peer))
-		d.childrenTimers[peer.ToString()] = timerId
-		d.myChildren[peer.ToString()] = peer
-		d.logger.Infof("I have new children %s", peer.ToString())
-		return true
-	}
-
-	if d.myPendingParent == nil {
-		d.logger.Infof("d.myPendingParent: %+v", d.myPendingParent)
-	} else {
-		d.logger.Infof("d.myPendingParent: %s", d.myPendingParent.ToString())
-	}
-	d.logger.Infof("d.myChildren: %+v", d.myChildren)
-
-	d.logger.Panicf("Was dialed by unknown peer: %s", peer.ToString())
 	return false
 }
 
@@ -326,7 +333,7 @@ func (d *DemmonTree) MessageDelivered(message message.Message, peer peer.Peer) {
 
 func (d *DemmonTree) MessageDeliveryErr(message message.Message, peer peer.Peer, error errors.Error) {
 	d.logger.Infof("Message %s failed to deliver to: %s because: %s", reflect.TypeOf(message), peer.ToString(), error.Reason())
-	switch message.(type) {
+	switch message := message.(type) {
 	case JoinMessage:
 		_, ok := d.retries[peer.ToString()]
 		if !ok {
@@ -345,6 +352,8 @@ func (d *DemmonTree) MessageDeliveryErr(message message.Message, peer peer.Peer,
 			return
 		}
 		d.sendMessageAndMeasureLatency(message, peer)
+	case JoinAsChildMessage:
+		d.fallbackToParent(peer)
 	}
 }
 
@@ -412,19 +421,19 @@ func (d *DemmonTree) progressToNextStep() {
 					aux = append(aux, p)
 				}
 			}
+
 			toSendToChildren := JoinAsParentMessage{
 				Children: aux,
 				Level:    d.joinLevel,
 			}
 
-			d.myLevel = d.joinLevel
 			for _, possibleChild := range aux {
 				d.myPendingChildren[possibleChild.ToString()] = possibleChild
 				d.sendMessageTmpTCPChan(toSendToChildren, possibleChild)
 			}
 
 			d.myPendingParent = lowestLatencyPeerParent
-			d.sendMessageTmpTCPChan(JoinAsChildMessage{}, lowestLatencyPeerParent)
+			d.sendMessageTmpTCPChan(JoinAsChildMessage{aux}, lowestLatencyPeerParent)
 			d.logger.Infof("Joining level %d with %s as parent and as parent of %+v", d.joinLevel, d.myPendingParent.ToString(), aux)
 			return
 		}
@@ -434,7 +443,6 @@ func (d *DemmonTree) progressToNextStep() {
 			d.logger.Infof("Latency to (%s:%d) is higher than the latency to the parent (%s:%d nanoSec)",
 				lowestLatencyPeer.ToString(), peerLat, lowestLatencyPeerParent.ToString(), lowestLatencyPeerParentStats.LatencyCalc.CurrValue())
 			d.logger.Infof("Joining level %d", d.joinLevel-1)
-			d.myLevel = d.joinLevel
 			d.myPendingParent = lowestLatencyPeerParent
 			d.sendMessageTmpTCPChan(toSend, lowestLatencyPeerParent)
 			return
@@ -446,7 +454,6 @@ func (d *DemmonTree) progressToNextStep() {
 		d.logger.Infof("Joining level %d because nodes in this level have no children", d.joinLevel)
 		d.logger.Infof("Pending parent: %s", lowestLatencyPeer.ToString())
 		d.logger.Infof("Joining level %d", d.joinLevel)
-		d.myLevel = d.joinLevel
 		d.myPendingParent = lowestLatencyPeer
 		d.sendMessageTmpTCPChan(JoinAsChildMessage{}, lowestLatencyPeer)
 		return

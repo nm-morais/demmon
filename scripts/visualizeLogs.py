@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import matplotlib as mpl
 from matplotlib.pyplot import figure
 import matplotlib.pyplot as plt
 import random as rand
@@ -33,25 +34,26 @@ def parse_files(file_paths):
         latencies = []
         for line in reversed(f.readlines()):
 
-            if "My parent" in line and parent_ip == "":
-                parent_name = str(line.split(" ")[-1])
+            if "parent:" in line and parent_ip == "":
+                #print(line)
+                parent_name = str(line.split(" ")[-1])[:-2]
                 parent_ip = parent_name.split(":")[0][6:]
-                #print("parent_ip", parent_ip)
 
             if "My level" in line and node_level == -1:
-                node_level = int(line.split(" ")[-1][:-2])
+                node_level = int(line.split(" ")[-1][:-2][:-1])
                 if node_level > max_level:
                     max_level = node_level
 
             if "Latency:" in line and "[NodeWatcher]" in line:
                 if "Lowest Latency Peer" in line:
                     continue
-                print(line)
                 split = line.split(" ")
                 #print(split[6])
-                ip_port = split[6][6:-1]
-                ip = str(ip_port.split(":")[0])
-                latStr = split[12]
+
+                ip_port = str(split[7])[:-1]
+                ip = str(ip_port.split(":")[0])[6:]
+                
+                latStr = split[13]
                 latStr2 = latStr[:-1]
                 latencies.append((ip,int(latStr2)))
 
@@ -91,10 +93,8 @@ def parse_files(file_paths):
     latencyEdgeLabels = {}
     nodeLabels = {}
 
-    minLat = 1000000000
-    maxLat = -1
-
     for node in sorted(nodes, key=lambda x: nodes[x]["node_level"], reverse=False):
+
         if nodes[node]["node_level"] == 0:
             nodeLabels[node] = node
             pos[node] = nodes[node]["pos"]
@@ -103,12 +103,12 @@ def parse_files(file_paths):
             except KeyError:
                 nChildren = 0
             landmark_list.append(node)
-            print(pos[node])
 
         else:
             nodeLabels[node] = node
             parentId = nodes[node]["parent"]
             parent = nodes[parentId]
+            
             parentPos = parent["pos"]
 
             curr = currChildren[parentId]
@@ -132,21 +132,13 @@ def parse_files(file_paths):
             parentEdges.append((parentId, node))
 
         for latencyPair in nodes[node]["latencies"]:
-
             # G.add_edge(node, latencyPair[0], weight=latencyPair[1],
             #           parent=False, latency=True, label=latencyPair[1])
-            if int(latencyPair[1]) / 1000 < minLat:
-                minLat = int(latencyPair[1]) / 1000
-
-            if int(latencyPair[1]) / 1000 > maxLat:
-                maxLat = int(latencyPair[1]) / 1000
-
             latencyEdges[(latencyPair[0], node)] = int(
-                latencyPair[1]) / 1000
+                latencyPair[1] / 1000000)
 
             latencyEdgeLabels[(latencyPair[0], node)] = str(int(
-                latencyPair[1]) / 1000)[:-4]
-            print(int(latencyPair[1]) / 1000)
+                latencyPair[1] / 1000000))[:-4]
 
 
     '''
@@ -165,23 +157,50 @@ def parse_files(file_paths):
 
     node_list = [n for n in pos]
 
-    edge_colors = [latencyEdges[l] for l in latencyEdges]
-    parent_colors = [latencyEdges[p] for p in parentEdges]
+    minLat = 10000000000000000
+    maxLat = -1
 
-    print(minLat, maxLat)
-    print(latencyEdges)
-    print(edge_colors)
+
+    for latPair in latencyEdges:
+        currLatVal = latencyEdges[latPair]
+        minLat = min(minLat, currLatVal)
+        maxLat = max(maxLat, currLatVal)
+
+
+    edge_colors = [latencyEdges[l] for l in latencyEdges]
+    #print()
+
+    for node in nodes:
+        print("{}:{}".format(node, nodes[node]))
+    parent_colors = []
+    for p in parentEdges:
+        try:
+            parent_colors.append(latencyEdges[p])
+        except KeyError:
+            parent_colors.append(latencyEdges[(p[1], p[0])])
+
+
+    #print(minLat, maxLat)
+    #print(latencyEdges)
+    #print(edge_colors)
 
     #pos = nx.spring_layout(node_list, pos=pos, iterations=10000)
-
+    
+    cmap = plt.cm.rainbow
+    
     nx.draw_networkx_nodes(G, pos, nodelist=node_list,
-                           node_size=200, ax=ax, node_shape="o")
-    nx .draw_networkx_labels(G, pos, nodeLabels, font_size=4, ax=ax)
+                           node_size=300, ax=ax, node_shape="o")
+    nx.draw_networkx_labels(G, pos, nodeLabels, font_size=6, ax=ax)
     nx.draw_networkx_edges(G, pos, edgelist=parentEdges,
-                           edge_color=parent_colors, edge_cmap=plt.cm.rainbow, edge_vmin=minLat, edge_vmax=120000, width=4, ax=ax)
+                           edge_color=parent_colors, edge_cmap=cmap, edge_vmin=minLat, edge_vmax=maxLat, width=4, ax=ax)
     nx.draw_networkx_edges(G, pos, edgelist=latencyEdges, width=1,
-                           alpha=0.5, edge_color=edge_colors, edge_cmap=plt.cm.rainbow, edge_vmin=minLat, edge_vmax=120000, ax=ax)
+                           alpha=0.75, edge_color=edge_colors, edge_cmap=cmap, edge_vmin=minLat, edge_vmax=maxLat, ax=ax)
     #nx.draw_networkx_edge_labels(G, pos, latencyEdgeLabels,  label_pos=0.66 , alpha=0.5, font_size=5, ax=ax)
+    
+    cbaxes = fig.add_axes([0.95, 0.05, 0.01, 0.65]) 
+    norm = mpl.colors.Normalize(vmin=minLat, vmax=maxLat)
+    cb1 = mpl.colorbar.ColorbarBase(cbaxes, cmap=cmap,norm=norm, orientation='vertical')
+
     plt.show()
 
 def main():
