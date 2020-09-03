@@ -34,9 +34,12 @@ def parse_files(file_paths):
         latencies = []
         for line in reversed(f.readlines()):
 
-            if "parent:" in line and parent_ip == "":
-                #print(line)
+            if "parent:" in line and parent_ip == "" and line != "":
+                if "from not my parent" in line:
+                    continue
                 parent_name = str(line.split(" ")[-1])[:-2]
+                print(line)
+                print(parent_name)
                 parent_ip = parent_name.split(":")[0][6:]
 
             if "My level" in line and node_level == -1:
@@ -58,7 +61,7 @@ def parse_files(file_paths):
                 latencies.append((ip,int(latStr2)))
 
         if node_level == -1:
-            xPos = landmarks * 2500
+            xPos = landmarks * 1500
             landmarks += 1
             yPos = 0
             nodes[node_ip] = {
@@ -108,10 +111,13 @@ def parse_files(file_paths):
             nodeLabels[node] = node
             parentId = nodes[node]["parent"]
             parent = nodes[parentId]
-            
-            parentPos = parent["pos"]
-
             curr = currChildren[parentId]
+            try:
+                parentPos = parent["pos"]
+            except KeyError:
+                parentPos = (0,100)
+                print("err: {} has no parent, supposed to be: {}".format(node, parent))
+                print("parent: {}".format(parent))
 
             try:
                 nChildren = children[node]
@@ -170,9 +176,11 @@ def parse_files(file_paths):
     edge_colors = [latencyEdges[l] for l in latencyEdges]
     #print()
 
+
     for node in nodes:
         print("{}:{}".format(node, nodes[node]))
     parent_colors = []
+    
     for p in parentEdges:
         try:
             parent_colors.append(latencyEdges[p])
@@ -181,7 +189,7 @@ def parse_files(file_paths):
 
 
     #print(minLat, maxLat)
-    #print(latencyEdges)
+    
     #print(edge_colors)
 
     #pos = nx.spring_layout(node_list, pos=pos, iterations=10000)

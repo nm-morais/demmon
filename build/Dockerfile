@@ -2,13 +2,20 @@ FROM golang:alpine AS builder
 
 RUN apk update && apk add --no-cache git
 
+#demmon
 WORKDIR $GOPATH/src/github.com/nm-morais/deMMon
 COPY . .
-RUN cd ../; git clone https://github.com/nm-morais/go-babel.git # manually download latest 
+
+#deps
+COPY --from=nmmorais/go-babel /src/github.com/nm-morais/go-babel ../go-babel/
+RUN ls ../
 RUN go get -d -v ./...
+
+#build
 RUN GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /go/bin/deMMon cmd/membership/main.go
 
-FROM alpine:latest
+# EXECUTABLE IMG
+FROM alpine:latest as demmon
 
 RUN apk add iproute2
 

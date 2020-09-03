@@ -42,12 +42,16 @@ func main() {
 		analyticsPortVar = rand.Intn(maxAnalyticsPort-minAnalyticsPort) + minAnalyticsPort
 	}
 
+	// PROTO MANAGER CONFS
+
 	protoManagerConf := pkg.ProtocolManagerConfig{
 		LogFolder:        "/code/logs/",
 		HandshakeTimeout: 1 * time.Second,
 		DialTimeout:      1 * time.Second,
 		Peer:             peer.NewPeer(GetLocalIP(), uint16(protosPortVar), uint16(analyticsPortVar)),
 	}
+
+	// NODE WATCHER CONFS
 
 	nodeWatcherConf := pkg.NodeWatcherConf{
 		MaxRedials:                3,
@@ -70,23 +74,25 @@ func main() {
 		peer.NewPeer(net.IPv4(10, 10, 4, 26), 1200, 1300),
 	}
 
+	// DEMMON TREE CONFS
+
 	demmonTreeConf := membership.DemmonTreeConfig{
 		MaxTimeToProgressToNextLevel:    5 * time.Second,
 		ParentRefreshTickDuration:       1 * time.Second,
 		MaxRetriesJoinMsg:               3,
 		BootstrapRetryTimeout:           1 * time.Second,
-		GParentLatencyIncreaseThreshold: 15 * time.Millisecond,
+		GParentLatencyIncreaseThreshold: 0 * time.Millisecond,
 		Landmarks:                       landmarks,
-		NrSamplesForLatency:             5,
-		MaxRetriesForLatency:            5,
+		MinMembersPerLevel:              3,
+		MaxMembersPerLevel:              5,
 	}
 
 	fmt.Println("Self peer: ", protoManagerConf.Peer.ToString())
 	pkg.InitProtoManager(protoManagerConf)
+	pkg.InitNodeWatcher(nodeWatcherConf)
 	pkg.RegisterProtocol(membership.NewDemmonTree(demmonTreeConf))
 	pkg.RegisterListener(stream.NewTCPListener(&net.TCPAddr{IP: protoManagerConf.Peer.IP(), Port: int(protoManagerConf.Peer.ProtosPort())}))
 	pkg.RegisterListener(stream.NewUDPListener(&net.UDPAddr{IP: protoManagerConf.Peer.IP(), Port: int(protoManagerConf.Peer.ProtosPort())}))
-	pkg.InitNodeWatcher(nodeWatcherConf)
 	pkg.Start()
 }
 
