@@ -164,21 +164,16 @@ var joinAsParentMsgSerializer = JoinAsParentMsgSerializer{}
 func (JoinAsParentMsgSerializer) Serialize(msg message.Message) []byte {
 	japMsg := msg.(JoinAsParentMessage)
 	toSend := make([]byte, 10)
-	bufPos := 0
-	binary.BigEndian.PutUint16(toSend[bufPos:bufPos+2], japMsg.Level)
-	bufPos += 2
-	binary.BigEndian.PutUint64(toSend[bufPos:bufPos+8], uint64(japMsg.MeasuredLatency))
+	binary.BigEndian.PutUint16(toSend[:2], japMsg.Level)
+	binary.BigEndian.PutUint64(toSend[2:10], uint64(japMsg.MeasuredLatency))
 	toSend = append(toSend, peer.SerializePeerArray(japMsg.Children)...)
 	return toSend
 }
 
 func (JoinAsParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
-	bufPos := 0
-	level := binary.BigEndian.Uint16(msgBytes[bufPos : bufPos+2])
-	bufPos += 2
-	measuredLatency := time.Duration(binary.BigEndian.Uint64(msgBytes[bufPos : bufPos+8]))
-	bufPos += 8
-	_, children := peer.DeserializePeerArray(msgBytes[bufPos:])
+	level := binary.BigEndian.Uint16(msgBytes[0:2])
+	measuredLatency := time.Duration(binary.BigEndian.Uint64(msgBytes[2:10]))
+	_, children := peer.DeserializePeerArray(msgBytes[10:])
 	return JoinAsParentMessage{
 		MeasuredLatency: measuredLatency,
 		Level:           level,

@@ -7,6 +7,7 @@ import random as rand
 import networkx as nx
 import argparse
 import os
+import json
 
 
 def parse_args():
@@ -58,7 +59,7 @@ def parse_files(file_paths):
                 
                 latStr = split[13]
                 latStr2 = latStr[:-1]
-                latencies.append((ip,int(latStr2)))
+                latencies.append((node_ip, ip,(int(latStr2)/ 1000000)/ 2))
 
         if node_level == -1:
             xPos = landmarks * 1500
@@ -91,7 +92,7 @@ def parse_files(file_paths):
 
     pos = {}
     landmark_list = []
-    parentEdges = []
+    parent_edges = []
     latencyEdges = {}
     latencyEdgeLabels = {}
     nodeLabels = {}
@@ -128,25 +129,22 @@ def parse_files(file_paths):
             except KeyError:
                 parent_children = 0
 
-            nodePos = [(parentPos[0] - parent_children * 250) +
-                       curr * 250, parentPos[1] + 7]
+            nodePos = [(parentPos[0] - parent_children * 150) +
+                       curr * 150, parentPos[1] + 7]
 
             nodes[node]["pos"] = nodePos
             pos[node] = nodePos
             children[parentId] = children[parentId] - 1
             currChildren[parentId] = currChildren[parentId] + 1
-            parentEdges.append((parentId, node))
+            parent_edges.append((parentId, node))
 
         for latencyPair in nodes[node]["latencies"]:
             # G.add_edge(node, latencyPair[0], weight=latencyPair[1],
             #           parent=False, latency=True, label=latencyPair[1])
-            latencyEdges[(latencyPair[0], node)] = int(
-                latencyPair[1] / 1000000)
+            print(latencyPair)
+            latencyEdges[(latencyPair[0],latencyPair[1] )] = int(latencyPair[2])
 
-            latencyEdgeLabels[(latencyPair[0], node)] = str(int(
-                latencyPair[1] / 1000000))[:-4]
-
-
+    print(latencyEdges)
     '''
     latVals = [latencyEdges[l] for l in latencyEdgeLabels]
     print(latVals)
@@ -171,6 +169,7 @@ def parse_files(file_paths):
         currLatVal = latencyEdges[latPair]
         minLat = min(minLat, currLatVal)
         maxLat = max(maxLat, currLatVal)
+        print(latencyEdges[latPair])
 
 
     edge_colors = [latencyEdges[l] for l in latencyEdges]
@@ -181,11 +180,15 @@ def parse_files(file_paths):
         print("{}:{}".format(node, nodes[node]))
     parent_colors = []
     
-    for p in parentEdges:
+    for p in parent_edges:
         try:
             parent_colors.append(latencyEdges[p])
+            latencyEdgeLabels[p] = latencyEdges[p]
         except KeyError:
             parent_colors.append(latencyEdges[(p[1], p[0])])
+            latencyEdgeLabels[(p[1], p[0])] = latencyEdges[(p[1], p[0])]
+
+    print(parent_colors)
 
 
     #print(minLat, maxLat)
@@ -194,17 +197,23 @@ def parse_files(file_paths):
 
     #pos = nx.spring_layout(node_list, pos=pos, iterations=10000)
     
+    with open('parent_edges.txt', 'w') as f:
+        for parent_edge in parent_edges:
+                f.write("{} {}\n".format(parent_edge[0],parent_edge[1]))
+
     cmap = plt.cm.rainbow
     
     nx.draw_networkx_nodes(G, pos, nodelist=node_list,
                            node_size=300, ax=ax, node_shape="o")
     nx.draw_networkx_labels(G, pos, nodeLabels, font_size=6, ax=ax)
-    nx.draw_networkx_edges(G, pos, edgelist=parentEdges,
-                           edge_color=parent_colors, edge_cmap=cmap, edge_vmin=minLat, edge_vmax=maxLat, width=4, ax=ax)
+    nx.draw_networkx_edges(G, pos, edgelist=parent_edges,
+                           edge_color=parent_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, width=4, ax=ax)
     nx.draw_networkx_edges(G, pos, edgelist=latencyEdges, width=1,
-                           alpha=0.75, edge_color=edge_colors, edge_cmap=cmap, edge_vmin=minLat, edge_vmax=maxLat, ax=ax)
-    #nx.draw_networkx_edge_labels(G, pos, latencyEdgeLabels,  label_pos=0.66 , alpha=0.5, font_size=5, ax=ax)
+                           alpha=0.75, edge_color=edge_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, ax=ax)
+    nx.draw_networkx_edge_labels(G, pos, latencyEdgeLabels,  label_pos=0.66 , alpha=0.8, font_size=6, ax=ax)
     
+    print(minLat, maxLat)
+
     cbaxes = fig.add_axes([0.95, 0.05, 0.01, 0.65]) 
     norm = mpl.colors.Normalize(vmin=minLat, vmax=maxLat)
     cb1 = mpl.colorbar.ColorbarBase(cbaxes, cmap=cmap,norm=norm, orientation='vertical')

@@ -57,6 +57,7 @@ func main() {
 		MaxRedials:                3,
 		HbTickDuration:            300 * time.Millisecond,
 		MinSamplesFaultDetector:   5,
+		NrMessagesWithoutWait:     5,
 		NewLatencyWeight:          0.1,
 		NrTestMessagesToSend:      3,
 		NrTestMessagesToReceive:   1,

@@ -152,9 +152,11 @@ func (d *DemmonTree) handleJoinMessage(sender peer.Peer, msg message.Message) {
 
 	parentLatency := time.Duration(math.MaxInt64)
 	if d.myParent != nil {
-		if info, err := pkg.GetNodeWatcher().GetNodeInfo(d.myParent); err == nil {
-			parentLatency = info.LatencyCalc.CurrValue()
+		info, err := pkg.GetNodeWatcher().GetNodeInfo(d.myParent)
+		if err != nil {
+			panic(err.Reason())
 		}
+		parentLatency = info.LatencyCalc.CurrValue()
 	}
 
 	d.sendMessageTmpTCPChan(JoinReplyMessage{
@@ -172,7 +174,7 @@ func (d *DemmonTree) handleDisconnectAsChildMessage(sender peer.Peer, msg messag
 func (d *DemmonTree) handleJoinReplyMessage(sender peer.Peer, msg message.Message) {
 	replyMsg := msg.(JoinReplyMessage)
 
-	d.logger.Infof("Got joinReply: %+v", replyMsg)
+	d.logger.Infof("Got joinReply: %+v from %s", replyMsg, sender.ToString())
 
 	if d.joinLevel-1 != replyMsg.Level {
 		d.logger.Warnf("Discarding message %+v from because joinLevel is not mine: %d", replyMsg, d.joinLevel)
@@ -214,6 +216,7 @@ func (d *DemmonTree) fallbackToParent(node peer.Peer) {
 	if !ok {
 		d.logger.Panicf("Peer %s has no parent", node.ToString())
 	}
+	d.myPendingParent = peerParent
 	toSend := JoinAsChildMessage{}
 	d.sendMessageTmpTCPChan(toSend, peerParent)
 }
@@ -259,7 +262,7 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 	}
 
 	if d.myParent == nil || !d.myParent.Equals(sender) {
-		d.logger.Warnf("Received UpdateParentMessage from not my parent (parent:%+v sender:%+v)", d.myParent, sender)
+		d.logger.Warnf("Received UpdateParentMessage from not my parent (parent:%s sender:%s)", d.myParent.ToString(), sender.ToString())
 		return
 	}
 
@@ -409,7 +412,7 @@ func (d *DemmonTree) progressToNextStep() {
 		lowestLatencyPeerParent := d.parents[lowestLatencyPeer.ToString()]
 		lowestLatencyPeerParentStats, err := pkg.GetNodeWatcher().GetNodeInfo(lowestLatencyPeerParent)
 		if err != nil {
-			d.logger.Panicf("Node %s parent was not watched", lowestLatencyPeer.ToString())
+			d.logger.Panicf("Node %s parent (%s) was not watched", lowestLatencyPeer.ToString(), lowestLatencyPeerParent.ToString())
 		}
 
 		d.logger.Infof("Latency to %s : %d", lowestLatencyPeerParent.ToString(), lowestLatencyPeerParentStats.LatencyCalc.CurrValue())
@@ -417,7 +420,7 @@ func (d *DemmonTree) progressToNextStep() {
 		// Checking to see if i can become parent of currLevelNodes
 		if d.parentLatencies[lowestLatencyPeer.ToString()]+d.config.GParentLatencyIncreaseThreshold >
 			lowestLatencyPeerParentStats.LatencyCalc.CurrValue() {
-			aux := make([]peer.Peer, 0, len(currLevelPeersDone))
+			possibleChildren := make([]peer.Peer, 0, len(currLevelPeersDone))
 			for peerID, p := range currLevelPeersDone {
 				nodeStats, err := pkg.GetNodeWatcher().GetNodeInfo(d.parents[peerID])
 				if err != nil {
@@ -429,21 +432,25 @@ func (d *DemmonTree) progressToNextStep() {
 						lowestLatencyPeer.ToString(),
 						d.parentLatencies[lowestLatencyPeer.ToString()],
 						lowestLatencyPeerParentStats.LatencyCalc.CurrValue())
-					aux = append(aux, p)
+					possibleChildren = append(possibleChildren, p)
 				}
 			}
-			toSendToChildren := JoinAsParentMessage{
-				Children: aux,
-				Level:    d.joinLevel,
-			}
-			for _, possibleChild := range aux {
+			d.myPendingParent = lowestLatencyPeerParent
+			d.logger.Infof("Joining level %d with %s as parent and as parent of %+v", d.joinLevel, d.myPendingParent.ToString(), possibleChildren)
+
+			for _, possibleChild := range possibleChildren {
+				childStats, _ := pkg.GetNodeWatcher().GetNodeInfo(possibleChild)
+				toSendToChildren := JoinAsParentMessage{
+					Children:        possibleChildren,
+					Level:           d.joinLevel,
+					MeasuredLatency: childStats.LatencyCalc.CurrValue(),
+				}
 				d.myPendingChildren[possibleChild.ToString()] = possibleChild
 				d.sendMessageTmpTCPChan(toSendToChildren, possibleChild)
 			}
-			d.myPendingParent = lowestLatencyPeerParent
-			d.sendMessageTmpTCPChan(JoinAsChildMessage{aux}, lowestLatencyPeerParent)
-			d.logger.Infof("Joining level %d with %s as parent and as parent of %+v", d.joinLevel, d.myPendingParent.ToString(), aux)
-			d.unwatchPeersInLevel(d.joinLevel-1, aux)
+
+			d.sendMessageTmpTCPChan(JoinAsChildMessage{possibleChildren}, lowestLatencyPeerParent)
+			d.unwatchPeersInLevel(d.joinLevel-1, append(possibleChildren, lowestLatencyPeerParent))
 			return
 		}
 
@@ -455,7 +462,7 @@ func (d *DemmonTree) progressToNextStep() {
 			d.logger.Infof("Joining level %d", d.joinLevel-1)
 			d.myPendingParent = lowestLatencyPeerParent
 			d.sendMessageTmpTCPChan(toSend, lowestLatencyPeerParent)
-			d.unwatchPeersInLevel(d.joinLevel-1, []peer.Peer{lowestLatencyPeer})
+			d.unwatchPeersInLevel(d.joinLevel-1, []peer.Peer{lowestLatencyPeerParent})
 			return
 		}
 	}
@@ -471,6 +478,7 @@ func (d *DemmonTree) progressToNextStep() {
 	}
 
 	d.logger.Infof("Progressing to next level (currLevel=%d), (nextLevel=%d) ", d.joinLevel-1, d.joinLevel)
+	d.unwatchPeersInLevel(d.joinLevel, []peer.Peer{lowestLatencyPeer})
 	d.joinLevel++
 
 	if int(d.joinLevel-1) < len(d.currLevelPeers) {
@@ -485,7 +493,6 @@ func (d *DemmonTree) progressToNextStep() {
 		d.currLevelPeersDone = append(d.currLevelPeersDone, make(map[string]peer.Peer))
 	}
 
-	d.unwatchPeersInLevel(d.joinLevel-1, []peer.Peer{lowestLatencyPeer})
 	for _, p := range d.currLevelPeers[d.joinLevel-1] {
 		d.sendMessageAndMeasureLatency(JoinMessage{}, p)
 	}
