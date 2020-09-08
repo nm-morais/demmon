@@ -69,10 +69,10 @@ func main() {
 		MinSamplesLatencyEstimate: 5,
 	}
 
-	landmarks := []peer.Peer{
-		peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300),
-		peer.NewPeer(net.IPv4(10, 10, 68, 23), 1200, 1300),
-		peer.NewPeer(net.IPv4(10, 10, 4, 26), 1200, 1300),
+	landmarks := []membership.PeerWithId{
+		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 0, 1}, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300)),
+		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 1, 0}, peer.NewPeer(net.IPv4(10, 10, 68, 23), 1200, 1300)),
+		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 1, 1}, peer.NewPeer(net.IPv4(10, 10, 4, 26), 1200, 1300)),
 	}
 
 	// DEMMON TREE CONFS
@@ -82,7 +82,7 @@ func main() {
 		ParentRefreshTickDuration:       1 * time.Second,
 		MaxRetriesJoinMsg:               3,
 		BootstrapRetryTimeout:           1 * time.Second,
-		GParentLatencyIncreaseThreshold: 0 * time.Millisecond,
+		GParentLatencyIncreaseThreshold: 30 * time.Millisecond,
 		Landmarks:                       landmarks,
 		MinMembersPerLevel:              3,
 		MaxMembersPerLevel:              5,

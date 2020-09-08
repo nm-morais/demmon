@@ -80,7 +80,7 @@ def plotGraph(node_ids, latencies, parent_edges):
     edge_colors = []
     parent_edge_colors = []
     for latEdge in latencyEdges:
-        G.add_edge(latEdge[0], latEdge[1], weight=latEdge[2]/maxLat)
+        G.add_edge(latEdge[0], latEdge[1], weight=latEdge[2])
         edge_colors.append(latEdge[2])
         if (latEdge[0], latEdge[1]) in parent_edges:
             idx = parent_edges.index((latEdge[0], latEdge[1]))
@@ -93,11 +93,11 @@ def plotGraph(node_ids, latencies, parent_edges):
 
     print("min:", minLat,"max:", maxLat)
     cmap = plt.cm.rainbow
-    pos = nx.spring_layout(G, iterations=10000) 
+    pos = nx.kamada_kawai_layout(G) 
     nx.draw_networkx_nodes(G, pos, node_size=600)
     nx.draw_networkx_labels(G, pos, font_size=8, font_family="sans-serif")
-    nx.draw_networkx_edges(G, pos, edgelist=latencyEdges, width=1, alpha=0.75, edge_color=edge_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52)
-    nx.draw_networkx_edges(G, pos, edgelist=parent_edges, width=5, alpha=1, edge_color=parent_edge_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52)
+    nx.draw_networkx_edges(G, pos, edgelist=latencyEdges, width=1, alpha=0.50, edge_color=edge_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52)
+    nx.draw_networkx_edges(G, pos, edgelist=parent_edges, width=3, alpha=1, edge_color=parent_edge_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52)
     plt.axis("off")
     plt.show()
 

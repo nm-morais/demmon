@@ -69,3 +69,25 @@ func (t *parentRefreshTimer) ID() timer.ID {
 func (t *parentRefreshTimer) Deadline() time.Time {
 	return t.deadline
 }
+
+const pendingChildTimeoutTimerID = 1003
+
+type pendingChildTimeoutTimer struct {
+	deadline time.Time
+	Child    peer.Peer
+}
+
+func NewPendingChildTimeout(duration time.Duration, children peer.Peer) timer.Timer {
+	return &pendingChildTimeoutTimer{
+		deadline: time.Now().Add(duration),
+		Child:    children,
+	}
+}
+
+func (t *pendingChildTimeoutTimer) ID() timer.ID {
+	return pendingChildTimeoutTimerID
+}
+
+func (t *pendingChildTimeoutTimer) Deadline() time.Time {
+	return t.deadline
+}

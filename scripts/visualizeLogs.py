@@ -62,7 +62,7 @@ def parse_files(file_paths):
                 latencies.append((node_ip, ip,(int(latStr2)/ 1000000)/ 2))
 
         if node_level == -1:
-            xPos = landmarks * 1500
+            xPos = landmarks * 1550
             landmarks += 1
             yPos = 0
             nodes[node_ip] = {
@@ -128,9 +128,9 @@ def parse_files(file_paths):
                 parent_children = children[parentId]
             except KeyError:
                 parent_children = 0
-
-            nodePos = [(parentPos[0] - parent_children * 150) +
-                       curr * 150, parentPos[1] + 7]
+            lvl = nodes[node]["node_level"]
+            nodePos = [(parentPos[0] - parent_children * (200 - 15*lvl)) +
+                       curr * (200 - 15*lvl), parentPos[1] + 7]
 
             nodes[node]["pos"] = nodePos
             pos[node] = nodePos
