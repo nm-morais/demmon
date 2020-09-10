@@ -27,38 +27,18 @@ func (t *joinTimer) Deadline() time.Time {
 	return t.deadline
 }
 
-const retryTimerID = 1001
-
-type retryTimer struct {
-	deadline time.Time
-}
-
-func NewRetryTimer(duration time.Duration) timer.Timer {
-	return &retryTimer{
-		deadline: time.Now().Add(duration),
-	}
-}
-
-func (t *retryTimer) ID() timer.ID {
-	return retryTimerID
-}
-
-func (t *retryTimer) Deadline() time.Time {
-	return t.deadline
-}
+// ---------------- parentRefreshTimer ----------------
+// This timer represents a timer to send a message to the children of a node, informing them about the parent and the grandparent
 
 const parentRefreshTimerID = 1002
 
-// This timer represents a timer to send a message to the children of a node, informing them about the parent and the grandparent
 type parentRefreshTimer struct {
 	deadline time.Time
-	Child    peer.Peer
 }
 
-func NewParentRefreshTimer(duration time.Duration, children peer.Peer) timer.Timer {
+func NewParentRefreshTimer(duration time.Duration) timer.Timer {
 	return &parentRefreshTimer{
 		deadline: time.Now().Add(duration),
-		Child:    children,
 	}
 }
 
@@ -70,24 +50,46 @@ func (t *parentRefreshTimer) Deadline() time.Time {
 	return t.deadline
 }
 
-const pendingChildTimeoutTimerID = 1003
+// ---------------- childRefreshTimer ----------------
 
-type pendingChildTimeoutTimer struct {
+const updateChildTimerID = 1003
+
+type updateChildTimer struct {
 	deadline time.Time
-	Child    peer.Peer
 }
 
-func NewPendingChildTimeout(duration time.Duration, children peer.Peer) timer.Timer {
-	return &pendingChildTimeoutTimer{
+func NewUpdateChildTimer(duration time.Duration) timer.Timer {
+	return &updateChildTimer{
 		deadline: time.Now().Add(duration),
-		Child:    children,
 	}
 }
 
-func (t *pendingChildTimeoutTimer) ID() timer.ID {
-	return pendingChildTimeoutTimerID
+func (t *updateChildTimer) ID() timer.ID {
+	return updateChildTimerID
 }
 
-func (t *pendingChildTimeoutTimer) Deadline() time.Time {
+func (t *updateChildTimer) Deadline() time.Time {
+	return t.deadline
+}
+
+// ---------------- checkChidrenSizeTimer ----------------
+
+const checkChidrenSizeTimerID = 1004
+
+type checkChidrenSizeTimer struct {
+	deadline time.Time
+}
+
+func NewCheckChidrenSizeTimer(duration time.Duration, children peer.Peer) timer.Timer {
+	return &checkChidrenSizeTimer{
+		deadline: time.Now().Add(duration),
+	}
+}
+
+func (t *checkChidrenSizeTimer) ID() timer.ID {
+	return checkChidrenSizeTimerID
+}
+
+func (t *checkChidrenSizeTimer) Deadline() time.Time {
 	return t.deadline
 }

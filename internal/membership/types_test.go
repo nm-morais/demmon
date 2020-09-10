@@ -9,7 +9,7 @@ import (
 )
 
 func TestSerializePeerWithIDArray(t *testing.T) {
-	toSerialize := NewPeerWithId([IdSegmentLen]byte{0, 1, 0, 0, 0, 0, 1}, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300))
+	toSerialize := NewPeerWithId([IdSegmentLen]byte{0, 1, 0, 0, 0, 0, 1}, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 0)
 	PwIDbytes := toSerialize.SerializeToBinary()
 	_, deserialized := DeserializePeerWithId(PwIDbytes)
 	t.Logf("%+v,", toSerialize)

@@ -70,22 +70,26 @@ func main() {
 	}
 
 	landmarks := []membership.PeerWithId{
-		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 0, 1}, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300)),
-		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 1, 0}, peer.NewPeer(net.IPv4(10, 10, 68, 23), 1200, 1300)),
-		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 1, 1}, peer.NewPeer(net.IPv4(10, 10, 4, 26), 1200, 1300)),
+		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 0, 1}, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 0),
+		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 1, 0}, peer.NewPeer(net.IPv4(10, 10, 68, 23), 1200, 1300), 0),
+		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 1, 1}, peer.NewPeer(net.IPv4(10, 10, 4, 26), 1200, 1300), 0),
 	}
 
 	// DEMMON TREE CONFS
 
 	demmonTreeConf := membership.DemmonTreeConfig{
-		MaxTimeToProgressToNextLevel:    5 * time.Second,
-		ParentRefreshTickDuration:       1 * time.Second,
-		MaxRetriesJoinMsg:               3,
-		BootstrapRetryTimeout:           1 * time.Second,
-		GParentLatencyIncreaseThreshold: 30 * time.Millisecond,
-		Landmarks:                       landmarks,
-		MinMembersPerLevel:              3,
-		MaxMembersPerLevel:              5,
+		MaxTimeToProgressToNextLevel:        5 * time.Second,
+		MaxRetriesJoinMsg:                   3,
+		BootstrapRetryTimeout:               1 * time.Second,
+		MinLatencyImprovementToBecomeParent: 20 * time.Millisecond,
+		Landmarks:                           landmarks,
+		MinGrpSize:                          3,
+		MaxGrpSize:                          5,
+		LimitFirstLevelGroupSize:            false,
+		CheckChildenSizeTimerDuration:       5 * time.Second,
+		ParentRefreshTickDuration:           3 * time.Second,
+		ChildrenRefreshTickDuration:         3 * time.Second,
+		RejoinTimerDuration:                 10 * time.Second,
 	}
 
 	fmt.Println("Self peer: ", protoManagerConf.Peer.ToString())

@@ -8,7 +8,6 @@ COPY . .
 
 #deps
 COPY --from=nmmorais/go-babel /src/github.com/nm-morais/go-babel ../go-babel/
-RUN ls ../
 RUN go get -d -v ./...
 
 #build

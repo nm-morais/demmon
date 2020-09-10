@@ -16,23 +16,35 @@ type PeerIDChain = []PeerID
 type PeerWithId interface {
 	ID() PeerID
 	Peer() peer.Peer
+	NrChildren() uint16
+	SetChildrenNr(uint16)
 	SerializeToBinary() []byte
 }
 
 type peerWithId struct {
-	id   PeerID
-	self peer.Peer
+	nChildren uint16
+	id        PeerID
+	self      peer.Peer
 }
 
-func NewPeerWithId(peerID PeerID, peer peer.Peer) PeerWithId {
+func NewPeerWithId(peerID PeerID, peer peer.Peer, nChildren int) PeerWithId {
 	return &peerWithId{
-		id:   peerID,
-		self: peer,
+		nChildren: uint16(nChildren),
+		id:        peerID,
+		self:      peer,
 	}
+}
+
+func (p *peerWithId) SetChildrenNr(nChildren uint16) {
+	p.nChildren = nChildren
 }
 
 func (p *peerWithId) ID() PeerID {
 	return p.id
+}
+
+func (p *peerWithId) NrChildren() uint16 {
+	return p.nChildren
 }
 
 func (p *peerWithId) Peer() peer.Peer {
@@ -67,18 +79,23 @@ func DeserializePeerIDChain(idBytes []byte) (int, PeerIDChain) {
 
 func DeserializePeerWithId(bytes []byte) (int, PeerWithId) {
 	var peerID PeerID
-	n := copy(peerID[:], bytes[0:IdSegmentLen])
-	nrPeerBytes, peer := peer.DeserializePeer(bytes[n:])
-	return nrPeerBytes + n, &peerWithId{
-		self: peer,
-		id:   peerID,
+	nrChildren := binary.BigEndian.Uint16(bytes[0:2])
+	n := copy(peerID[:], bytes[2:2+IdSegmentLen])
+	nrPeerBytes, peer := peer.DeserializePeer(bytes[2+n:])
+	return nrPeerBytes + n + 2, &peerWithId{
+		nChildren: nrChildren,
+		self:      peer,
+		id:        peerID,
 	}
 }
 
 func (p *peerWithId) SerializeToBinary() []byte {
 	idBytes := p.id
+	nrChildrenBytes := make([]byte, 2)
+	binary.BigEndian.PutUint16(nrChildrenBytes, p.nChildren)
 	peerBytes := p.self.SerializeToBinary()
-	return append(idBytes[:], peerBytes...)
+	return append(nrChildrenBytes, append(idBytes[:], peerBytes...)...)
+
 }
 
 func DeserializePeerWithIDArray(buf []byte) (int, []PeerWithId) {

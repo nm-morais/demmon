@@ -33,33 +33,31 @@ def parse_files(file_paths):
         parent_ip = ""
         node_level = -1
         latencies = []
-        for line in reversed(f.readlines()):
-
+        for aux in reversed(f.readlines()):
+            line = aux.strip()
+            
             if "parent:" in line and parent_ip == "" and line != "":
                 if "from not my parent" in line:
                     continue
                 parent_name = str(line.split(" ")[-1])[:-2]
-                print(line)
-                print(parent_name)
                 parent_ip = parent_name.split(":")[0][6:]
 
             if "My level" in line and node_level == -1:
-                node_level = int(line.split(" ")[-1][:-2][:-1])
+                node_level = int(line.split(" ")[-1][:-2])
                 if node_level > max_level:
                     max_level = node_level
 
             if "Latency:" in line and "[NodeWatcher]" in line:
                 if "Lowest Latency Peer" in line:
                     continue
-                split = line.split(" ")
-                #print(split[6])
 
-                ip_port = str(split[7])[:-1]
+                split = line.split(" ")
+                ip_port = str(split[6])[:-1]
                 ip = str(ip_port.split(":")[0])[6:]
                 
-                latStr = split[13]
-                latStr2 = latStr[:-1]
-                latencies.append((node_ip, ip,(int(latStr2)/ 1000000)/ 2))
+                latStr = split[12]
+                latStr2 = latStr[:-2]
+                latencies.append((node_ip, ip,(int(latStr2)/ 100000)/ 2))
 
         if node_level == -1:
             xPos = landmarks * 1550
@@ -129,8 +127,9 @@ def parse_files(file_paths):
             except KeyError:
                 parent_children = 0
             lvl = nodes[node]["node_level"]
-            nodePos = [(parentPos[0] - parent_children * (200 - 15*lvl)) +
-                       curr * (200 - 15*lvl), parentPos[1] + 7]
+            
+            nodePos = [(parentPos[0] - parent_children * (215 / (1.5 * (lvl+ 1)))) +
+                       curr * (215 / (1.5 * (lvl+ 1))), parentPos[1] + 5]
 
             nodes[node]["pos"] = nodePos
             pos[node] = nodePos
@@ -141,14 +140,12 @@ def parse_files(file_paths):
         for latencyPair in nodes[node]["latencies"]:
             # G.add_edge(node, latencyPair[0], weight=latencyPair[1],
             #           parent=False, latency=True, label=latencyPair[1])
-            print(latencyPair)
             latencyEdges[(latencyPair[0],latencyPair[1] )] = int(latencyPair[2])
 
-    print(latencyEdges)
+    #print(latencyEdges)
     '''
     latVals = [latencyEdges[l] for l in latencyEdgeLabels]
     print(latVals)
-
     n, bins, patches = plt.hist(latVals, 50,facecolor='green', alpha=0.75)
     plt.show()
     '''
@@ -169,7 +166,6 @@ def parse_files(file_paths):
         currLatVal = latencyEdges[latPair]
         minLat = min(minLat, currLatVal)
         maxLat = max(maxLat, currLatVal)
-        print(latencyEdges[latPair])
 
 
     edge_colors = [latencyEdges[l] for l in latencyEdges]
@@ -188,7 +184,7 @@ def parse_files(file_paths):
             parent_colors.append(latencyEdges[(p[1], p[0])])
             latencyEdgeLabels[(p[1], p[0])] = latencyEdges[(p[1], p[0])]
 
-    print(parent_colors)
+    #print(parent_colors)
 
 
     #print(minLat, maxLat)
@@ -198,6 +194,10 @@ def parse_files(file_paths):
     #pos = nx.spring_layout(node_list, pos=pos, iterations=10000)
     
     with open('parent_edges.txt', 'w') as f:
+        for node in sorted(nodes, key=lambda x: nodes[x]["node_level"], reverse=False):
+            if nodes[node]["node_level"] == 0:
+                f.write("{} ".format(node))
+        f.write("\n")
         for parent_edge in parent_edges:
                 f.write("{} {}\n".format(parent_edge[0],parent_edge[1]))
 
@@ -209,16 +209,16 @@ def parse_files(file_paths):
     nx.draw_networkx_edges(G, pos, edgelist=parent_edges,
                            edge_color=parent_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, width=4, ax=ax)
     nx.draw_networkx_edges(G, pos, edgelist=latencyEdges, width=1,
-                           alpha=0.75, edge_color=edge_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, ax=ax)
-    nx.draw_networkx_edge_labels(G, pos, latencyEdgeLabels,  label_pos=0.66 , alpha=0.8, font_size=6, ax=ax)
+                           alpha=0.5, edge_color=edge_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, ax=ax)
+    nx.draw_networkx_edge_labels(G, pos, latencyEdgeLabels,  label_pos=0.66 , alpha=0.5, font_size=6, ax=ax)
     
     print(minLat, maxLat)
 
     cbaxes = fig.add_axes([0.95, 0.05, 0.01, 0.65]) 
     norm = mpl.colors.Normalize(vmin=minLat, vmax=maxLat)
     cb1 = mpl.colorbar.ColorbarBase(cbaxes, cmap=cmap,norm=norm, orientation='vertical')
-
-    plt.show()
+    plt.savefig('topology.png')
+#    plt.show()
 
 def main():
     log_folder = parse_args()
