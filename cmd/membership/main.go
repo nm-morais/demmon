@@ -80,7 +80,6 @@ func main() {
 	demmonTreeConf := membership.DemmonTreeConfig{
 		MaxTimeToProgressToNextLevel:        5 * time.Second,
 		MaxRetriesJoinMsg:                   3,
-		BootstrapRetryTimeout:               1 * time.Second,
 		MinLatencyImprovementToBecomeParent: 20 * time.Millisecond,
 		Landmarks:                           landmarks,
 		MinGrpSize:                          3,
@@ -90,6 +89,22 @@ func main() {
 		ParentRefreshTickDuration:           3 * time.Second,
 		ChildrenRefreshTickDuration:         3 * time.Second,
 		RejoinTimerDuration:                 10 * time.Second,
+
+		AttemptImprovePositionProbability:      0.2,
+		EvalMeasuredPeersRefreshTickDuration:   5 * time.Second,
+		EmitWalkProbability:                    1,
+		BiasedWalkProbability:                  0.2,
+		BiasedWalkTTL:                          7,
+		EmitWalkTimeout:                        5 * time.Second,
+		MaxPeersInEView:                        10,
+		MeasureNewPeersRefreshTickDuration:     5 * time.Second,
+		MeasuredPeersSize:                      5,
+		MinLatencyImprovementToImprovePosition: 20 * time.Millisecond,
+		NrHopsToIgnoreWalk:                     2,
+		NrPeersInWalkMessage:                   10,
+		NrPeersToMeasure:                       3,
+		NrPeersToMergeInWalkSample:             2,
+		RandomWalkTTL:                          6,
 	}
 
 	fmt.Println("Self peer: ", protoManagerConf.Peer.ToString())

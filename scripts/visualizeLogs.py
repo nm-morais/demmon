@@ -26,19 +26,21 @@ def parse_files(file_paths):
     max_level = -1
 
     for file_path in file_paths:
-        print(file_path)
         f = open(file_path, "r")
         node_name = str(file_path.split("/")[-2])
         node_ip = node_name.split(":")[0][6:]
         parent_ip = ""
         node_level = -1
         latencies = []
-        for aux in reversed(f.readlines()):
+        lines = f.readlines()
+        print(file_path, "lines:{}".format(len(lines)))
+        for aux in reversed(lines):
             line = aux.strip()
-            
-            if "parent:" in line and parent_ip == "" and line != "":
+            if "Dialed parent with success" in line and parent_ip == "" and line != "":
+                print("here")
                 if "from not my parent" in line:
                     continue
+                print("here2")
                 parent_name = str(line.split(" ")[-1])[:-2]
                 parent_ip = parent_name.split(":")[0][6:]
 
@@ -153,7 +155,7 @@ def parse_files(file_paths):
         aux = int(pos[p][1])
         pos[p][1] = (max_level - aux)
 
-    fig, ax = plt.subplots(figsize=(25, 10))
+    fig, ax = plt.subplots(figsize=(18, 8))
     fig.tight_layout()
 
     node_list = [n for n in pos]

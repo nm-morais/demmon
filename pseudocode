@@ -147,3 +147,118 @@ upon receive (UpdateParent{mGrandParent, mParent, level}, sender) {
 upon receive(JoinAsChildren{}, sender) : 
     children.append(sender)
 }
+
+
+Peer sampling proto: 
+
+Types:
+
+Peer {
+    Addr
+    ID
+}
+
+Messages:
+
+RandWalk {
+    sample {Peer, insertionHop}
+    ttl Int
+    sender Peer
+}
+
+WalkReply {
+    sender Peer
+    sample {Peer, insertionHop}
+}
+
+Constants: 
+
+
+
+RndWalkTTL <- int
+NrHopsIgnore <- int
+NrPeersInWalkMessage <- int
+NrPeersToMerge <- int
+MinHopsToMerge <- int
+NrPeersToSample <- time.Duration
+sampleIntervalTime <- time.Duration
+
+BiasWalkTTL <- int
+
+
+LatencyImprovementThreshold <- int
+RandWalkProb <- percentage 
+NrPeersInEView <- int
+
+STATE:
+
+eView <- {}Peer
+measured <- {}
+measuring <- {}
+possibleImprovements <- {}
+
+
+siblings <- {} // maintained by deMMoN
+children <- {} // maintained by deMMoN
+parent <- {} // maintained by deMMoN
+myLevel <- Int // maintained by deMMoN
+self <- Peer{Addr, ID} // maintained by deMMoN
+
+
+upon event ExternalNeighboringTimer:
+    if myLevel != 0 {
+        sample <- selectRandSample({eView, parent, siblings, children, self}, NrPeersInWalkMessage)
+        peer <- selectRand({eView, parent, siblings, children})
+        sendMessage(RandomWalk{RndWalkTTL ,self})
+    }
+
+upon receive RandomWalk{ TTL, sender, sample }:
+    hopsTaken <- RndWalkTTL - TTL 
+    removed, remaining <- removeNNHopsAway(excludeDescendants(sample, self) ,NrPeersToMerge, MinHopsToMerge)
+    toInsert <- selectRand(excludeInSample({siblings, parent, sender ,eView}, sample), len(removed))
+    if TTL == 0 {
+        send(WalkReply{ self , {remaining + toInsert} })
+    } else {
+        p <- selectRand(excludeDescendants({siblings , parent, eView, children}, sender))    
+        if p == null { // accept instead
+            send(WalkReply{ self ,  {remaining + toInsert} })
+            eView <- mergeEview(eView, removed)
+            return
+        }
+        toSend <- RandomWalk{TTL - 1 ,sender, {remaining + toInsert} }
+        sendMessage(toSend , p)
+    }
+}
+
+
+upon receive WalkReply{ sender, sample }:
+    removed, remaining <- removeNNHopsAway(excludeDescendants(sample, self) ,NrPeersToMerge, MinHopsToMerge)
+    eView <- mergeEview(eView, removed)
+}
+
+upon timer measureNewPeers(latency, peer):
+
+    setupTimer(measureNewPeers, sampleIntervalTime) // periodic timer
+    toMeasure = NrPeersToSample  - len(measuring) 
+    if toMeasure == 0 {
+        return
+    }
+    
+    for i = 0 ; i < toMeasure ; i++ {
+        p <- pickRandom(eView )
+        measuring <- measuring + {p}
+        trigger measureLatencyTo(p)
+    }
+
+upon measuredLatencyTo(p) {
+    if parent(p) != nil && parent(p) in possibleImprovements {
+        
+
+    }
+
+    measured <- measured +  {p}
+    if latency < latencyTo(parent) && latency - latencyTo(parent) > LatencyImprovementThreshold {
+        possibleImprovements <- p
+        measureLatencyTo(parent(p))
+    } 
+}

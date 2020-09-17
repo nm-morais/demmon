@@ -3,7 +3,6 @@ package membership
 import (
 	"time"
 
-	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/timer"
 )
 
@@ -80,7 +79,7 @@ type checkChidrenSizeTimer struct {
 	deadline time.Time
 }
 
-func NewCheckChidrenSizeTimer(duration time.Duration, children peer.Peer) timer.Timer {
+func NewCheckChidrenSizeTimer(duration time.Duration) timer.Timer {
 	return &checkChidrenSizeTimer{
 		deadline: time.Now().Add(duration),
 	}
@@ -91,5 +90,71 @@ func (t *checkChidrenSizeTimer) ID() timer.ID {
 }
 
 func (t *checkChidrenSizeTimer) Deadline() time.Time {
+	return t.deadline
+}
+
+// ---------------- externalNeighboringTimer ----------------
+
+const externalNeighboringTimerID = 1005
+
+type externalNeighboringTimer struct {
+	deadline time.Time
+}
+
+func NewExternalNeighboringTimer(duration time.Duration) timer.Timer {
+	return &externalNeighboringTimer{
+		deadline: time.Now().Add(duration),
+	}
+}
+
+func (t *externalNeighboringTimer) ID() timer.ID {
+	return externalNeighboringTimerID
+}
+
+func (t *externalNeighboringTimer) Deadline() time.Time {
+	return t.deadline
+}
+
+// measureNewPeersTimer
+
+const measureNewPeersTimerID = 1006
+
+type measureNewPeersTimer struct {
+	deadline time.Time
+}
+
+func NewMeasureNewPeersTimer(duration time.Duration) timer.Timer {
+	return &measureNewPeersTimer{
+		deadline: time.Now().Add(duration),
+	}
+}
+
+func (t *measureNewPeersTimer) ID() timer.ID {
+	return measureNewPeersTimerID
+}
+
+func (t *measureNewPeersTimer) Deadline() time.Time {
+	return t.deadline
+}
+
+// eval measured peers
+
+const evalMeasuredPeersTimerID = 1007
+
+type evalMeasuredPeersTimer struct {
+	deadline time.Time
+}
+
+func NewEvalMeasuredPeersTimer(duration time.Duration) timer.Timer {
+	return &evalMeasuredPeersTimer{
+		deadline: time.Now().Add(duration),
+	}
+}
+
+func (t *evalMeasuredPeersTimer) ID() timer.ID {
+	return evalMeasuredPeersTimerID
+}
+
+func (t *evalMeasuredPeersTimer) Deadline() time.Time {
 	return t.deadline
 }

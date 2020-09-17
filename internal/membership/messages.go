@@ -48,18 +48,18 @@ func (JoinMsgSerializer) Deserialize(_ []byte) message.Message {
 const joinReplyMessageID = 1001
 
 type joinReplyMessage struct {
-	Children      []peer.Peer
-	Parent        peer.Peer
+	IdChain       PeerIDChain
+	Children      []PeerWithId
 	Level         uint16
 	ParentLatency time.Duration
 }
 
-func NewJoinReplyMessage(children []peer.Peer, level uint16, parentLatency time.Duration, parent peer.Peer) joinReplyMessage {
+func NewJoinReplyMessage(children []PeerWithId, level uint16, parentLatency time.Duration, idChain PeerIDChain) joinReplyMessage {
 	return joinReplyMessage{
 		Children:      children,
 		Level:         level,
-		Parent:        parent,
 		ParentLatency: parentLatency,
+		IdChain:       idChain,
 	}
 }
 
@@ -81,19 +81,13 @@ var joinReplyMsgSerializer = JoinReplyMsgSerializer{}
 
 func (JoinReplyMsgSerializer) Serialize(msg message.Message) []byte {
 	jrMsg := msg.(joinReplyMessage)
-	msgBytes := make([]byte, 11)
+	msgBytes := make([]byte, 10)
 	bufPos := 0
 	binary.BigEndian.PutUint16(msgBytes[bufPos:bufPos+2], jrMsg.Level)
 	bufPos += 2
 	binary.BigEndian.PutUint64(msgBytes[bufPos:bufPos+8], uint64(jrMsg.ParentLatency))
-	bufPos += 8
-	if jrMsg.Parent != nil {
-		msgBytes[bufPos] = 1
-		msgBytes = append(msgBytes, jrMsg.Parent.SerializeToBinary()...)
-	} else {
-		msgBytes[bufPos] = 0
-	}
-	msgBytes = append(msgBytes, peer.SerializePeerArray(jrMsg.Children)...)
+	msgBytes = append(msgBytes, SerializePeerIDChain(jrMsg.IdChain)...)
+	msgBytes = append(msgBytes, SerializePeerWithIDArray(jrMsg.Children)...)
 	return msgBytes
 }
 
@@ -104,18 +98,10 @@ func (JoinReplyMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	bufPos += 2
 	parentLatency := time.Duration(binary.BigEndian.Uint64(msgBytes[bufPos : bufPos+8]))
 	bufPos += 8
-	var parent peer.Peer
-	if msgBytes[bufPos] == 1 {
-		bufPos++
-		var n int
-		n, parent = peer.DeserializePeer(msgBytes[bufPos:])
-		bufPos += n
-	} else {
-		bufPos++
-	}
-
-	_, hosts := peer.DeserializePeerArray(msgBytes[bufPos:])
-	return joinReplyMessage{Children: hosts, Level: level, ParentLatency: parentLatency, Parent: parent}
+	n, peerIdChain := DeserializePeerIDChain(msgBytes[bufPos:])
+	bufPos += n
+	_, hosts := DeserializePeerWithIDArray(msgBytes[bufPos:])
+	return joinReplyMessage{Children: hosts, Level: level, ParentLatency: parentLatency, IdChain: peerIdChain}
 }
 
 // -------------- Update parent --------------
@@ -235,15 +221,15 @@ var updateChildMsgSerializer = updateChildMessageSerializer{}
 const joinAsParentMessageID = 1004
 
 type joinAsParentMessage struct {
-	ExpectedParent  peer.Peer
+	ExpectedId      PeerIDChain
 	ProposedId      PeerIDChain
 	Level           uint16
 	MeasuredLatency time.Duration
 }
 
-func NewJoinAsParentMessage(expectedParent peer.Peer, proposedId PeerIDChain, level uint16, measuredLatency time.Duration) joinAsParentMessage {
+func NewJoinAsParentMessage(expectedId PeerIDChain, proposedId PeerIDChain, level uint16, measuredLatency time.Duration) joinAsParentMessage {
 	return joinAsParentMessage{
-		ExpectedParent:  expectedParent,
+		ExpectedId:      expectedId,
 		Level:           level,
 		MeasuredLatency: measuredLatency,
 		ProposedId:      proposedId,
@@ -271,7 +257,7 @@ func (JoinAsParentMsgSerializer) Serialize(msg message.Message) []byte {
 	toSend := make([]byte, 10)
 	binary.BigEndian.PutUint16(toSend[:2], japMsg.Level)
 	binary.BigEndian.PutUint64(toSend[2:10], uint64(japMsg.MeasuredLatency))
-	toSend = append(toSend, japMsg.ExpectedParent.SerializeToBinary()...)
+	toSend = append(toSend, SerializePeerIDChain(japMsg.ExpectedId)...)
 	idBytes := SerializePeerIDChain(japMsg.ProposedId)
 	toSend = append(toSend, idBytes...)
 	return toSend
@@ -283,13 +269,13 @@ func (JoinAsParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	bufPos += 2
 	measuredLatency := time.Duration(binary.BigEndian.Uint64(msgBytes[2:10]))
 	bufPos += 8
-	parentSize, parent := peer.DeserializePeer(msgBytes[bufPos:])
-	bufPos += parentSize
+	idSize, expectedId := DeserializePeerIDChain(msgBytes[bufPos:])
+	bufPos += idSize
 	_, proposedId := DeserializePeerIDChain(msgBytes[bufPos:])
 	return joinAsParentMessage{
 		MeasuredLatency: measuredLatency,
 		Level:           level,
-		ExpectedParent:  parent,
+		ExpectedId:      expectedId,
 		ProposedId:      proposedId,
 	}
 }
@@ -299,12 +285,16 @@ func (JoinAsParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 const joinAsChildMessageID = 1005
 
 type joinAsChildMessage struct {
-	Children        []peer.Peer
+	Children       []peer.Peer
+	ExpectedParent peer.Peer
+
+	ExpectedId      PeerIDChain
 	MeasuredLatency time.Duration
 }
 
-func NewJoinAsChildMessage(children []peer.Peer, measuredLatency time.Duration) joinAsChildMessage {
+func NewJoinAsChildMessage(children []peer.Peer, measuredLatency time.Duration, expectedId PeerIDChain) joinAsChildMessage {
 	return joinAsChildMessage{
+		ExpectedId:      expectedId,
 		Children:        children,
 		MeasuredLatency: measuredLatency,
 	}
@@ -328,28 +318,38 @@ var joinAsChildMsgSerializer = JoinAsChildMsgSerializer{}
 
 func (JoinAsChildMsgSerializer) Serialize(msg message.Message) []byte {
 	jacMsg := msg.(joinAsChildMessage)
-	measurementBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(measurementBytes, uint64(jacMsg.MeasuredLatency))
-	return append(measurementBytes, peer.SerializePeerArray(msg.(joinAsChildMessage).Children)...)
+	msgBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(msgBytes, uint64(jacMsg.MeasuredLatency))
+	msgBytes = append(msgBytes, peer.SerializePeerArray(msg.(joinAsChildMessage).Children)...)
+	msgBytes = append(msgBytes, SerializePeerIDChain(jacMsg.ExpectedId)...)
+	return msgBytes
 }
 
 func (JoinAsChildMsgSerializer) Deserialize(msgBytes []byte) message.Message {
-	measuredLatency := time.Duration(binary.BigEndian.Uint64(msgBytes[0:8]))
-	_, children := peer.DeserializePeerArray(msgBytes[8:])
-	return joinAsChildMessage{Children: children, MeasuredLatency: measuredLatency}
+	bufPos := 0
+	measuredLatency := time.Duration(binary.BigEndian.Uint64(msgBytes[bufPos:8]))
+	bufPos += 8
+	n, children := peer.DeserializePeerArray(msgBytes[bufPos:])
+	bufPos += n
+	_, peerIdChain := DeserializePeerIDChain(msgBytes[bufPos:])
+	return joinAsChildMessage{Children: children, MeasuredLatency: measuredLatency, ExpectedId: peerIdChain}
 }
 
 const joinAsChildMessageReplyID = 1006
 
 type joinAsChildMessageReply struct {
-	ProposedId PeerIDChain
-	Accepted   bool
+	ProposedId  PeerIDChain
+	ParentLevel uint16
+	Siblings    []PeerWithId
+	Accepted    bool
 }
 
-func NewJoinAsChildMessageReply(accepted bool, proposedId PeerIDChain) joinAsChildMessageReply {
+func NewJoinAsChildMessageReply(accepted bool, proposedId PeerIDChain, level uint16, siblings []PeerWithId) joinAsChildMessageReply {
 	return joinAsChildMessageReply{
-		ProposedId: proposedId,
-		Accepted:   accepted,
+		ProposedId:  proposedId,
+		Accepted:    accepted,
+		ParentLevel: level,
+		Siblings:    siblings,
 	}
 }
 
@@ -371,13 +371,16 @@ var joinAsChildMessageReplySerializer = JoinAsChildMessageReplySerializer{}
 
 func (JoinAsChildMessageReplySerializer) Serialize(msg message.Message) []byte {
 	jacMsgR := msg.(joinAsChildMessageReply)
-	if jacMsgR.Accepted {
-		return []byte{1}
+	if !jacMsgR.Accepted {
+		return []byte{0}
 	}
-	msgBytes := make([]byte, 1)
-	msgBytes[0] = 0
+	msgBytes := make([]byte, 3)
+	bufPos := 0
+	msgBytes[bufPos] = 1
+	bufPos++
+	binary.BigEndian.PutUint16(msgBytes[bufPos:], jacMsgR.ParentLevel)
 	msgBytes = append(msgBytes, SerializePeerIDChain(jacMsgR.ProposedId)...)
-
+	msgBytes = append(msgBytes, SerializePeerWithIDArray(jacMsgR.Siblings)...)
 	return msgBytes
 }
 
@@ -387,13 +390,19 @@ func (JoinAsChildMessageReplySerializer) Deserialize(msgBytes []byte) message.Me
 		return joinAsChildMessageReply{Accepted: false}
 	}
 
-	_, proposedId := DeserializePeerIDChain(msgBytes[1:])
+	bufPos := 1
+	level := binary.BigEndian.Uint16(msgBytes[bufPos:])
+	bufPos += 2
+	n, proposedId := DeserializePeerIDChain(msgBytes[bufPos:])
+	bufPos += n
+	_, siblings := DeserializePeerWithIDArray(msgBytes[bufPos:])
 
 	return joinAsChildMessageReply{
-		ProposedId: proposedId,
-		Accepted:   accepted,
+		ProposedId:  proposedId,
+		Accepted:    accepted,
+		ParentLevel: level,
+		Siblings:    siblings,
 	}
-
 }
 
 // ABSORB message
@@ -463,4 +472,156 @@ func (DisconnectAsChildMsgSerializer) Serialize(msg message.Message) []byte {
 
 func (DisconnectAsChildMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	return disconnectAsChildMessage{}
+}
+
+// Random walk
+
+const randomWalkMessageID = 1009
+
+func NewRandomWalkMessage(ttl uint16, sender PeerWithIdChain, sample []PeerWithIdChain) randomWalkMessage {
+	return randomWalkMessage{
+		TTL:    ttl,
+		Sample: sample,
+		Sender: sender,
+	}
+}
+
+type randomWalkMessage struct {
+	TTL    uint16
+	Sender PeerWithIdChain
+	Sample []PeerWithIdChain
+}
+
+type RandomWalkMessageSerializer struct{}
+
+func (randomWalkMessage) Type() message.ID {
+	return randomWalkMessageID
+}
+
+var randomWalkMessageSerializer = RandomWalkMessageSerializer{}
+
+func (randomWalkMessage) Serializer() message.Serializer {
+	return randomWalkMessageSerializer
+}
+
+func (randomWalkMessage) Deserializer() message.Deserializer {
+	return randomWalkMessageSerializer
+}
+
+func (RandomWalkMessageSerializer) Serialize(msg message.Message) []byte {
+	var msgBytes []byte
+	ttlBytes := make([]byte, 2)
+	randomWalk := msg.(randomWalkMessage)
+	binary.BigEndian.PutUint16(ttlBytes[0:2], randomWalk.TTL)
+	msgBytes = ttlBytes
+	msgBytes = append(msgBytes, SerializePeerWithIDChainArray(randomWalk.Sample)...)
+	msgBytes = append(msgBytes, randomWalk.Sender.SerializeToBinary()...)
+	return msgBytes
+}
+
+func (RandomWalkMessageSerializer) Deserialize(msgBytes []byte) message.Message {
+	ttl := binary.BigEndian.Uint16(msgBytes[0:2])
+	n, sample := DeserializePeerWithIDChainArray(msgBytes[2:])
+	_, sender := DeserializePeerWithIdChain(msgBytes[n+2:])
+	return randomWalkMessage{
+		TTL:    ttl,
+		Sample: sample,
+		Sender: sender,
+	}
+}
+
+// Biased walk
+
+const biasedWalkMessageID = 1010
+
+func NewBiasedWalkMessage(ttl uint16, sender PeerWithIdChain, sample []PeerWithIdChain) biasedWalkMessage {
+	return biasedWalkMessage{
+		TTL:    ttl,
+		Sample: sample,
+		Sender: sender,
+	}
+}
+
+type biasedWalkMessage struct {
+	TTL    uint16
+	Sender PeerWithIdChain
+	Sample []PeerWithIdChain
+}
+
+type BiasedWalkMessageSerializer struct{}
+
+func (biasedWalkMessage) Type() message.ID {
+	return biasedWalkMessageID
+}
+
+var biasedWalkMessageSerializer = BiasedWalkMessageSerializer{}
+
+func (biasedWalkMessage) Serializer() message.Serializer {
+	return biasedWalkMessageSerializer
+}
+
+func (biasedWalkMessage) Deserializer() message.Deserializer {
+	return biasedWalkMessageSerializer
+}
+
+func (BiasedWalkMessageSerializer) Serialize(msg message.Message) []byte {
+	biasedWalk := msg.(biasedWalkMessage)
+	var msgBytes []byte
+	ttlBytes := make([]byte, 2)
+	binary.BigEndian.PutUint16(ttlBytes[0:2], biasedWalk.TTL)
+	msgBytes = ttlBytes
+	msgBytes = append(msgBytes, SerializePeerWithIDChainArray(biasedWalk.Sample)...)
+	msgBytes = append(msgBytes, biasedWalk.Sender.SerializeToBinary()...)
+	return msgBytes
+}
+
+func (BiasedWalkMessageSerializer) Deserialize(msgBytes []byte) message.Message {
+	ttl := binary.BigEndian.Uint16(msgBytes[0:2])
+	n, sample := DeserializePeerWithIDChainArray(msgBytes[2:])
+	_, sender := DeserializePeerWithIdChain(msgBytes[n+2:])
+	return biasedWalkMessage{
+		TTL:    ttl,
+		Sample: sample,
+		Sender: sender,
+	}
+}
+
+// Walk Reply
+
+const walkReplyMessageID = 1011
+
+func NewWalkReplyMessage(sample []PeerWithIdChain) walkReplyMessage {
+	return walkReplyMessage{
+		Sample: sample,
+	}
+}
+
+type walkReplyMessage struct {
+	Sample []PeerWithIdChain
+}
+
+type WalkReplyMessageSerializer struct{}
+
+func (walkReplyMessage) Type() message.ID {
+	return walkReplyMessageID
+}
+
+var walkReplyMessageSerializer = WalkReplyMessageSerializer{}
+
+func (walkReplyMessage) Serializer() message.Serializer {
+	return walkReplyMessageSerializer
+}
+
+func (walkReplyMessage) Deserializer() message.Deserializer {
+	return walkReplyMessageSerializer
+}
+
+func (WalkReplyMessageSerializer) Serialize(msg message.Message) []byte {
+	walkReply := msg.(walkReplyMessage)
+	return SerializePeerWithIDChainArray(walkReply.Sample)
+}
+
+func (WalkReplyMessageSerializer) Deserialize(msgBytes []byte) message.Message {
+	_, sample := DeserializePeerWithIDChainArray(msgBytes)
+	return walkReplyMessage{Sample: sample}
 }
