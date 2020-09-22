@@ -46,26 +46,26 @@ func main() {
 
 	protoManagerConf := pkg.ProtocolManagerConfig{
 		LogFolder:        "/code/logs/",
-		HandshakeTimeout: 1 * time.Second,
-		DialTimeout:      1 * time.Second,
+		HandshakeTimeout: 3 * time.Second,
+		DialTimeout:      3 * time.Second,
 		Peer:             peer.NewPeer(GetLocalIP(), uint16(protosPortVar), uint16(analyticsPortVar)),
 	}
 
 	// NODE WATCHER CONFS
 
 	nodeWatcherConf := pkg.NodeWatcherConf{
-		MaxRedials:                3,
-		HbTickDuration:            300 * time.Millisecond,
-		MinSamplesFaultDetector:   5,
-		NrMessagesWithoutWait:     5,
+		MaxRedials:                2,
+		HbTickDuration:            750 * time.Millisecond,
+		MinSamplesFaultDetector:   3,
+		NrMessagesWithoutWait:     3,
 		NewLatencyWeight:          0.1,
-		NrTestMessagesToSend:      3,
+		NrTestMessagesToSend:      1,
 		NrTestMessagesToReceive:   1,
 		OldLatencyWeight:          0.9,
-		TcpTestTimeout:            5 * time.Second,
-		UdpTestTimeout:            5 * time.Second,
-		WindowSize:                5,
-		EvalConditionTickDuration: 500 * time.Millisecond,
+		TcpTestTimeout:            3 * time.Second,
+		UdpTestTimeout:            3 * time.Second,
+		WindowSize:                10,
+		EvalConditionTickDuration: 1500 * time.Millisecond,
 		MinSamplesLatencyEstimate: 5,
 	}
 
@@ -78,33 +78,36 @@ func main() {
 	// DEMMON TREE CONFS
 
 	demmonTreeConf := membership.DemmonTreeConfig{
-		MaxTimeToProgressToNextLevel:        5 * time.Second,
-		MaxRetriesJoinMsg:                   3,
-		MinLatencyImprovementToBecomeParent: 20 * time.Millisecond,
-		Landmarks:                           landmarks,
-		MinGrpSize:                          3,
-		MaxGrpSize:                          5,
-		LimitFirstLevelGroupSize:            false,
-		CheckChildenSizeTimerDuration:       5 * time.Second,
-		ParentRefreshTickDuration:           3 * time.Second,
-		ChildrenRefreshTickDuration:         3 * time.Second,
-		RejoinTimerDuration:                 10 * time.Second,
 
-		AttemptImprovePositionProbability:      0.2,
+		JoinMessageTimeout:                3 * time.Second,
+		MaxTimeToProgressToNextLevel:      5 * time.Second,
+		MaxRetriesJoinMsg:                 3,
+		Landmarks:                         landmarks,
+		MinGrpSize:                        2,
+		MaxGrpSize:                        4,
+		NrPeersToAbsorb:                   2,
+		NrPeersToConsiderAsParentToAbsorb: 3,
+		LimitFirstLevelGroupSize:          true,
+		CheckChildenSizeTimerDuration:     10 * time.Second,
+		ParentRefreshTickDuration:         3 * time.Second,
+		ChildrenRefreshTickDuration:       3 * time.Second,
+		RejoinTimerDuration:               10 * time.Second,
+
+		AttemptImprovePositionProbability:      0.3,
 		EvalMeasuredPeersRefreshTickDuration:   5 * time.Second,
-		EmitWalkProbability:                    1,
+		EmitWalkProbability:                    0.33,
 		BiasedWalkProbability:                  0.2,
-		BiasedWalkTTL:                          7,
+		BiasedWalkTTL:                          8,
+		RandomWalkTTL:                          8,
 		EmitWalkTimeout:                        5 * time.Second,
-		MaxPeersInEView:                        10,
+		MaxPeersInEView:                        20,
 		MeasureNewPeersRefreshTickDuration:     5 * time.Second,
-		MeasuredPeersSize:                      5,
+		MeasuredPeersSize:                      10,
 		MinLatencyImprovementToImprovePosition: 20 * time.Millisecond,
 		NrHopsToIgnoreWalk:                     2,
-		NrPeersInWalkMessage:                   10,
+		NrPeersInWalkMessage:                   20,
 		NrPeersToMeasure:                       3,
-		NrPeersToMergeInWalkSample:             2,
-		RandomWalkTTL:                          6,
+		NrPeersToMergeInWalkSample:             4,
 	}
 
 	fmt.Println("Self peer: ", protoManagerConf.Peer.ToString())

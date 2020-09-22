@@ -13,11 +13,12 @@ import json
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("log_folder", help="the log file")
+    parser.add_argument("output_folder", help="the output path file")
     args = parser.parse_args()
-    return args.log_folder
+    return args.log_folder, args.output_folder
 
 
-def parse_files(file_paths):
+def parse_files(file_paths, output_folder):
 
     landmarks = 0
     G = nx.Graph()
@@ -130,8 +131,8 @@ def parse_files(file_paths):
                 parent_children = 0
             lvl = nodes[node]["node_level"]
             
-            nodePos = [(parentPos[0] - parent_children * (215 / (1.5 * (lvl+ 1)))) +
-                       curr * (215 / (1.5 * (lvl+ 1))), parentPos[1] + 5]
+            nodePos = [(parentPos[0] - parent_children * (300 / (max(0.9 *lvl + 1, 2)))) +
+                    curr * (300 / ((max(0.9 * lvl + 1, 2)))), parentPos[1] + 5]
 
             nodes[node]["pos"] = nodePos
             pos[node] = nodePos
@@ -176,6 +177,7 @@ def parse_files(file_paths):
 
     for node in nodes:
         print("{}:{}".format(node, nodes[node]))
+        
     parent_colors = []
     
     for p in parent_edges:
@@ -195,7 +197,7 @@ def parse_files(file_paths):
 
     #pos = nx.spring_layout(node_list, pos=pos, iterations=10000)
     
-    with open('parent_edges.txt', 'w') as f:
+    with open('{}/parent_edges.txt'.format(output_folder), 'w') as f:
         for node in sorted(nodes, key=lambda x: nodes[x]["node_level"], reverse=False):
             if nodes[node]["node_level"] == 0:
                 f.write("{} ".format(node))
@@ -219,11 +221,11 @@ def parse_files(file_paths):
     cbaxes = fig.add_axes([0.95, 0.05, 0.01, 0.65]) 
     norm = mpl.colors.Normalize(vmin=minLat, vmax=maxLat)
     cb1 = mpl.colorbar.ColorbarBase(cbaxes, cmap=cmap,norm=norm, orientation='vertical')
-    plt.savefig('topology.png')
+    plt.savefig("{}/topology.png".format(output_folder))
 #    plt.show()
 
 def main():
-    log_folder = parse_args()
+    log_folder, output_folder = parse_args()
     paths = []
     for node_folder in os.listdir(log_folder):
         node_path = "{}/{}".format(log_folder, node_folder)
@@ -231,7 +233,7 @@ def main():
             if node_file == "all.log":
                 paths.append("{}/{}".format(node_path, node_file))
 
-    parse_files(paths)
+    parse_files(paths, output_folder)
 
 if __name__ == "__main__":
     main()

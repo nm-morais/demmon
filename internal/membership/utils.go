@@ -25,7 +25,7 @@ func getPeersExcluding(toFilter []PeerWithIdChain, exclusions ...PeerWithIdChain
 	for _, peer := range toFilter {
 		excluded := false
 		for _, exclusion := range exclusions {
-			if exclusion.Peer().Equals(peer.Peer()) {
+			if exclusion.Equals(peer) {
 				excluded = true
 				break
 			}
@@ -51,7 +51,7 @@ func getBiasedPeerExcluding(toFilter []PeerWithIdChain, biasTowards PeerWithIdCh
 	var minDist int64 = -1
 	var bestPeer PeerWithIdChain
 	for _, peer := range filtered {
-		currDist := xorDistance(peer.Peer().IP(), biasTowards.Peer().IP())
+		currDist := xorDistance(peer.IP(), biasTowards.IP())
 		if currDist.Int64() < minDist {
 			minDist = currDist.Int64()
 			bestPeer = peer
@@ -63,7 +63,7 @@ func getBiasedPeerExcluding(toFilter []PeerWithIdChain, biasTowards PeerWithIdCh
 func getExcludingDescendantsOf(toFilter []PeerWithIdChain, ascendantChain PeerIDChain) []PeerWithIdChain {
 	toReturn := make([]PeerWithIdChain, 0, len(toFilter))
 	for _, peer := range toFilter {
-		if !IsDescendant(ascendantChain, peer.Chain()) {
+		if !peer.IsDescendentOf(ascendantChain) {
 			toReturn = append(toReturn, peer)
 		}
 	}
@@ -73,7 +73,7 @@ func getExcludingDescendantsOf(toFilter []PeerWithIdChain, ascendantChain PeerID
 func removeNFromSample(sample []PeerWithIdChain, nrPeersToRemove int, excludeDescendantsOf PeerIDChain) (remaining, removed []PeerWithIdChain) {
 	for i := 0; i < nrPeersToRemove && i < len(sample); i++ {
 		peer := sample[i]
-		if !IsDescendant(excludeDescendantsOf, peer.Chain()) {
+		if !peer.IsDescendentOf(excludeDescendantsOf) {
 			copy(sample[i:], sample[i+1:])
 			sample[len(sample)-1] = nil
 			sample = sample[:len(sample)-1]

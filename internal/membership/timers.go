@@ -3,6 +3,7 @@ package membership
 import (
 	"time"
 
+	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/timer"
 )
 
@@ -23,6 +24,28 @@ func (t *joinTimer) ID() timer.ID {
 }
 
 func (t *joinTimer) Deadline() time.Time {
+	return t.deadline
+}
+
+const peerJoinMessageResponseTimeoutID = 1001
+
+type peerJoinMessageResponseTimeout struct {
+	deadline time.Time
+	Peer     peer.Peer
+}
+
+func NewJoinMessageResponseTimeout(duration time.Duration, peer peer.Peer) timer.Timer {
+	return &peerJoinMessageResponseTimeout{
+		deadline: time.Now().Add(duration),
+		Peer:     peer,
+	}
+}
+
+func (t *peerJoinMessageResponseTimeout) ID() timer.ID {
+	return peerJoinMessageResponseTimeoutID
+}
+
+func (t *peerJoinMessageResponseTimeout) Deadline() time.Time {
 	return t.deadline
 }
 
