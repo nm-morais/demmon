@@ -7,11 +7,11 @@ WORKDIR $GOPATH/src/github.com/nm-morais/deMMon
 COPY . .
 
 #deps
-COPY --from=nmmorais/go-babel /src/github.com/nm-morais/go-babel ../go-babel/
+COPY --from=nmmorais/go-babel:latest /src/github.com/nm-morais/go-babel ../go-babel/
 RUN go get -d -v ./...
 
 #build
-RUN GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /go/bin/deMMon cmd/membership/main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /go/bin/deMMon cmd/membership/main.go
 
 # EXECUTABLE IMG
 FROM alpine:latest as demmon

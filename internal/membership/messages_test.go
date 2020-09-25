@@ -37,13 +37,23 @@ func TestUpdateParentMsgSerializer(t *testing.T) {
 	chain := PeerIDChain{}
 	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1})
 	chain = append(chain, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
-	toSerialize := NewUpdateParentMessage(peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 10, chain, nil)
+
+	grandparent := peer.NewPeer(net.IPv4(10, 14, 0, 17), 1200, 1300)
+
+	peer1 := NewPeerWithId(PeerID{0, 0, 0, 1, 1, 0, 0, 1}, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3)
+	peer2 := NewPeerWithId(PeerID{0, 0, 0, 1, 1, 0, 0, 1}, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3)
+	peer3 := NewPeerWithId(PeerID{0, 0, 0, 1, 1, 0, 0, 1}, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3)
+
+	siblings := []PeerWithId{peer1, peer2, peer3}
+
+	toSerialize := NewUpdateParentMessage(grandparent, 10, chain, siblings)
 	serializer := updateParentMsgSerializer
 	msgBytes := serializer.Serialize(toSerialize)
 	deserialized := serializer.Deserialize(msgBytes)
 
 	msgConverted := deserialized.(updateParentMessage)
 	fmt.Println(msgConverted)
+
 	if msgConverted.ParentLevel != toSerialize.ParentLevel {
 		t.Log("levels do not match")
 		t.FailNow()
@@ -56,8 +66,25 @@ func TestUpdateParentMsgSerializer(t *testing.T) {
 		return
 	}
 
+	i := 0
+	for _, sibling := range msgConverted.Siblings {
+		if !sibling.Equals(siblings[i]) {
+			t.Log(sibling)
+			t.FailNow()
+			return
+		}
+		i++
+	}
+
+	if !grandparent.Equals(msgConverted.GrandParent) {
+		t.Log("grandparents not equal")
+		t.FailNow()
+		return
+	}
 	t.Logf("before: %+v", toSerialize)
-	t.Logf("after: %+v", deserialized)
+	t.Logf("after: %+v", msgConverted)
+	t.FailNow()
+
 }
 
 func TestAbsorbMessageSerializer(t *testing.T) {
@@ -116,6 +143,7 @@ func TestAbsorbMessageSerializer(t *testing.T) {
 }
 
 func TestJoinReplyMsgSerializer(t *testing.T) {
+
 	children := []PeerWithId{
 		NewPeerWithId(PeerID{1, 1, 1, 1, 1, 0}, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 0),
 		NewPeerWithId(PeerID{1, 1, 1, 1, 1, 1, 1, 1}, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 0),
@@ -126,7 +154,7 @@ func TestJoinReplyMsgSerializer(t *testing.T) {
 	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1})
 	chain = append(chain, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
 
-	toSerialize := NewJoinReplyMessage(children, 10, 100, chain)
+	toSerialize := NewJoinReplyMessage(children, 10, chain)
 	serializer := joinReplyMsgSerializer
 	msgBytes := serializer.Serialize(toSerialize)
 	deserialized := serializer.Deserialize(msgBytes)

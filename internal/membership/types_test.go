@@ -43,13 +43,6 @@ func TestSerializePeerWithIDChain(t *testing.T) {
 	t.Logf("%+v,", deserialized)
 	fmt.Printf("%+v\n", toSerialize)
 	fmt.Printf("%+v\n", deserialized)
-	for i := 0; i < len(toSerialize.ID()); i++ {
-		if toSerialize.ID()[i] != deserialized.ID()[i] {
-			t.Logf("%+v,", toSerialize.ID())
-			t.Logf("%+v,", deserialized.ID())
-			t.FailNow()
-		}
-	}
 	for i := 0; i < len(toSerialize.Chain()); i++ {
 		currSegment := toSerialize.Chain()[i]
 		currSegment2 := deserialized.Chain()[i]

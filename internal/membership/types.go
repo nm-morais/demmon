@@ -34,19 +34,18 @@ type peerWithId struct {
 	self      peer.Peer
 }
 
+func getParentChainFrom(idChain PeerIDChain) PeerIDChain {
+	if len(idChain) == 0 {
+		return nil
+	}
+	return idChain[:len(idChain)-1]
+}
+
 func NewPeerWithId(peerID PeerID, peer peer.Peer, nChildren uint16) PeerWithId {
 	return &peerWithId{
 		nChildren: nChildren,
 		id:        peerID,
 		self:      peer,
-	}
-}
-
-func PeerWithIdFromPeerWithChain(p PeerWithIdChain) PeerWithId {
-	return &peerWithId{
-		nChildren: p.NrChildren(),
-		id:        p.ID(),
-		self:      p,
 	}
 }
 
@@ -103,7 +102,6 @@ type PeerWithIdChain interface {
 	Equals(other peer.Peer) bool
 	SerializeToBinary() []byte
 	ToString() string
-	ID() PeerID
 	NrChildren() uint16
 	SetChildrenNr(uint16)
 	Chain() PeerIDChain
@@ -113,30 +111,21 @@ type PeerWithIdChain interface {
 }
 
 type peerWithIdChain struct {
-	chain PeerIDChain
-	self  PeerWithId
+	chain     PeerIDChain
+	nChildren uint16
+	self      peer.Peer
 }
 
-func NewPeerWithIdChain(peerIdChain PeerIDChain, peer peer.Peer, nrChildren uint16) PeerWithIdChain {
+func NewPeerWithIdChain(peerIdChain PeerIDChain, self peer.Peer, nChildren uint16) PeerWithIdChain {
 	return &peerWithIdChain{
-		chain: peerIdChain,
-		self:  NewPeerWithId(peerIdChain[len(peerIdChain)-1], peer, nrChildren),
-	}
-}
-
-func PeerWithIdChainFromPeerWithId(peerIdChain PeerIDChain, peerWithId PeerWithId) PeerWithIdChain {
-	return &peerWithIdChain{
-		chain: peerIdChain,
-		self:  peerWithId,
+		nChildren: nChildren,
+		chain:     peerIdChain,
+		self:      peer.NewPeer(self.IP(), self.ProtosPort(), self.AnalyticsPort()),
 	}
 }
 
 func (p *peerWithIdChain) SetChildrenNr(nChildren uint16) {
-	p.self.SetChildrenNr(nChildren)
-}
-
-func (p *peerWithIdChain) ID() PeerID {
-	return p.chain[len(p.chain)-1]
+	p.nChildren = nChildren
 }
 
 func (p *peerWithIdChain) Chain() PeerIDChain {
@@ -148,7 +137,7 @@ func (p *peerWithIdChain) SetChain(newChain PeerIDChain) {
 }
 
 func (p *peerWithIdChain) NrChildren() uint16 {
-	return p.self.NrChildren()
+	return p.nChildren
 }
 
 func (p *peerWithIdChain) IP() net.IP {
@@ -203,7 +192,6 @@ func (p *peerWithIdChain) IsDescendentOf(otherPeerChain PeerIDChain) bool {
 			return false
 		}
 	}
-
 	return true
 }
 
@@ -224,22 +212,6 @@ func (p *peerWithIdChain) IsParentOf(otherPeerChain PeerIDChain) bool {
 	return true
 }
 
-func DeserializePeerWithIdChain(bytes []byte) (int, *peerWithIdChain) {
-
-	nrChildren := binary.BigEndian.Uint16(bytes[0:2])
-	nrPeerBytes, peer := peer.DeserializePeer(bytes[2:])
-	nrChainBytes, peerChain := DeserializePeerIDChain(bytes[nrPeerBytes+2:])
-
-	if len(peerChain) == 0 {
-		fmt.Printf("peer %s with ID=%+v has chain with len == 0\n", peer.ToString(), peerChain)
-		panic("peer chain is 0\n")
-	}
-	return nrPeerBytes + nrChainBytes + 2, &peerWithIdChain{
-		chain: peerChain,
-		self:  NewPeerWithId(peerChain[len(peerChain)-1], peer, nrChildren),
-	}
-}
-
 func (p *peerWithIdChain) SerializeToBinary() []byte {
 	nrChildrenBytes := make([]byte, 2)
 	peerBytes := make([]byte, 8)
@@ -256,6 +228,22 @@ func (p *peerWithIdChain) SerializeToBinary() []byte {
 
 	return nrChildrenBytes
 
+}
+
+func DeserializePeerWithIdChain(bytes []byte) (int, *peerWithIdChain) {
+
+	nrChildren := binary.BigEndian.Uint16(bytes[0:2])
+	nrPeerBytes, peer := peer.DeserializePeer(bytes[2:])
+	nrChainBytes, peerChain := DeserializePeerIDChain(bytes[nrPeerBytes+2:])
+
+	if len(peerChain) == 0 {
+		fmt.Printf("peer %s with ID=%+v has chain with len == 0\n", peer.ToString(), peerChain)
+		panic("peer chain is 0\n")
+	}
+	return nrPeerBytes + nrChainBytes + 2, &peerWithIdChain{
+		chain: peerChain,
+		self:  NewPeerWithId(peerChain[len(peerChain)-1], peer, nrChildren),
+	}
 }
 
 func DeserializePeerWithIDChainArray(buf []byte) (int, []PeerWithIdChain) {

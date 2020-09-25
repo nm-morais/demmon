@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	_ "net/http/pprof"
 	"time"
 
 	"github.com/nm-morais/DeMMon/internal/membership"
@@ -27,11 +28,17 @@ func main() {
 	var analyticsPortVar int
 	var randProtosPort bool
 	var randAnalyticsPort bool
+	var cpuprofile bool
+	var memprofile bool
 
 	flag.IntVar(&protosPortVar, "protos", 1200, "protos")
 	flag.BoolVar(&randProtosPort, "rprotos", false, "port")
 	flag.IntVar(&analyticsPortVar, "analytics", 1201, "analytics")
 	flag.BoolVar(&randAnalyticsPort, "ranalytics", false, "port")
+
+	flag.BoolVar(&cpuprofile, "cpuprofile", false, "cpuprofile")
+	flag.BoolVar(&memprofile, "memprofile", false, "memprofile")
+
 	flag.Parse()
 
 	if randProtosPort {
@@ -45,40 +52,58 @@ func main() {
 	// PROTO MANAGER CONFS
 
 	protoManagerConf := pkg.ProtocolManagerConfig{
+		Cpuprofile:       cpuprofile,
+		Memprofile:       memprofile,
 		LogFolder:        "/code/logs/",
 		HandshakeTimeout: 3 * time.Second,
 		DialTimeout:      3 * time.Second,
 		Peer:             peer.NewPeer(GetLocalIP(), uint16(protosPortVar), uint16(analyticsPortVar)),
 	}
 
+	// protoManagerConf := pkg.ProtocolManagerConfig{
+	// 	Cpuprofile:       cpuprofile,
+	// 	Memprofile:       cpuprofile,
+	// 	LogFolder:        "/tmp/demmon_logs/",
+	// 	HandshakeTimeout: 3 * time.Second,
+	// 	DialTimeout:      3 * time.Second,
+	// 	Peer:             peer.NewPeer(GetLocalIP(), uint16(protosPortVar), uint16(analyticsPortVar)),
+	// }
+
 	// NODE WATCHER CONFS
 
 	nodeWatcherConf := pkg.NodeWatcherConf{
+		PrintLatencyToInterval:    2 * time.Second,
 		MaxRedials:                2,
 		HbTickDuration:            750 * time.Millisecond,
-		MinSamplesFaultDetector:   3,
 		NrMessagesWithoutWait:     3,
-		NewLatencyWeight:          0.1,
+		NewLatencyWeight:          0.25,
 		NrTestMessagesToSend:      1,
 		NrTestMessagesToReceive:   1,
-		OldLatencyWeight:          0.9,
+		OldLatencyWeight:          0.75,
 		TcpTestTimeout:            3 * time.Second,
 		UdpTestTimeout:            3 * time.Second,
+		MinSamplesFaultDetector:   3,
 		WindowSize:                10,
 		EvalConditionTickDuration: 1500 * time.Millisecond,
-		MinSamplesLatencyEstimate: 5,
+		MinSamplesLatencyEstimate: 3,
 	}
 
+	// landmarks := []membership.PeerWithId{
+	// 	membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 0, 1}, peer.NewPeer(net.IPv4(10, 171, 238, 164), 1200, 1300), 0),
+	// 	membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 1, 0}, peer.NewPeer(net.IPv4(10, 171, 238, 164), 1201, 1301), 0),
+	// 	membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 1, 1}, peer.NewPeer(net.IPv4(10, 171, 238, 164), 1202, 1302), 0),
+	// }
+
 	landmarks := []membership.PeerWithId{
-		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 0, 1}, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 0),
-		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 1, 0}, peer.NewPeer(net.IPv4(10, 10, 68, 23), 1200, 1300), 0),
-		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 1, 1}, peer.NewPeer(net.IPv4(10, 10, 4, 26), 1200, 1300), 0),
+		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 0, 1}, peer.NewPeer(net.IPv4(10, 10, 1, 16), 1200, 1300), 0),
+		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 1, 0}, peer.NewPeer(net.IPv4(10, 10, 69, 22), 1200, 1300), 0),
+		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 1, 1}, peer.NewPeer(net.IPv4(10, 10, 5, 25), 1200, 1300), 0),
 	}
 
 	// DEMMON TREE CONFS
 
 	demmonTreeConf := membership.DemmonTreeConfig{
-
+		LandmarkRedialTimer:               1 * time.Second,
 		JoinMessageTimeout:                3 * time.Second,
 		MaxTimeToProgressToNextLevel:      5 * time.Second,
 		MaxRetriesJoinMsg:                 3,
@@ -87,27 +112,29 @@ func main() {
 		MaxGrpSize:                        4,
 		NrPeersToAbsorb:                   2,
 		NrPeersToConsiderAsParentToAbsorb: 3,
-		LimitFirstLevelGroupSize:          true,
-		CheckChildenSizeTimerDuration:     10 * time.Second,
-		ParentRefreshTickDuration:         3 * time.Second,
-		ChildrenRefreshTickDuration:       3 * time.Second,
-		RejoinTimerDuration:               10 * time.Second,
 
-		AttemptImprovePositionProbability:      0.3,
+		LimitFirstLevelGroupSize:      true,
+		CheckChildenSizeTimerDuration: 10 * time.Second,
+		ParentRefreshTickDuration:     3 * time.Second,
+		ChildrenRefreshTickDuration:   3 * time.Second,
+		RejoinTimerDuration:           10 * time.Second,
+
+		MinLatencyImprovementToImprovePosition: 25 * time.Millisecond,
+		AttemptImprovePositionProbability:      0.25,
 		EvalMeasuredPeersRefreshTickDuration:   5 * time.Second,
-		EmitWalkProbability:                    0.33,
-		BiasedWalkProbability:                  0.2,
-		BiasedWalkTTL:                          8,
-		RandomWalkTTL:                          8,
-		EmitWalkTimeout:                        5 * time.Second,
-		MaxPeersInEView:                        20,
-		MeasureNewPeersRefreshTickDuration:     5 * time.Second,
-		MeasuredPeersSize:                      10,
-		MinLatencyImprovementToImprovePosition: 20 * time.Millisecond,
-		NrHopsToIgnoreWalk:                     2,
-		NrPeersInWalkMessage:                   20,
-		NrPeersToMeasure:                       3,
-		NrPeersToMergeInWalkSample:             4,
+
+		EmitWalkProbability:                0.33,
+		BiasedWalkProbability:              0.2,
+		BiasedWalkTTL:                      4,
+		RandomWalkTTL:                      4,
+		EmitWalkTimeout:                    5 * time.Second,
+		MaxPeersInEView:                    15,
+		MeasureNewPeersRefreshTickDuration: 5 * time.Second,
+		MeasuredPeersSize:                  10,
+		NrHopsToIgnoreWalk:                 2,
+		NrPeersInWalkMessage:               10,
+		NrPeersToMeasure:                   3,
+		NrPeersToMergeInWalkSample:         4,
 	}
 
 	fmt.Println("Self peer: ", protoManagerConf.Peer.ToString())

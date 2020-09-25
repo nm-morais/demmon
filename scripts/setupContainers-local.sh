@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 function help {
     echo "usage: setupContainers.sh <dockerImage> <path/to/configFile>"
 }

@@ -181,3 +181,27 @@ func (t *evalMeasuredPeersTimer) ID() timer.ID {
 func (t *evalMeasuredPeersTimer) Deadline() time.Time {
 	return t.deadline
 }
+
+// landmark redial
+
+const landmarkRedialTimerID = 1008
+
+type landmarkRedialTimer struct {
+	deadline         time.Time
+	LandmarkToRedial peer.Peer
+}
+
+func NewLandmarkRedialTimer(duration time.Duration, landmark peer.Peer) timer.Timer {
+	return &landmarkRedialTimer{
+		deadline:         time.Now().Add(duration),
+		LandmarkToRedial: landmark,
+	}
+}
+
+func (t *landmarkRedialTimer) ID() timer.ID {
+	return landmarkRedialTimerID
+}
+
+func (t *landmarkRedialTimer) Deadline() time.Time {
+	return t.deadline
+}

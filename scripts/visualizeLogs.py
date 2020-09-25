@@ -25,6 +25,8 @@ def parse_files(file_paths, output_folder):
     nodes = {}
     attrs = {}
     max_level = -1
+    
+    parent_less_nodes = 0
 
     for file_path in file_paths:
         f = open(file_path, "r")
@@ -32,11 +34,16 @@ def parse_files(file_paths, output_folder):
         node_ip = node_name.split(":")[0][6:]
         parent_ip = ""
         node_level = -1
+        landmark = False
         latencies = []
         lines = f.readlines()
         print(file_path, "lines:{}".format(len(lines)))
+        latencies_added = {}
         for aux in reversed(lines):
             line = aux.strip()
+
+            if "I am landmark" in line :
+                landmark = True
             if "Dialed parent with success" in line and parent_ip == "" and line != "":
                 print("here")
                 if "from not my parent" in line:
@@ -60,24 +67,43 @@ def parse_files(file_paths, output_folder):
                 
                 latStr = split[12]
                 latStr2 = latStr[:-2]
-                latencies.append((node_ip, ip,(int(latStr2)/ 100000)/ 2))
+                try:
+                    added = latencies_added[(node_ip, ip)]
+                except KeyError:
+                    latencies.append((node_ip, ip, (int(latStr2)/ 100000)/ 2))
+                    latencies_added[(node_ip, ip)] = {}
+                    continue
 
-        if node_level == -1:
-            xPos = landmarks * 1550
+        if landmark:
+            xPos = landmarks * 1500
             landmarks += 1
             yPos = 0
             nodes[node_ip] = {
                 "node_level": 0,
                 "parent": parent_ip,
                 "latencies": latencies,
-                "pos": [xPos, yPos]
+                "pos": [xPos, yPos],
+                "landmark": landmark
             }
         else:
-            nodes[node_ip] = {
-                "node_level": node_level,
-                "parent": parent_ip,
-                "latencies": latencies,
-            }
+            if node_level == -1:
+                nodes[node_ip] = {
+                    "node_level": node_level,
+                    "parent": parent_ip,
+                    "latencies": latencies,
+                    "pos": [parent_less_nodes, -5],
+                    "landmark": landmark
+                }
+                parent_less_nodes += 50
+            else :
+                nodes[node_ip] = {
+                    "node_level": node_level,
+                    "parent": parent_ip,
+                    "latencies": latencies,
+                    "landmark": landmark,
+                    "pos": [parent_less_nodes, -5],
+                }
+                parent_less_nodes += 50
 
     children = {}
     currChildren = {}
@@ -100,7 +126,7 @@ def parse_files(file_paths, output_folder):
 
     for node in sorted(nodes, key=lambda x: nodes[x]["node_level"], reverse=False):
 
-        if nodes[node]["node_level"] == 0:
+        if nodes[node]["landmark"]:
             nodeLabels[node] = node
             pos[node] = nodes[node]["pos"]
             try:
@@ -111,39 +137,46 @@ def parse_files(file_paths, output_folder):
 
         else:
             nodeLabels[node] = node
-            parentId = nodes[node]["parent"]
-            parent = nodes[parentId]
-            curr = currChildren[parentId]
-            try:
-                parentPos = parent["pos"]
-            except KeyError:
-                parentPos = (0,100)
-                print("err: {} has no parent, supposed to be: {}".format(node, parent))
-                print("parent: {}".format(parent))
 
-            try:
-                nChildren = children[node]
-            except KeyError:
-                nChildren = 0
-            try:
-                parent_children = children[parentId]
-            except KeyError:
-                parent_children = 0
-            lvl = nodes[node]["node_level"]
-            
-            nodePos = [(parentPos[0] - parent_children * (300 / (max(0.9 *lvl + 1, 2)))) +
-                    curr * (300 / ((max(0.9 * lvl + 1, 2)))), parentPos[1] + 5]
+            if nodes[node]["parent"] != "":
+                parentId = nodes[node]["parent"]
+                parent = nodes[parentId]
+                curr = currChildren[parentId]
+                try:
+                    parentPos = parent["pos"]
+                except KeyError:
+                    parentPos = (parent_less_nodes,-10)
+                    parent_less_nodes += 50
+                    print("err: {} has no parent, supposed to be: {}".format(node, parent))
+                    print("parent: {}".format(parent))
 
-            nodes[node]["pos"] = nodePos
-            pos[node] = nodePos
-            children[parentId] = children[parentId] - 1
-            currChildren[parentId] = currChildren[parentId] + 1
-            parent_edges.append((parentId, node))
+                try:
+                    nChildren = children[node]
+                except KeyError:
+                    nChildren = 0
+                try:
+                    parent_children = children[parentId]
+                except KeyError:
+                    parent_children = 0
 
-        for latencyPair in nodes[node]["latencies"]:
-            # G.add_edge(node, latencyPair[0], weight=latencyPair[1],
-            #           parent=False, latency=True, label=latencyPair[1])
-            latencyEdges[(latencyPair[0],latencyPair[1] )] = int(latencyPair[2])
+                lvl = nodes[node]["node_level"]
+                
+
+                nodePos = [(parentPos[0] - parent_children * (350 / (max(0.9 *lvl + 1, 2)))) +
+                        curr * (350 / ((max(0.9 * lvl + 1, 2)))), parentPos[1] + 5]
+                nodes[node]["pos"] = nodePos
+                pos[node] = nodePos
+                children[parentId] = children[parentId] - 1
+                currChildren[parentId] = currChildren[parentId] + 1
+                parent_edges.append((parentId, node))
+            else :
+                pos[node] = nodes[node]["pos"]
+
+            for latencyPair in nodes[node]["latencies"]:
+                # G.add_edge(node, latencyPair[0], weight=latencyPair[1],
+                #           parent=False, latency=True, label=latencyPair[1])
+                latencyEdges[(latencyPair[0],latencyPair[1])] = int(latencyPair[2])
+
 
     #print(latencyEdges)
     '''
@@ -214,7 +247,7 @@ def parse_files(file_paths, output_folder):
                            edge_color=parent_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, width=4, ax=ax)
     nx.draw_networkx_edges(G, pos, edgelist=latencyEdges, width=1,
                            alpha=0.5, edge_color=edge_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, ax=ax)
-    nx.draw_networkx_edge_labels(G, pos, latencyEdgeLabels,  label_pos=0.66 , alpha=0.5, font_size=6, ax=ax)
+    nx.draw_networkx_edge_labels(G, pos, latencyEdgeLabels,  label_pos=0.33 , alpha=0.5, font_size=6, ax=ax)
     
     print(minLat, maxLat)
 
