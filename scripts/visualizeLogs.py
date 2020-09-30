@@ -19,7 +19,7 @@ def parse_args():
 
 
 def parse_files(file_paths, output_folder):
-
+    level_width = 700
     landmarks = 0
     G = nx.Graph()
     nodes = {}
@@ -45,15 +45,16 @@ def parse_files(file_paths, output_folder):
             if "I am landmark" in line :
                 landmark = True
             if "Dialed parent with success" in line and parent_ip == "" and line != "":
-                print("here")
                 if "from not my parent" in line:
                     continue
-                print("here2")
+                # print(line)
                 parent_name = str(line.split(" ")[-1])[:-2]
                 parent_ip = parent_name.split(":")[0][6:]
 
             if "My level" in line and node_level == -1:
+                print(line)
                 node_level = int(line.split(" ")[-1][:-2])
+                print(node_level)
                 if node_level > max_level:
                     max_level = node_level
 
@@ -65,8 +66,9 @@ def parse_files(file_paths, output_folder):
                 ip_port = str(split[6])[:-1]
                 ip = str(ip_port.split(":")[0])[6:]
                 
-                latStr = split[12]
+                latStr = split[13]
                 latStr2 = latStr[:-2]
+                # print(line)
                 try:
                     added = latencies_added[(node_ip, ip)]
                 except KeyError:
@@ -75,7 +77,7 @@ def parse_files(file_paths, output_folder):
                     continue
 
         if landmark:
-            xPos = landmarks * 1000
+            xPos = landmarks * level_width * 1.85
             landmarks += 1
             yPos = 0
             nodes[node_ip] = {
@@ -91,7 +93,7 @@ def parse_files(file_paths, output_folder):
                     "node_level": node_level,
                     "parent": parent_ip,
                     "latencies": latencies,
-                    "pos": [parent_less_nodes, -5],
+                    "pos": [parent_less_nodes, -3],
                     "landmark": landmark
                 }
                 parent_less_nodes += 50
@@ -101,7 +103,7 @@ def parse_files(file_paths, output_folder):
                     "parent": parent_ip,
                     "latencies": latencies,
                     "landmark": landmark,
-                    "pos": [parent_less_nodes, -5],
+                    "pos": [parent_less_nodes, -3],
                 }
                 parent_less_nodes += 50
 
@@ -115,7 +117,7 @@ def parse_files(file_paths, output_folder):
                 children[parent] = children[parent] + 1
             except KeyError:
                 children[parent] = 1
-                currChildren[parent] = 1
+                currChildren[parent] = 0
 
     pos = {}
     landmark_list = []
@@ -136,6 +138,7 @@ def parse_files(file_paths, output_folder):
             landmark_list.append(node)
 
         else:
+
             nodeLabels[node] = node
 
             if nodes[node]["parent"] != "":
@@ -150,24 +153,37 @@ def parse_files(file_paths, output_folder):
                     print("err: {} has no parent, supposed to be: {}".format(node, parent))
                     print("parent: {}".format(parent))
 
-                try:
-                    nChildren = children[node]
-                except KeyError:
-                    nChildren = 0
-                try:
-                    parent_children = children[parentId]
-                except KeyError:
-                    parent_children = 0
 
+                parent_children = children[parentId]
                 lvl = nodes[node]["node_level"]
 
-                nodePos = [(parentPos[0] - parent_children * (250 / (lvl + 1)) +
-                        curr * (250 / ( lvl + 1))), parentPos[1] + 5]
+                # nodePos = [(parentPos[0] - parent_children * (200 / (lvl + 0.33)) +
+                #         curr * (200 / (lvl + 0.33))), parentPos[1] + 5]
+
+                if parent_children == 1 :
+                    nodePos = [parentPos[0], parentPos[1] + 5]
+                    nodes[node]["pos"] = nodePos
+                    pos[node] = nodePos
+                    currChildren[parentId] = curr + 1
+                    parent_edges.append((parentId, node))
+                    continue
+
+                thisLvlWidth = float(level_width) / float(lvl * lvl) 
+                thisLvlStep = float(thisLvlWidth) / float(parent_children - 1)
+
+                print("level_width", level_width)
+                print("lvl", lvl)
+                print("thisLvlWidth", thisLvlWidth)
+                print("thisLvlStep", thisLvlStep)
+
+
+                nodePos = [parentPos[0] - (thisLvlWidth / 2) + curr * thisLvlStep , parentPos[1] + 5]
+
                 nodes[node]["pos"] = nodePos
                 pos[node] = nodePos
-                children[parentId] = children[parentId] - 1
-                currChildren[parentId] = currChildren[parentId] + 1
+                currChildren[parentId] = curr + 1
                 parent_edges.append((parentId, node))
+
             else :
                 pos[node] = nodes[node]["pos"]
 
@@ -217,8 +233,14 @@ def parse_files(file_paths, output_folder):
             parent_colors.append(latencyEdges[p])
             latencyEdgeLabels[p] = latencyEdges[p]
         except KeyError:
-            parent_colors.append(latencyEdges[(p[1], p[0])])
-            latencyEdgeLabels[(p[1], p[0])] = latencyEdges[(p[1], p[0])]
+            try:
+                parent_colors.append(latencyEdges[(p[1], p[0])])
+                latencyEdgeLabels[(p[1], p[0])] = latencyEdges[(p[1], p[0])]
+            except KeyError:
+                parent_colors.append(100000)
+                latencyEdgeLabels[(p[1], p[0])] = "not found"
+
+
 
     #print(parent_colors)
 

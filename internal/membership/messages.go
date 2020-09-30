@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/nm-morais/go-babel/pkg/message"
-	. "github.com/nm-morais/go-babel/pkg/peer"
 )
 
 // -------------- Join --------------
@@ -183,11 +182,8 @@ func (UpdateParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 // UPDATE CHILD message
 
 type updateChildMessage struct {
-	Child            *PeerWithIdChain
-	SiblingLatencies []struct {
-		Lat     time.Duration
-		Sibling Peer
-	}
+	Child    *PeerWithIdChain
+	Siblings []*MeasuredPeer
 }
 
 type updateChildMessageSerializer struct{}
@@ -199,23 +195,10 @@ func (updateChildMessage) Type() message.ID {
 }
 
 func NewUpdateChildMessage(self *PeerWithIdChain, siblingLatencies MeasuredPeersByLat) updateChildMessage {
-	type measuredPeer = struct {
-		Lat     time.Duration
-		Sibling Peer
-	}
-	siblingLatenciesAux := make([]measuredPeer, 0, len(siblingLatencies))
-
-	for _, currSiblingLat := range siblingLatencies {
-		aux := measuredPeer{
-			Lat:     currSiblingLat.MeasuredLatency,
-			Sibling: NewPeer(currSiblingLat.IP(), currSiblingLat.ProtosPort(), currSiblingLat.AnalyticsPort()),
-		}
-		siblingLatenciesAux = append(siblingLatenciesAux, aux)
-	}
 
 	return updateChildMessage{
-		Child:            self,
-		SiblingLatencies: siblingLatenciesAux,
+		Child:    self,
+		Siblings: siblingLatencies,
 	}
 }
 
@@ -229,42 +212,20 @@ func (updateChildMessage) Deserializer() message.Deserializer {
 
 func (updateChildMessageSerializer) Serialize(msg message.Message) []byte {
 	ucMsg := msg.(updateChildMessage)
-	nrSiblings := len(ucMsg.SiblingLatencies)
-	msgBytes := make([]byte, 4)
-	bufPos := 0
-	binary.BigEndian.PutUint32(msgBytes[bufPos:], uint32(nrSiblings))
-	for i := 0; i < nrSiblings; i++ {
-		curr := ucMsg.SiblingLatencies[i]
-		latBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(latBytes, uint64(curr.Lat))
-		peerBytes := curr.Sibling.Marshal()
-		msgBytes = append(msgBytes, latBytes...)
-		msgBytes = append(msgBytes, peerBytes...)
-	}
+	var msgBytes []byte
+	msgBytes = append(msgBytes, SerializeMeasuredPeerArray(ucMsg.Siblings)...)
 	msgBytes = append(msgBytes, ucMsg.Child.MarshalWithFields()...)
 	return msgBytes
 }
 
 func (updateChildMessageSerializer) Deserialize(msgBytes []byte) message.Message {
-	type measuredPeer = struct {
-		Lat     time.Duration
-		Sibling Peer
-	}
 	bufPos := 0
-	nrSiblings := binary.BigEndian.Uint32(msgBytes[bufPos:])
-	bufPos += 4
-	measuredPeers := make([]measuredPeer, nrSiblings)
-	for i := uint32(0); i < nrSiblings; i++ {
-		peerLat := binary.BigEndian.Uint64(msgBytes[bufPos:])
-		bufPos += 8
-		p := &IPeer{}
-		bufPos += p.Unmarshal(msgBytes[bufPos:])
-		measuredPeers[i] = measuredPeer{Lat: time.Duration(peerLat), Sibling: p}
-	}
+	n, measuredPeers := DeserializeMeasuredPeerArray(msgBytes)
+	bufPos += n
 	_, child := UnmarshalPeerWithIdChain(msgBytes[bufPos:])
 	return updateChildMessage{
-		Child:            child,
-		SiblingLatencies: measuredPeers,
+		Child:    child,
+		Siblings: measuredPeers,
 	}
 }
 

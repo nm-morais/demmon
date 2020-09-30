@@ -1028,19 +1028,14 @@ func (d *DemmonTree) handleUpdateChildMessage(sender peer.Peer, m message.Messag
 	}
 
 	toPrint := ""
-	for _, measuredPeer := range upMsg.SiblingLatencies {
-		toPrint = toPrint + "; " + measuredPeer.Sibling.String()
+	for _, measuredPeer := range upMsg.Siblings {
+		toPrint = toPrint + "; " + measuredPeer.String()
 	}
 
 	d.logger.Infof("SiblingLatencies in updateChildMessage: %s:", toPrint)
 
 	child.SetChildrenNr(upMsg.Child.nChildren)
-	measuredPeersByLat := MeasuredPeersByLat{}
-	for _, measuredChild := range upMsg.SiblingLatencies {
-		child := d.myChildren[measuredChild.Sibling.String()]
-		measuredPeersByLat = append(measuredPeersByLat, NewMeasuredPeer(child, measuredChild.Lat))
-	}
-	d.myChildrenLatencies[child.String()] = measuredPeersByLat
+	d.myChildrenLatencies[child.String()] = upMsg.Siblings
 }
 
 func (d *DemmonTree) handleSwitchMessage(sender peer.Peer, m message.Message) {
@@ -1502,6 +1497,12 @@ func (d *DemmonTree) fallbackToMeasuredPeers() {
 			break
 		}
 	}
+
+	if bestPeer == nil {
+		d.joinOverlay()
+		return
+	}
+
 	d.myPendingParentInRecovery = bestPeer.PeerWithIdChain
 	d.sendJoinAsChildMsg(bestPeer, d.joinLevel, bestPeer.MeasuredLatency, bestPeer.Chain(), uint16(len(d.myChildren)), true)
 }

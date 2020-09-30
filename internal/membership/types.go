@@ -212,3 +212,40 @@ func NewMeasuredPeer(peer *PeerWithIdChain, measuredLatency time.Duration) *Meas
 		MeasuredLatency: measuredLatency,
 	}
 }
+
+func (p *MeasuredPeer) MarshalWithFieldsAndLatency() []byte {
+	latencyBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(latencyBytes, uint64(p.MeasuredLatency))
+	return append(latencyBytes, p.MarshalWithFields()...)
+}
+
+func (p *MeasuredPeer) UnmarshalMeasuredPeer(buf []byte) (int, *MeasuredPeer) {
+	latency := time.Duration(binary.BigEndian.Uint64(buf))
+	n, aux := UnmarshalPeerWithIdChain(buf[8:])
+	return n + 8, &MeasuredPeer{
+		PeerWithIdChain: aux,
+		MeasuredLatency: latency,
+	}
+}
+
+func DeserializeMeasuredPeerArray(buf []byte) (int, []*MeasuredPeer) {
+	nrPeers := int(binary.BigEndian.Uint32(buf[:4]))
+	peers := make([]*MeasuredPeer, nrPeers)
+	bufPos := 4
+	for i := 0; i < nrPeers; i++ {
+		p := &MeasuredPeer{}
+		read, peer := p.UnmarshalMeasuredPeer(buf[bufPos:])
+		peers[i] = peer
+		bufPos += read
+	}
+	return bufPos, peers
+}
+
+func SerializeMeasuredPeerArray(peers []*MeasuredPeer) []byte {
+	totalBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(totalBytes, uint32(len(peers)))
+	for _, p := range peers {
+		totalBytes = append(totalBytes, p.MarshalWithFieldsAndLatency()...)
+	}
+	return totalBytes
+}
