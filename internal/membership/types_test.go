@@ -8,37 +8,14 @@ import (
 	"github.com/nm-morais/go-babel/pkg/peer"
 )
 
-func TestSerializePeerWithID(t *testing.T) {
-	toSerialize := NewPeerWithId(PeerID{1, 0}, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 0)
-	PwIDbytes := toSerialize.SerializeToBinary()
-	_, deserialized := DeserializePeerWithId(PwIDbytes)
-	t.Logf("%+v,", toSerialize)
-	t.Logf("%+v,", deserialized)
-	fmt.Printf("%+v\n", toSerialize)
-	fmt.Printf("%+v\n", deserialized)
-	for i := 0; i < len(toSerialize.ID()); i++ {
-		if toSerialize.ID()[i] != deserialized.ID()[i] {
-			t.Logf("%+v,", toSerialize.ID())
-			t.Logf("%+v,", deserialized.ID())
-			t.FailNow()
-		}
-	}
-
-	if !toSerialize.Equals(deserialized) {
-		t.FailNow()
-	}
-	t.Logf("before: %+v", toSerialize)
-	t.Logf("after: %+v", deserialized)
-}
-
 func TestSerializePeerWithIDChain(t *testing.T) {
 	chain := PeerIDChain{}
 	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1})
 	chain = append(chain, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
 
-	toSerialize := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 200)
-	PwIDbytes := toSerialize.SerializeToBinary()
-	_, deserialized := DeserializePeerWithIdChain(PwIDbytes)
+	toSerialize := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 200, 10)
+	PwIDbytes := toSerialize.MarshalWithFields()
+	_, deserialized := UnmarshalPeerWithIdChain(PwIDbytes)
 	t.Logf("%+v,", toSerialize)
 	t.Logf("%+v,", deserialized)
 	fmt.Printf("%+v\n", toSerialize)
@@ -59,41 +36,45 @@ func TestSerializePeerWithIDChain(t *testing.T) {
 
 	}
 
-	if !toSerialize.Equals(deserialized) {
+	if !peer.PeersEqual(toSerialize, deserialized.Peer) {
 		t.FailNow()
 	}
-	t.Logf("before: %+v", toSerialize)
-	t.Logf("after: %+v", deserialized)
+	t.Logf("before: %+v", toSerialize.version)
+	t.Logf("after: %+v", deserialized.version)
 
 }
 
-func TestSerializePeerWithIDArray(t *testing.T) {
-	toSerialize := []PeerWithId{
-		NewPeerWithId(PeerID{1, 1, 1, 1, 1, 0}, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 0),
-		NewPeerWithId(PeerID{1, 1, 1, 1, 1, 1, 1, 1}, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 0),
-		NewPeerWithId(PeerID{29, 0}, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 0),
-	}
-	serialized := SerializePeerWithIDArray(toSerialize)
-	_, deserialized := DeserializePeerWithIDArray(serialized)
-	t.Logf("%+v,", toSerialize)
-	t.Logf("%+v,", deserialized)
-	for i := 0; i < len(toSerialize); i++ {
-		curr := toSerialize[i]
-		curr2 := deserialized[i]
-		t.Logf("%+v,", curr)
-		t.Logf("%+v,", curr2)
-		for j := 0; j < len(curr.ID()); j++ {
-			if curr.ID()[j] != curr2.ID()[j] {
-				t.Logf("%+v,", curr)
-				t.Logf("%+v,", curr2)
-				t.FailNow()
-			}
-		}
+func TestIsDescendantOf(t *testing.T) {
+	ascendantChain := PeerIDChain{}
+	ascendantChain = append(ascendantChain, PeerID{0, 0, 0, 1, 1, 0, 0, 1})
+	ascendantChain = append(ascendantChain, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
 
-		if !curr.Equals(curr2) {
-			t.FailNow()
-		}
+	descendantChain := append(ascendantChain, PeerID{0, 0, 0, 1, 1, 0, 0, 1})
+	descendent := NewPeerWithIdChain(descendantChain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 200, 10)
+
+	if !descendent.IsDescendentOf(ascendantChain) {
+		t.FailNow()
 	}
-	t.Logf("before: %+v", toSerialize)
-	t.Logf("after: %+v", deserialized)
+
+	if descendent.IsDescendentOf(descendantChain) {
+		t.FailNow()
+	}
+
+}
+
+func TestIsEqual(t *testing.T) {
+	chain := PeerIDChain{}
+	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1})
+	chain = append(chain, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
+	peer1 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0)
+	peer2 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0)
+	if !peer.PeersEqual(peer1, peer2) {
+		t.FailNow()
+	}
+
+	peer1 = nil
+	peer2 = nil
+	if !peer.PeersEqual(peer1, peer2) {
+		t.FailNow()
+	}
 }

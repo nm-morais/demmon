@@ -5,10 +5,10 @@ import "github.com/nm-morais/go-babel/pkg/notification"
 const peerMeasuredNotificationID = 1000
 
 type peerMeasuredNotification struct {
-	peerMeasured PeerWithIdChain
+	peerMeasured *PeerWithIdChain
 }
 
-func NewPeerMeasuredNotification(p PeerWithIdChain) peerMeasuredNotification {
+func NewPeerMeasuredNotification(p *PeerWithIdChain) peerMeasuredNotification {
 	return peerMeasuredNotification{
 		peerMeasured: p,
 	}

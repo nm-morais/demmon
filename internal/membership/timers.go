@@ -205,3 +205,25 @@ func (t *landmarkRedialTimer) ID() timer.ID {
 func (t *landmarkRedialTimer) Deadline() time.Time {
 	return t.deadline
 }
+
+// switch
+
+const switchTimerID = 1009
+
+type switchTimer struct {
+	deadline time.Time
+}
+
+func NewSwitchTimer(duration time.Duration) timer.Timer {
+	return &switchTimer{
+		deadline: time.Now().Add(duration),
+	}
+}
+
+func (t *switchTimer) ID() timer.ID {
+	return switchTimerID
+}
+
+func (t *switchTimer) Deadline() time.Time {
+	return t.deadline
+}

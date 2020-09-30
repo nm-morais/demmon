@@ -94,18 +94,18 @@ func main() {
 	// 	membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 1, 1}, peer.NewPeer(net.IPv4(10, 171, 238, 164), 1202, 1302), 0),
 	// }
 
-	landmarks := []membership.PeerWithId{
-		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 0, 1}, peer.NewPeer(net.IPv4(10, 10, 1, 16), 1200, 1300), 0),
-		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 1, 0}, peer.NewPeer(net.IPv4(10, 10, 69, 22), 1200, 1300), 0),
-		membership.NewPeerWithId([membership.IdSegmentLen]byte{0, 0, 0, 0, 0, 1, 1}, peer.NewPeer(net.IPv4(10, 10, 5, 25), 1200, 1300), 0),
+	landmarks := []*membership.PeerWithIdChain{
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{12}}, peer.NewPeer(net.IPv4(10, 10, 1, 16), 1200, 1300), 0, 0),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{17}}, peer.NewPeer(net.IPv4(10, 10, 69, 22), 1200, 1300), 0, 0),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 5, 25), 1200, 1300), 0, 0),
 	}
 
 	// DEMMON TREE CONFS
 
 	demmonTreeConf := membership.DemmonTreeConfig{
 		LandmarkRedialTimer:               1 * time.Second,
-		JoinMessageTimeout:                3 * time.Second,
-		MaxTimeToProgressToNextLevel:      5 * time.Second,
+		JoinMessageTimeout:                4 * time.Second,
+		MaxTimeToProgressToNextLevel:      4 * time.Second,
 		MaxRetriesJoinMsg:                 3,
 		Landmarks:                         landmarks,
 		MinGrpSize:                        2,
@@ -120,12 +120,12 @@ func main() {
 		RejoinTimerDuration:           10 * time.Second,
 
 		MinLatencyImprovementToImprovePosition: 25 * time.Millisecond,
-		AttemptImprovePositionProbability:      0.25,
+		AttemptImprovePositionProbability:      0.33,
 		EvalMeasuredPeersRefreshTickDuration:   5 * time.Second,
 
 		EmitWalkProbability:                0.33,
 		BiasedWalkProbability:              0.2,
-		BiasedWalkTTL:                      4,
+		BiasedWalkTTL:                      5,
 		RandomWalkTTL:                      4,
 		EmitWalkTimeout:                    5 * time.Second,
 		MaxPeersInEView:                    15,
@@ -133,11 +133,14 @@ func main() {
 		MeasuredPeersSize:                  10,
 		NrHopsToIgnoreWalk:                 2,
 		NrPeersInWalkMessage:               10,
-		NrPeersToMeasure:                   3,
+		NrPeersToMeasure:                   2,
 		NrPeersToMergeInWalkSample:         4,
+
+		CheckSwitchOportunityTimeout:          7500 * time.Millisecond,
+		MinLatencyImprovementPerPeerForSwitch: 10 * time.Millisecond,
 	}
 
-	fmt.Println("Self peer: ", protoManagerConf.Peer.ToString())
+	fmt.Println("Self peer: ", protoManagerConf.Peer.String())
 	pkg.InitProtoManager(protoManagerConf)
 	pkg.InitNodeWatcher(nodeWatcherConf)
 	pkg.RegisterProtocol(membership.NewDemmonTree(demmonTreeConf))

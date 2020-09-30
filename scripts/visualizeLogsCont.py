@@ -12,7 +12,7 @@ wait = 3
 
 while True:
   try:
-    subprocess.run(["ssh", "dicluster", "ssh node1 'python3 /home/nunomorais/git/nm-morais/deMMon/scripts/visualizeLogs.py {} {}'".format(logs_folder, plot_filepath_remote)], check=True)
+    subprocess.run(["ssh", "dicluster", "ssh node16 'python3 /home/nunomorais/git/nm-morais/deMMon/scripts/visualizeLogs.py {} {}'".format(logs_folder, plot_filepath_remote)], check=True)
   except subprocess.CalledProcessError as e:
     print(e)
 
@@ -24,3 +24,4 @@ while True:
   image = cv2.imread(plot_filepath_local)
   cv2.imshow('graph', image)
   cv2.waitKey(0)
+  

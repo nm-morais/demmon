@@ -75,7 +75,7 @@ def parse_files(file_paths, output_folder):
                     continue
 
         if landmark:
-            xPos = landmarks * 1500
+            xPos = landmarks * 1000
             landmarks += 1
             yPos = 0
             nodes[node_ip] = {
@@ -160,10 +160,9 @@ def parse_files(file_paths, output_folder):
                     parent_children = 0
 
                 lvl = nodes[node]["node_level"]
-                
 
-                nodePos = [(parentPos[0] - parent_children * (350 / (max(0.9 *lvl + 1, 2)))) +
-                        curr * (350 / ((max(0.9 * lvl + 1, 2)))), parentPos[1] + 5]
+                nodePos = [(parentPos[0] - parent_children * (250 / (lvl + 1)) +
+                        curr * (250 / ( lvl + 1))), parentPos[1] + 5]
                 nodes[node]["pos"] = nodePos
                 pos[node] = nodePos
                 children[parentId] = children[parentId] - 1
@@ -177,8 +176,8 @@ def parse_files(file_paths, output_folder):
                 #           parent=False, latency=True, label=latencyPair[1])
                 latencyEdges[(latencyPair[0],latencyPair[1])] = int(latencyPair[2])
 
-
     #print(latencyEdges)
+    
     '''
     latVals = [latencyEdges[l] for l in latencyEdgeLabels]
     print(latVals)

@@ -4,40 +4,42 @@ import (
 	"math/big"
 	"math/rand"
 	"net"
+
+	"github.com/nm-morais/go-babel/pkg/peer"
 )
 
-func getRandSample(nrPeersToSelect int, peers ...PeerWithIdChain) []PeerWithIdChain {
+func getRandSample(nrPeersToSelect int, peers ...*PeerWithIdChain) []*PeerWithIdChain {
 	rand.Shuffle(len(peers), func(i, j int) { peers[i], peers[j] = peers[j], peers[i] })
 	nrPeersToReturn := nrPeersToSelect
 	if nrPeersToReturn > len(peers) {
 		nrPeersToReturn = len(peers)
 	}
 
-	toReturn := make([]PeerWithIdChain, nrPeersToReturn)
+	toReturn := make([]*PeerWithIdChain, nrPeersToReturn)
 	for i := 0; i < len(peers) && i < nrPeersToReturn; i++ {
 		toReturn[i] = peers[i]
 	}
 	return toReturn
 }
 
-func getPeersExcluding(toFilter []PeerWithIdChain, exclusions ...PeerWithIdChain) []PeerWithIdChain {
-	toReturn := make([]PeerWithIdChain, 0)
-	for _, peer := range toFilter {
+func getPeersExcluding(toFilter []*PeerWithIdChain, exclusions ...*PeerWithIdChain) []*PeerWithIdChain {
+	toReturn := make([]*PeerWithIdChain, 0)
+	for _, p := range toFilter {
 		excluded := false
 		for _, exclusion := range exclusions {
-			if exclusion.Equals(peer) {
+			if peer.PeersEqual(exclusion, p) {
 				excluded = true
 				break
 			}
 		}
 		if !excluded {
-			toReturn = append(toReturn, peer)
+			toReturn = append(toReturn, p)
 		}
 	}
 	return toReturn
 }
 
-func getRandomExcluding(toFilter []PeerWithIdChain, exclusions ...PeerWithIdChain) PeerWithIdChain {
+func getRandomExcluding(toFilter []*PeerWithIdChain, exclusions ...*PeerWithIdChain) *PeerWithIdChain {
 	filtered := getPeersExcluding(toFilter, exclusions...)
 	filteredLen := len(filtered)
 	if filteredLen == 0 {
@@ -46,10 +48,10 @@ func getRandomExcluding(toFilter []PeerWithIdChain, exclusions ...PeerWithIdChai
 	return filtered[rand.Intn(filteredLen)]
 }
 
-func getBiasedPeerExcluding(toFilter []PeerWithIdChain, biasTowards PeerWithIdChain, exclusions ...PeerWithIdChain) PeerWithIdChain {
+func getBiasedPeerExcluding(toFilter []*PeerWithIdChain, biasTowards *PeerWithIdChain, exclusions ...*PeerWithIdChain) *PeerWithIdChain {
 	filtered := getPeersExcluding(toFilter, exclusions...)
 	var minDist int64 = -1
-	var bestPeer PeerWithIdChain
+	var bestPeer *PeerWithIdChain
 	for _, peer := range filtered {
 		currDist := xorDistance(peer.IP(), biasTowards.IP())
 		if currDist.Int64() < minDist {
@@ -60,8 +62,8 @@ func getBiasedPeerExcluding(toFilter []PeerWithIdChain, biasTowards PeerWithIdCh
 	return bestPeer
 }
 
-func getExcludingDescendantsOf(toFilter []PeerWithIdChain, ascendantChain PeerIDChain) []PeerWithIdChain {
-	toReturn := make([]PeerWithIdChain, 0, len(toFilter))
+func getExcludingDescendantsOf(toFilter []*PeerWithIdChain, ascendantChain PeerIDChain) []*PeerWithIdChain {
+	toReturn := make([]*PeerWithIdChain, 0)
 	for _, peer := range toFilter {
 		if !peer.IsDescendentOf(ascendantChain) {
 			toReturn = append(toReturn, peer)
@@ -70,7 +72,7 @@ func getExcludingDescendantsOf(toFilter []PeerWithIdChain, ascendantChain PeerID
 	return toReturn
 }
 
-func removeNFromSample(sample []PeerWithIdChain, nrPeersToRemove int, excludeDescendantsOf PeerIDChain) (remaining, removed []PeerWithIdChain) {
+func removeNFromSample(sample []*PeerWithIdChain, nrPeersToRemove int, excludeDescendantsOf PeerIDChain) (remaining, removed []*PeerWithIdChain) {
 	for i := 0; i < nrPeersToRemove && i < len(sample); i++ {
 		peer := sample[i]
 		if !peer.IsDescendentOf(excludeDescendantsOf) {
