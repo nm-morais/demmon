@@ -227,3 +227,25 @@ func (t *switchTimer) ID() timer.ID {
 func (t *switchTimer) Deadline() time.Time {
 	return t.deadline
 }
+
+// debugTimer
+
+const debugTimerID = 1010
+
+type debugTimer struct {
+	deadline time.Time
+}
+
+func NewDebugTimer(duration time.Duration) timer.Timer {
+	return &debugTimer{
+		deadline: time.Now().Add(duration),
+	}
+}
+
+func (t *debugTimer) ID() timer.ID {
+	return debugTimerID
+}
+
+func (t *debugTimer) Deadline() time.Time {
+	return t.deadline
+}

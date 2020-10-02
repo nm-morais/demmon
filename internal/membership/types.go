@@ -3,7 +3,6 @@ package membership
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"time"
 
 	. "github.com/nm-morais/go-babel/pkg/peer"
@@ -19,8 +18,6 @@ type PeerIDChain []PeerID
 
 func (c PeerIDChain) IsDescendentOf(otherPeerChain PeerIDChain) bool {
 	// IsDescendant retuns true if chain <c> is contained in chain <otherPeerChain>
-
-	fmt.Printf("%+v , %+v\n", c, otherPeerChain)
 
 	if len(c) == 0 || len(otherPeerChain) == 0 {
 		return false
