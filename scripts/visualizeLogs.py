@@ -63,19 +63,25 @@ def parse_files(file_paths, output_folder):
                     continue
 
                 split = line.split(" ")
-                ip_port = str(split[6])[:-1]
+                ip_port = str(split[7])[:-1]
                 ip = str(ip_port.split(":")[0])[6:]
+
+                # for i, s in enumerate(split):
+                #     print(i, s)
                 
-                latStr = split[13]
-                latStr2 = latStr[:-2]
+                latStr = split[14]
+                latStr2 = latStr[:-1]
                 # print(line)
+                
                 try:
                     added = latencies_added[(node_ip, ip)]
                 except KeyError:
-                    latencies.append((node_ip, ip, (int(latStr2)/ 100000)/ 2))
+                    latencies.append((node_ip, ip, (int(latStr2)/ 1000000)/ 2))
                     latencies_added[(node_ip, ip)] = {}
-                    continue
 
+        print(latencies_added)
+        print(latencies)
+            
         if landmark:
             xPos = landmarks * level_width * 1.85
             landmarks += 1
@@ -127,6 +133,11 @@ def parse_files(file_paths, output_folder):
     nodeLabels = {}
 
     for node in sorted(nodes, key=lambda x: nodes[x]["node_level"], reverse=False):
+
+        for latencyPair in nodes[node]["latencies"]:
+            # G.add_edge(node, latencyPair[0], weight=latencyPair[1],
+            #           parent=False, latency=True, label=latencyPair[1])
+            latencyEdges[(latencyPair[0],latencyPair[1])] = int(latencyPair[2])
 
         if nodes[node]["landmark"]:
             nodeLabels[node] = node
@@ -187,11 +198,6 @@ def parse_files(file_paths, output_folder):
             else :
                 pos[node] = nodes[node]["pos"]
 
-            for latencyPair in nodes[node]["latencies"]:
-                # G.add_edge(node, latencyPair[0], weight=latencyPair[1],
-                #           parent=False, latency=True, label=latencyPair[1])
-                latencyEdges[(latencyPair[0],latencyPair[1])] = int(latencyPair[2])
-
     #print(latencyEdges)
     
     '''
@@ -227,30 +233,22 @@ def parse_files(file_paths, output_folder):
         print("{}:{}".format(node, nodes[node]))
         
     parent_colors = []
+    print(latencyEdges)
     
     for p in parent_edges:
+        print(p)
         try:
             parent_colors.append(latencyEdges[p])
             latencyEdgeLabels[p] = latencyEdges[p]
         except KeyError:
-            try:
-                parent_colors.append(latencyEdges[(p[1], p[0])])
-                latencyEdgeLabels[(p[1], p[0])] = latencyEdges[(p[1], p[0])]
-            except KeyError:
-                parent_colors.append(100000)
-                latencyEdgeLabels[(p[1], p[0])] = "not found"
-
-
+            parent_colors.append(latencyEdges[(p[1], p[0])])
+            latencyEdgeLabels[(p[1], p[0])] = latencyEdges[(p[1], p[0])]
 
     #print(parent_colors)
-
-
     #print(minLat, maxLat)
-    
     #print(edge_colors)
-
     #pos = nx.spring_layout(node_list, pos=pos, iterations=10000)
-    
+
     with open('{}/parent_edges.txt'.format(output_folder), 'w') as f:
         for node in sorted(nodes, key=lambda x: nodes[x]["node_level"], reverse=False):
             if nodes[node]["node_level"] == 0:

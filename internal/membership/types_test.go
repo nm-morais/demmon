@@ -53,10 +53,11 @@ func TestIsDescendantOf(t *testing.T) {
 	descendent := NewPeerWithIdChain(descendantChain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 200, 10)
 
 	if !descendent.IsDescendentOf(ascendantChain) {
+		t.Errorf("%+v is not descendent of %+v", descendantChain, ascendantChain)
 		t.FailNow()
 	}
 
-	if descendent.IsDescendentOf(descendantChain) {
+	if ascendantChain.IsDescendentOf(descendantChain) {
 		t.FailNow()
 	}
 

@@ -703,14 +703,21 @@ func (WalkReplyMessageSerializer) Deserialize(msgBytes []byte) message.Message {
 
 const switchMessageID = 1012
 
-func NewSwitchMessage(parent *PeerWithIdChain) switchMessage {
+func NewSwitchMessage(parent, grandparent *PeerWithIdChain, newChildren []*PeerWithIdChain, connectAsChild, connectAsParent bool) switchMessage {
 	return switchMessage{
-		NewParent: parent,
+		Parent:          parent,
+		ConnectAsChild:  connectAsChild,
+		ConnectAsParent: connectAsParent,
 	}
 }
 
 type switchMessage struct {
-	NewParent *PeerWithIdChain
+	GrandParent *PeerWithIdChain
+	Children    []*PeerWithIdChain
+
+	Parent          *PeerWithIdChain
+	ConnectAsChild  bool
+	ConnectAsParent bool
 }
 
 type SwitchMessageSerializer struct{}
@@ -732,11 +739,32 @@ func (switchMessage) Deserializer() message.Deserializer {
 func (SwitchMessageSerializer) Serialize(msg message.Message) []byte {
 	switchMsg := msg.(switchMessage)
 	var msgBytes []byte
-	msgBytes = append(msgBytes, switchMsg.NewParent.MarshalWithFields()...)
+	msgBytes = append(msgBytes, switchMsg.Parent.MarshalWithFields()...)
+	msgBytes = append(msgBytes, switchMsg.GrandParent.MarshalWithFields()...)
+	msgBytes = append(msgBytes, SerializePeerWithIDChainArray(switchMsg.Children)...)
+	if switchMsg.ConnectAsChild {
+		msgBytes = append(msgBytes, 1)
+	} else {
+		msgBytes = append(msgBytes, 0)
+	}
+	if switchMsg.ConnectAsParent {
+		msgBytes = append(msgBytes, 1)
+	} else {
+		msgBytes = append(msgBytes, 0)
+	}
 	return msgBytes
 }
 
 func (SwitchMessageSerializer) Deserialize(msgBytes []byte) message.Message {
-	_, p := UnmarshalPeerWithIdChain(msgBytes)
-	return NewSwitchMessage(p)
+	bufPos := 0
+	n, parent := UnmarshalPeerWithIdChain(msgBytes[bufPos:])
+	bufPos += n
+	n, gparent := UnmarshalPeerWithIdChain(msgBytes[bufPos:])
+	bufPos += n
+	n, children := DeserializePeerWithIDChainArray(msgBytes[bufPos:])
+	bufPos += n
+	connectAsChild := msgBytes[bufPos] == 1
+	bufPos += 1
+	connectAsParent := msgBytes[bufPos] == 1
+	return NewSwitchMessage(parent, gparent, children, connectAsChild, connectAsParent)
 }

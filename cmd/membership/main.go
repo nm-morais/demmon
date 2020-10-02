@@ -74,7 +74,7 @@ func main() {
 	nodeWatcherConf := pkg.NodeWatcherConf{
 		PrintLatencyToInterval:    2 * time.Second,
 		MaxRedials:                2,
-		HbTickDuration:            750 * time.Millisecond,
+		HbTickDuration:            1500 * time.Millisecond,
 		NrMessagesWithoutWait:     3,
 		NewLatencyWeight:          0.25,
 		NrTestMessagesToSend:      1,
@@ -82,10 +82,14 @@ func main() {
 		OldLatencyWeight:          0.75,
 		TcpTestTimeout:            3 * time.Second,
 		UdpTestTimeout:            3 * time.Second,
-		MinSamplesFaultDetector:   3,
-		WindowSize:                10,
 		EvalConditionTickDuration: 1500 * time.Millisecond,
 		MinSamplesLatencyEstimate: 3,
+
+		WindowSize:             20,
+		AcceptableHbPause:      1500 * time.Millisecond,
+		FirstHeartbeatEstimate: 1500 * time.Millisecond,
+		MinStdDeviation:        500 * time.Millisecond,
+		PhiThreshold:           8.0,
 	}
 
 	// landmarks := []membership.PeerWithId{
@@ -108,10 +112,12 @@ func main() {
 		MaxTimeToProgressToNextLevel:      4 * time.Second,
 		MaxRetriesJoinMsg:                 3,
 		Landmarks:                         landmarks,
-		MinGrpSize:                        2,
-		MaxGrpSize:                        4,
+		MinGrpSize:                        3,
+		MaxGrpSize:                        6,
 		NrPeersToAbsorb:                   2,
 		NrPeersToConsiderAsParentToAbsorb: 3,
+		PhiLevelForNodeDown:               3,
+		SwitchProbability:                 0.5,
 
 		LimitFirstLevelGroupSize:      true,
 		CheckChildenSizeTimerDuration: 10 * time.Second,
@@ -129,7 +135,7 @@ func main() {
 		RandomWalkTTL:                      4,
 		EmitWalkTimeout:                    5 * time.Second,
 		MaxPeersInEView:                    15,
-		MeasureNewPeersRefreshTickDuration: 5 * time.Second,
+		MeasureNewPeersRefreshTickDuration: 7 * time.Second,
 		MeasuredPeersSize:                  10,
 		NrHopsToIgnoreWalk:                 2,
 		NrPeersInWalkMessage:               10,

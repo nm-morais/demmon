@@ -3,6 +3,7 @@ package membership
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"time"
 
 	. "github.com/nm-morais/go-babel/pkg/peer"
@@ -17,17 +18,19 @@ type PeerID [IdSegmentLen]byte
 type PeerIDChain []PeerID
 
 func (c PeerIDChain) IsDescendentOf(otherPeerChain PeerIDChain) bool {
-	// IsDescendant retuns true if id1 contains the whole id 2 (which means that peer with id1 is higher up in id2's tree)
+	// IsDescendant retuns true if chain <c> is contained in chain <otherPeerChain>
+
+	fmt.Printf("%+v , %+v\n", c, otherPeerChain)
 
 	if len(c) == 0 || len(otherPeerChain) == 0 {
 		return false
 	}
 
-	if len(c) > len(otherPeerChain) {
+	if len(c) < len(otherPeerChain) {
 		return false
 	}
 
-	for i := 0; i < len(c); i++ {
+	for i := 0; i < len(otherPeerChain); i++ {
 		if !bytes.Equal(c[i][:], otherPeerChain[i][:]) {
 			return false
 		}
