@@ -307,12 +307,11 @@ func (d *DemmonTree) handleUpdateChildTimer(timer timer.Timer) {
 
 func (d *DemmonTree) handleSwitchTimer(timer timer.Timer) {
 	d.logger.Info("SwitchTimer trigger")
-	newTimerId := pkg.RegisterTimer(d.ID(), NewSwitchTimer(d.config.CheckSwitchOportunityTimeout))
 	if d.switchTimerId == -1 {
-		d.switchTimerId = newTimerId
+		d.switchTimerId = pkg.RegisterTimer(d.ID(), NewSwitchTimer(d.config.CheckSwitchOportunityTimeout))
 		return
 	}
-	d.switchTimerId = newTimerId
+	d.switchTimerId = pkg.RegisterTimer(d.ID(), NewSwitchTimer(d.config.CheckSwitchOportunityTimeout))
 
 	if d.myParent == nil || len(d.self.Chain()) == 0 || d.myPendingParentInImprovement != nil || uint16(len(d.myChildren)) < d.config.MinGrpSize {
 		return
@@ -387,11 +386,11 @@ func (d *DemmonTree) handleSwitchTimer(timer timer.Timer) {
 			bestCandidateToSwitch.SetChain(d.self.PeerIDChain)
 			for _, child := range d.myChildren {
 				childrenToSend := d.getChildrenAsPeerWithIdChainArray(bestCandidateToSwitch, child)
-				toSend := NewSwitchMessage(bestCandidateToSwitch, d.myGrandParent, childrenToSend, true, false)
+				toSend := NewSwitchMessage(bestCandidateToSwitch, d.myParent, childrenToSend, true, false)
 				d.sendMessage(toSend, child.Peer)
 			}
 			childrenToSend := d.getChildrenAsPeerWithIdChainArray(bestCandidateToSwitch)
-			toSend := NewSwitchMessage(bestCandidateToSwitch, d.myGrandParent, childrenToSend, false, true)
+			toSend := NewSwitchMessage(bestCandidateToSwitch, d.myParent, childrenToSend, false, true)
 			for _, child := range d.myChildren {
 				d.addSibling(child, false, false)
 				d.removeChild(child, false, false)
@@ -483,12 +482,11 @@ func (d *DemmonTree) handleExternalNeighboringTimer(joinTimer timer.Timer) {
 
 func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.Timer) {
 
-	newTimerId := pkg.RegisterTimer(d.ID(), NewEvalMeasuredPeersTimer(d.config.EvalMeasuredPeersRefreshTickDuration))
 	if d.improveTimerId == -1 {
-		d.improveTimerId = newTimerId
+		d.improveTimerId = pkg.RegisterTimer(d.ID(), NewEvalMeasuredPeersTimer(d.config.EvalMeasuredPeersRefreshTickDuration))
 		return
 	}
-	d.improveTimerId = newTimerId
+	d.improveTimerId = pkg.RegisterTimer(d.ID(), NewEvalMeasuredPeersTimer(d.config.EvalMeasuredPeersRefreshTickDuration))
 
 	d.logger.Info("EvalMeasuredPeersTimer trigger...")
 
@@ -505,8 +503,8 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 	for _, measuredPeer := range d.measuredPeers {
 		if !d.isNeighbour(measuredPeer) && !measuredPeer.IsDescendentOf(d.self.Chain()) {
 			d.logger.Infof("%s : %s", measuredPeer.String(), measuredPeer.MeasuredLatency)
-			i++
 			d.measuredPeers[i] = measuredPeer
+			i++
 		}
 	}
 	for j := i; j < len(d.measuredPeers); j++ {
@@ -539,6 +537,7 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 			pkg.GetNodeWatcher().WatchWithInitialLatencyValue(measuredPeer, d.ID(), measuredPeer.MeasuredLatency)
 			d.myPendingParentInImprovement = measuredPeer
 			d.sendJoinAsChildMsg(measuredPeer.PeerWithIdChain, uint16(len(measuredPeer.Chain())-1), measuredPeer.MeasuredLatency, measuredPeer.Chain(), uint16(d.self.NrChildren()), false)
+			return
 		} else {
 			d.logger.Infof("Not improving position towards best peer: %s", measuredPeer.String())
 			d.logger.Infof("latencyImprovement: %s", latencyImprovement)
@@ -705,8 +704,8 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 		d.sendMessage(toSend, child)
 	}
 
-	d.cancelSwitchTimer()
-	d.cancelImproveTimer()
+	d.resetSwitchTimer()
+	d.resetImproveTimer()
 }
 
 // message handlers
@@ -1048,6 +1047,13 @@ func (d *DemmonTree) handleJoinAsChildMessageReply(sender peer.Peer, m message.M
 			d.fallbackToParentInJoin(sender)
 			return
 		}
+
+		if d.myPendingParentInRecovery != nil && peer.PeersEqual(sender, d.myPendingParentInRecovery) {
+			d.logger.Warnf("Pending parent in recovery denied request")
+			d.myPendingParentInImprovement = nil
+			return
+		}
+
 		d.logger.Panicf("got join as child reply but cause for it is not known")
 	}
 
@@ -1867,8 +1873,8 @@ func (d *DemmonTree) addParent(newParent *PeerWithIdChain, newGrandParent *PeerW
 		d.logger.Infof("Dialed parent with success, parent: %s", d.myParent.String()) // just here to visualize
 	}
 	d.removeFromMeasuredPeers(newParent)
-	d.cancelSwitchTimer()
-	d.cancelImproveTimer()
+	d.resetSwitchTimer()
+	d.resetImproveTimer()
 }
 
 func (d *DemmonTree) addChild(newChild *PeerWithIdChain, dialChild bool, watchChild bool, childrenLatency time.Duration) PeerID {
@@ -1903,8 +1909,8 @@ func (d *DemmonTree) addChild(newChild *PeerWithIdChain, dialChild bool, watchCh
 		d.sendMessage(toSend, child.Peer)
 	}
 	d.removeFromMeasuredPeers(newChild)
-	d.cancelSwitchTimer()
-	d.cancelImproveTimer()
+	d.resetSwitchTimer()
+	d.resetImproveTimer()
 	return proposedId
 }
 
@@ -1952,18 +1958,22 @@ func (d *DemmonTree) removeSibling(toRemove peer.Peer, unwatch, disconnect bool)
 	}
 }
 
-func (d *DemmonTree) cancelSwitchTimer() {
+func (d *DemmonTree) resetSwitchTimer() {
 	err := pkg.CancelTimer(d.switchTimerId)
 	if err != nil {
 		d.absorbTimerId = -1
+		return
 	}
+	d.switchTimerId = pkg.RegisterTimer(d.ID(), NewSwitchTimer(d.config.CheckSwitchOportunityTimeout))
 }
 
-func (d *DemmonTree) cancelImproveTimer() {
+func (d *DemmonTree) resetImproveTimer() {
 	err := pkg.CancelTimer(d.improveTimerId)
 	if err != nil {
 		d.improveTimerId = -1
+		return
 	}
+	d.improveTimerId = pkg.RegisterTimer(d.ID(), NewEvalMeasuredPeersTimer(d.config.EvalMeasuredPeersRefreshTickDuration))
 }
 
 // VERSION where nodes 1 node with lowest latency is picked, and gets new children which are its lowest latency peers

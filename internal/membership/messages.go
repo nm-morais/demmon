@@ -740,7 +740,14 @@ func (SwitchMessageSerializer) Serialize(msg message.Message) []byte {
 	switchMsg := msg.(switchMessage)
 	var msgBytes []byte
 	msgBytes = append(msgBytes, switchMsg.Parent.MarshalWithFields()...)
-	msgBytes = append(msgBytes, switchMsg.GrandParent.MarshalWithFields()...)
+
+	if switchMsg.GrandParent != nil {
+		msgBytes = append(msgBytes, 1)
+		msgBytes = append(msgBytes, switchMsg.GrandParent.MarshalWithFields()...)
+	} else {
+		msgBytes = append(msgBytes, 0)
+	}
+
 	msgBytes = append(msgBytes, SerializePeerWithIDChainArray(switchMsg.Children)...)
 	if switchMsg.ConnectAsChild {
 		msgBytes = append(msgBytes, 1)
@@ -752,6 +759,7 @@ func (SwitchMessageSerializer) Serialize(msg message.Message) []byte {
 	} else {
 		msgBytes = append(msgBytes, 0)
 	}
+
 	return msgBytes
 }
 
@@ -759,8 +767,13 @@ func (SwitchMessageSerializer) Deserialize(msgBytes []byte) message.Message {
 	bufPos := 0
 	n, parent := UnmarshalPeerWithIdChain(msgBytes[bufPos:])
 	bufPos += n
-	n, gparent := UnmarshalPeerWithIdChain(msgBytes[bufPos:])
-	bufPos += n
+	var gparent *PeerWithIdChain
+	if msgBytes[bufPos] == 1 {
+		n, gparent = UnmarshalPeerWithIdChain(msgBytes[bufPos:])
+		bufPos += n
+	} else {
+		bufPos++
+	}
 	n, children := DeserializePeerWithIDChainArray(msgBytes[bufPos:])
 	bufPos += n
 	connectAsChild := msgBytes[bufPos] == 1
