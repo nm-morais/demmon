@@ -13,7 +13,7 @@ func TestSerializePeerWithIDChain(t *testing.T) {
 	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1})
 	chain = append(chain, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
 
-	toSerialize := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 200, 10)
+	toSerialize := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 200, 10, Coordinates{0, 1, 2, 3})
 	PwIDbytes := toSerialize.MarshalWithFields()
 	_, deserialized := UnmarshalPeerWithIdChain(PwIDbytes)
 	t.Logf("%+v,", toSerialize)
@@ -36,11 +36,20 @@ func TestSerializePeerWithIDChain(t *testing.T) {
 
 	}
 
+	for i := 0; i < len(toSerialize.Coordinates); i++ {
+		c1 := toSerialize.Coordinates[i]
+		c2 := deserialized.Coordinates[i]
+		if c1 != c2 {
+			t.FailNow()
+		}
+	}
+
 	if !peer.PeersEqual(toSerialize, deserialized.Peer) {
 		t.FailNow()
 	}
-	t.Logf("before: %+v", toSerialize.version)
-	t.Logf("after: %+v", deserialized.version)
+	t.Logf("before: %+v", toSerialize.Coordinates)
+	t.Logf("after: %+v", deserialized.Coordinates)
+	t.FailNow()
 
 }
 
@@ -50,7 +59,7 @@ func TestIsDescendantOf(t *testing.T) {
 	ascendantChain = append(ascendantChain, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
 
 	descendantChain := append(ascendantChain, PeerID{0, 0, 0, 1, 1, 0, 0, 1})
-	descendent := NewPeerWithIdChain(descendantChain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 200, 10)
+	descendent := NewPeerWithIdChain(descendantChain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 200, 10, Coordinates{})
 
 	if !descendent.IsDescendentOf(ascendantChain) {
 		t.Errorf("%+v is not descendent of %+v", descendantChain, ascendantChain)
@@ -67,8 +76,8 @@ func TestIsEqual(t *testing.T) {
 	chain := PeerIDChain{}
 	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1})
 	chain = append(chain, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
-	peer1 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0)
-	peer2 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0)
+	peer1 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{0, 1})
+	peer2 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{0, 1})
 	if !peer.PeersEqual(peer1, peer2) {
 		t.FailNow()
 	}
@@ -78,4 +87,12 @@ func TestIsEqual(t *testing.T) {
 	if !peer.PeersEqual(peer1, peer2) {
 		t.FailNow()
 	}
+}
+
+func TestEuclideanDist(t *testing.T) {
+	c1 := Coordinates{5, 5}
+	c2 := Coordinates{10, 10}
+
+	dist := EuclideanDist(c1, c2)
+	t.Logf("%f", dist)
 }

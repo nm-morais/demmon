@@ -40,10 +40,10 @@ func TestJoinAsChildMsgReplySerializer(t *testing.T) {
 	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1})
 	chain = append(chain, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
 
-	peer1 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0)
-	peer2 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0)
-	peer3 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0)
-	peer4 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0)
+	peer1 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{0, 2, 0})
+	peer2 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{1, 3, 1})
+	peer3 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{2, 4, 3})
+	peer4 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 5, 5})
 	toSerialize := NewJoinAsChildMessageReply(true, proposedId, 10, peer1, []*PeerWithIdChain{peer2, peer3}, peer4)
 	serializer := joinAsChildMessageReplySerializer
 	msgBytes := serializer.Serialize(toSerialize)
@@ -54,6 +54,8 @@ func TestJoinAsChildMsgReplySerializer(t *testing.T) {
 	if !reflect.DeepEqual(converted, toSerialize) {
 		t.Logf("%+v", converted)
 		t.Logf("%+v", toSerialize)
+		t.Logf("%+v", converted.GrandParent.Coordinates)
+		t.Logf("%+v", toSerialize.GrandParent.Coordinates)
 		t.FailNow()
 	}
 }
@@ -66,28 +68,22 @@ func TestUpdateParentMsgSerializer(t *testing.T) {
 
 	childrenId := PeerID{0, 0, 0, 1, 1, 0, 0, 1}
 
-	grandparent := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0)
-	parent := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0)
+	grandparent := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3})
+	parent := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3})
 
-	peer1 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0)
-	peer2 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0)
-	peer3 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0)
+	peer1 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3})
+	peer2 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3})
+	peer3 := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3})
 
 	siblings := []*PeerWithIdChain{peer1, peer2, peer3}
 
-	toSerialize := NewUpdateParentMessage(grandparent, parent, 10, PeerID{0, 0, 0, 1, 1, 0, 0, 1}, siblings)
+	toSerialize := NewUpdateParentMessage(grandparent, parent, PeerID{0, 0, 0, 1, 1, 0, 0, 1}, siblings)
 	serializer := updateParentMsgSerializer
 	msgBytes := serializer.Serialize(toSerialize)
 	deserialized := serializer.Deserialize(msgBytes)
 
 	msgConverted := deserialized.(updateParentMessage)
 	fmt.Println(msgConverted)
-
-	if msgConverted.ParentLevel != toSerialize.ParentLevel {
-		t.Log("levels do not match")
-		t.FailNow()
-		return
-	}
 
 	if !bytes.Equal(msgConverted.ProposedId[:], childrenId[:]) {
 		t.Log("chains not match")
@@ -122,11 +118,11 @@ func TestAbsorbMessageSerializer(t *testing.T) {
 	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1})
 	chain = append(chain, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
 
-	peer1 := NewMeasuredPeer(NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0), 10)
-	peer2 := NewMeasuredPeer(NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 1000), 10)
-	peer3 := NewMeasuredPeer(NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 3), 10)
+	peer1 := NewMeasuredPeer(NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3}), 10)
+	peer2 := NewMeasuredPeer(NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 1000, Coordinates{3}), 10)
+	peer3 := NewMeasuredPeer(NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 3, Coordinates{3}), 10)
 
-	absorber := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 3)
+	absorber := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 3, Coordinates{3})
 
 	peersToAbsorb := MeasuredPeersByLat{peer1, peer2, peer3}
 
@@ -179,12 +175,12 @@ func TestJoinReplyMsgSerializer(t *testing.T) {
 	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1})
 	chain = append(chain, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
 
-	self := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0)
+	self := NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3})
 
 	children := []*PeerWithIdChain{
-		NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0),
-		NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0),
-		NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0),
+		NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3}),
+		NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3}),
+		NewPeerWithIdChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3}),
 	}
 
 	toSerialize := NewJoinReplyMessage(children, 10, self)

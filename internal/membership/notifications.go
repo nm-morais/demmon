@@ -18,7 +18,23 @@ func (peerMeasuredNotification) ID() notification.ID {
 	return peerMeasuredNotificationID
 }
 
-const peerDownNotificationID = 1001
+const landmarkMeasuredNotificationID = 1001
+
+type landmarkMeasuredNotification struct {
+	landmarkMeasured *PeerWithIdChain
+}
+
+func NewLandmarkMeasuredNotification(p *PeerWithIdChain) landmarkMeasuredNotification {
+	return landmarkMeasuredNotification{
+		landmarkMeasured: p,
+	}
+}
+
+func (landmarkMeasuredNotification) ID() notification.ID {
+	return landmarkMeasuredNotificationID
+}
+
+const peerDownNotificationID = 1002
 
 type peerDownNotification struct {
 	peerDown *PeerWithIdChain

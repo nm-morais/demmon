@@ -188,10 +188,10 @@ const landmarkRedialTimerID = 1008
 
 type landmarkRedialTimer struct {
 	deadline         time.Time
-	LandmarkToRedial peer.Peer
+	LandmarkToRedial *PeerWithIdChain
 }
 
-func NewLandmarkRedialTimer(duration time.Duration, landmark peer.Peer) timer.Timer {
+func NewLandmarkRedialTimer(duration time.Duration, landmark *PeerWithIdChain) timer.Timer {
 	return &landmarkRedialTimer{
 		deadline:         time.Now().Add(duration),
 		LandmarkToRedial: landmark,

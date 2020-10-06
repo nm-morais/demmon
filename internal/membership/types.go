@@ -3,8 +3,11 @@ package membership
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
+	"math"
 	"time"
 
+	"github.com/nm-morais/go-babel/pkg/peer"
 	. "github.com/nm-morais/go-babel/pkg/peer"
 )
 
@@ -12,9 +15,53 @@ const IdSegmentLen = 8
 
 type PeerVersion uint64
 
+type Coordinates []uint64
+
+func EuclideanDist(coords1, coords2 Coordinates) float64 {
+	if len(coords1) != len(coords2) {
+		fmt.Println("coords1", fmt.Sprintf("%+v", coords1))
+		fmt.Println("coords2", fmt.Sprintf("%+v", coords2))
+		panic("Different size coordinates")
+	}
+	var dist float64 = 0
+	for i := 0; i < len(coords1); i++ {
+		dist += math.Pow(float64(coords2[i]-coords1[i]), 2)
+	}
+	return math.Sqrt(dist)
+}
+
+func DeserializeCoordsFromBinary(bytes []byte) (int, Coordinates) {
+	bufPos := 0
+	nrSegments := binary.BigEndian.Uint16(bytes)
+	bufPos += 2
+
+	coords := make(Coordinates, nrSegments)
+	for i := uint16(0); i < nrSegments; i++ {
+		coords[i] = binary.BigEndian.Uint64(bytes[bufPos:])
+		bufPos += 8
+	}
+	return bufPos, coords
+}
+
+func (coords Coordinates) SerializeToBinary() []byte {
+	toReturn := make([]byte, 2+8*len(coords))
+	bufPos := 0
+	binary.BigEndian.PutUint16(toReturn, uint16(len(coords)))
+	bufPos += 2
+	for _, coord := range coords {
+		binary.BigEndian.PutUint64(toReturn[bufPos:], coord)
+		bufPos += 8
+	}
+	return toReturn
+}
+
 type PeerID [IdSegmentLen]byte
 
 type PeerIDChain []PeerID
+
+func (c PeerIDChain) Level() uint16 {
+	return uint16(len(c)) - 1
+}
 
 func (c PeerIDChain) IsDescendentOf(otherPeerChain PeerIDChain) bool {
 	// IsDescendant retuns true if chain <c> is contained in chain <otherPeerChain>
@@ -58,19 +105,28 @@ func (c PeerIDChain) getParentChain() PeerIDChain {
 	return c[len(c)-1:]
 }
 
+func (c PeerIDChain) ID() *PeerID {
+	if len(c) < 1 {
+		return nil
+	}
+	return &c[len(c)-1]
+}
+
 type PeerWithIdChain struct {
+	Coordinates
 	Peer
 	PeerIDChain
 	nChildren uint16
 	version   PeerVersion
 }
 
-func NewPeerWithIdChain(peerIdChain PeerIDChain, self Peer, nChildren uint16, version PeerVersion) *PeerWithIdChain {
+func NewPeerWithIdChain(peerIdChain PeerIDChain, self Peer, nChildren uint16, version PeerVersion, coords Coordinates) *PeerWithIdChain {
 	return &PeerWithIdChain{
 		Peer:        self,
 		version:     version,
 		nChildren:   nChildren,
 		PeerIDChain: peerIdChain,
+		Coordinates: coords,
 	}
 }
 
@@ -114,6 +170,9 @@ func (p *PeerWithIdChain) MarshalWithFields() []byte {
 	chainBytes := SerializePeerIDChain(p.PeerIDChain)
 	nrChildrenBytes = append(nrChildrenBytes, chainBytes...)
 
+	coordBytes := p.Coordinates.SerializeToBinary()
+	nrChildrenBytes = append(nrChildrenBytes, coordBytes...)
+
 	versionBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(versionBytes, uint64(p.Version()))
 	nrChildrenBytes = append(nrChildrenBytes, versionBytes...)
@@ -121,12 +180,22 @@ func (p *PeerWithIdChain) MarshalWithFields() []byte {
 }
 
 func UnmarshalPeerWithIdChain(bytes []byte) (int, *PeerWithIdChain) {
-	nrChildren := binary.BigEndian.Uint16(bytes[0:2])
+	bufPos := 0
+	nrChildren := binary.BigEndian.Uint16(bytes[bufPos:])
+	bufPos += 2
 	p := &IPeer{}
-	nrPeerBytes := p.Unmarshal(bytes[2:])
-	nrChainBytes, peerChain := DeserializePeerIDChain(bytes[nrPeerBytes+2:])
-	version := binary.BigEndian.Uint64(bytes[nrPeerBytes+2+nrChainBytes:])
-	return nrPeerBytes + nrChainBytes + 2 + 8, NewPeerWithIdChain(peerChain, p, nrChildren, PeerVersion(version))
+	n := p.Unmarshal(bytes[bufPos:])
+	bufPos += n
+
+	n, peerChain := DeserializePeerIDChain(bytes[bufPos:])
+	bufPos += n
+
+	n, peerCoords := DeserializeCoordsFromBinary(bytes[bufPos:])
+	bufPos += n
+
+	version := binary.BigEndian.Uint64(bytes[bufPos:])
+	bufPos += 8
+	return bufPos, NewPeerWithIdChain(peerChain, p, nrChildren, PeerVersion(version), peerCoords)
 }
 
 func DeserializePeerWithIDChainArray(buf []byte) (int, []*PeerWithIdChain) {
@@ -248,4 +317,32 @@ func SerializeMeasuredPeerArray(peers []*MeasuredPeer) []byte {
 		totalBytes = append(totalBytes, p.MarshalWithFieldsAndLatency()...)
 	}
 	return totalBytes
+}
+
+func PeerContainedIn(v peer.Peer, arr ...peer.Peer) bool {
+	for _, p := range arr {
+		if peer.PeersEqual(v, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func PeerWithIdChainContainedIn(v peer.Peer, arr ...peer.Peer) bool {
+	for _, p := range arr {
+		if peer.PeersEqual(v, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func TrimMeasuredPeersToSize(arr MeasuredPeersByLat, size int) MeasuredPeersByLat {
+	if len(arr) > size {
+		for i := size; i < len(arr); i++ {
+			arr[i] = nil
+		}
+		arr = arr[:size]
+	}
+	return arr
 }

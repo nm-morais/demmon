@@ -102,7 +102,7 @@ def parse_files(file_paths, output_folder):
                     "pos": [parent_less_nodes, -3],
                     "landmark": landmark
                 }
-                parent_less_nodes += 50
+                parent_less_nodes += 5
             else :
                 nodes[node_ip] = {
                     "node_level": node_level,
@@ -111,7 +111,7 @@ def parse_files(file_paths, output_folder):
                     "landmark": landmark,
                     "pos": [parent_less_nodes, -3],
                 }
-                parent_less_nodes += 50
+                parent_less_nodes += 5
 
     children = {}
     currChildren = {}
@@ -155,15 +155,14 @@ def parse_files(file_paths, output_folder):
             if nodes[node]["parent"] != "":
                 parentId = nodes[node]["parent"]
                 parent = nodes[parentId]
-                curr = currChildren[parentId]
                 try:
+                    curr = currChildren[parentId]
                     parentPos = parent["pos"]
                 except KeyError:
                     parentPos = (parent_less_nodes,-10)
-                    parent_less_nodes += 50
+                    parent_less_nodes += 5
                     print("err: {} has no parent, supposed to be: {}".format(node, parent))
                     print("parent: {}".format(parent))
-
 
                 parent_children = children[parentId]
                 lvl = nodes[node]["node_level"]
@@ -264,7 +263,7 @@ def parse_files(file_paths, output_folder):
     nx.draw_networkx_labels(G, pos, nodeLabels, font_size=6, ax=ax)
     nx.draw_networkx_edges(G, pos, edgelist=parent_edges,
                            edge_color=parent_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, width=4, ax=ax)
-    nx.draw_networkx_edges(G, pos, edgelist=latencyEdges, width=1,
+    nx.draw_networkx_edges(G, pos, style='dashed', edgelist=latencyEdges, width=1,
                            alpha=0.5, edge_color=edge_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, ax=ax)
     nx.draw_networkx_edge_labels(G, pos, latencyEdgeLabels,  label_pos=0.33 , alpha=0.5, font_size=6, ax=ax)
     

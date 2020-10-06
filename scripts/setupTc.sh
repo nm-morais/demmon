@@ -29,22 +29,23 @@ function setuptc {
     cmd="tc qdisc add dev eth0 parent 1:${j}1 netem delay ${n}ms"
     echo "$cmd"
     eval $cmd
-    cmd="tc filter add dev eth0 protocol ip parent 1:0 prio 1 u32 match ip dst $targetIp flowid 1:${j}1"
+    cmd="tc filter add dev eth0 protocol ip parent 1:0 prio 1 u32 match ip dst ${targetIp} flowid 1:${j}1"
     echo "$cmd"
     eval $cmd
     j=$((j+1))
   done
 
-  echo "Set up delays to $j nodes"
+  echo "Set up delays to ${j} nodes"
+  return
 }
 
 i=0
-echo "Setting up tc emulated network for node $idx..."
+echo "Setting up tc emulated network for node ${idx}..."
 while read -r line
 do
   if [ $idx -eq $i ]; then
-    echo "Setting up with line $line"
-    setuptc "$line"
+    echo "Setting up with line ${line}"
+    setuptc "${line}"
     break
   fi
   i=$((i+1))

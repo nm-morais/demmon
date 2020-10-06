@@ -72,9 +72,9 @@ func main() {
 	// NODE WATCHER CONFS
 
 	nodeWatcherConf := pkg.NodeWatcherConf{
-		PrintLatencyToInterval:    2 * time.Second,
+		PrintLatencyToInterval:    5 * time.Second,
 		MaxRedials:                2,
-		HbTickDuration:            1500 * time.Millisecond,
+		HbTickDuration:            1000 * time.Millisecond,
 		NrMessagesWithoutWait:     3,
 		NewLatencyWeight:          0.25,
 		NrTestMessagesToSend:      1,
@@ -99,48 +99,50 @@ func main() {
 	// }
 
 	landmarks := []*membership.PeerWithIdChain{
-		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{12}}, peer.NewPeer(net.IPv4(10, 10, 1, 16), 1200, 1300), 0, 0),
-		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{17}}, peer.NewPeer(net.IPv4(10, 10, 69, 22), 1200, 1300), 0, 0),
-		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 5, 25), 1200, 1300), 0, 0),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{12}}, peer.NewPeer(net.IPv4(10, 10, 1, 16), 1200, 1300), 0, 0, membership.Coordinates{0, 0, 0}),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{17}}, peer.NewPeer(net.IPv4(10, 10, 69, 22), 1200, 1300), 0, 0, membership.Coordinates{0, 0, 0}),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 5, 25), 1200, 1300), 0, 0, membership.Coordinates{0, 0, 0}),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 73, 153), 1200, 1300), 0, 0, membership.Coordinates{0, 0, 0}),
 	}
 
 	// DEMMON TREE CONFS
-
 	demmonTreeConf := membership.DemmonTreeConfig{
 		LandmarkRedialTimer:               1 * time.Second,
 		JoinMessageTimeout:                4 * time.Second,
 		MaxTimeToProgressToNextLevel:      4 * time.Second,
 		MaxRetriesJoinMsg:                 3,
 		Landmarks:                         landmarks,
-		MinGrpSize:                        3,
-		MaxGrpSize:                        6,
-		NrPeersToAbsorb:                   2,
-		NrPeersToConsiderAsParentToAbsorb: 3,
+		MinGrpSize:                        2,
+		MaxGrpSize:                        4,
+		NrPeersToAbsorb:                   1,
+		NrPeersToConsiderAsParentToAbsorb: 4,
 		PhiLevelForNodeDown:               3,
 		SwitchProbability:                 0.5,
 
 		LimitFirstLevelGroupSize:      true,
-		CheckChildenSizeTimerDuration: 10 * time.Second,
+		CheckChildenSizeTimerDuration: 5 * time.Second,
 		ParentRefreshTickDuration:     3 * time.Second,
 		ChildrenRefreshTickDuration:   3 * time.Second,
 		RejoinTimerDuration:           10 * time.Second,
 
-		MinLatencyImprovementToImprovePosition: 25 * time.Millisecond,
-		AttemptImprovePositionProbability:      0.33,
+		MinLatencyImprovementToImprovePosition: 20 * time.Millisecond,
+		AttemptImprovePositionProbability:      0.2,
 		EvalMeasuredPeersRefreshTickDuration:   5 * time.Second,
+
+		EnableSwitch: false,
 
 		EmitWalkProbability:                0.33,
 		BiasedWalkProbability:              0.2,
 		BiasedWalkTTL:                      5,
-		RandomWalkTTL:                      4,
-		EmitWalkTimeout:                    5 * time.Second,
+		RandomWalkTTL:                      6,
+		EmitWalkTimeout:                    8 * time.Second,
 		MaxPeersInEView:                    15,
 		MeasureNewPeersRefreshTickDuration: 7 * time.Second,
-		MeasuredPeersSize:                  10,
+		MeasuredPeersSize:                  5,
 		NrHopsToIgnoreWalk:                 2,
-		NrPeersInWalkMessage:               10,
-		NrPeersToMeasure:                   2,
-		NrPeersToMergeInWalkSample:         4,
+		NrPeersInWalkMessage:               20,
+		NrPeersToMeasure:                   3,
+		NrPeersToMergeInWalkSample:         5,
 
 		CheckSwitchOportunityTimeout:          7500 * time.Millisecond,
 		MinLatencyImprovementPerPeerForSwitch: 10 * time.Millisecond,

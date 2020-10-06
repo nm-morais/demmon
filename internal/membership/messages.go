@@ -104,15 +104,13 @@ type updateParentMessage struct {
 	GrandParent *PeerWithIdChain
 	Parent      *PeerWithIdChain
 	ProposedId  PeerID
-	ParentLevel uint16
 	Siblings    []*PeerWithIdChain
 }
 
-func NewUpdateParentMessage(gparent *PeerWithIdChain, parent *PeerWithIdChain, parentLevel uint16, proposedId PeerID, siblings []*PeerWithIdChain) updateParentMessage {
+func NewUpdateParentMessage(gparent *PeerWithIdChain, parent *PeerWithIdChain, proposedId PeerID, siblings []*PeerWithIdChain) updateParentMessage {
 
 	upMsg := updateParentMessage{
 		Parent:      parent,
-		ParentLevel: parentLevel,
 		ProposedId:  proposedId,
 		Siblings:    siblings,
 		GrandParent: gparent,
@@ -139,8 +137,7 @@ var updateParentMsgSerializer = UpdateParentMsgSerializer{}
 
 func (UpdateParentMsgSerializer) Serialize(msg message.Message) []byte {
 	uPMsg := msg.(updateParentMessage)
-	msgBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(msgBytes, uPMsg.ParentLevel)
+	msgBytes := make([]byte, 0)
 	msgBytes = append(msgBytes, uPMsg.ProposedId[:]...)
 	msgBytes = append(msgBytes, uPMsg.Parent.MarshalWithFields()...)
 	msgBytes = append(msgBytes, SerializePeerWithIDChainArray(uPMsg.Siblings)...)
@@ -155,8 +152,6 @@ func (UpdateParentMsgSerializer) Serialize(msg message.Message) []byte {
 
 func (UpdateParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	bufPos := 0
-	level := binary.BigEndian.Uint16(msgBytes)
-	bufPos += 2
 
 	var proposedId PeerID
 	for i := 0; i < IdSegmentLen; i++ {
@@ -176,7 +171,7 @@ func (UpdateParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 		_, p := UnmarshalPeerWithIdChain(msgBytes[bufPos:])
 		gParentFinal = p
 	}
-	return updateParentMessage{GrandParent: gParentFinal, ParentLevel: level, ProposedId: proposedId, Siblings: siblings, Parent: parent}
+	return updateParentMessage{GrandParent: gParentFinal, ProposedId: proposedId, Siblings: siblings, Parent: parent}
 }
 
 // UPDATE CHILD message
@@ -466,6 +461,14 @@ const absorbMessageID = 1007
 type absorbMessage struct {
 	PeerAbsorber  *PeerWithIdChain
 	PeersToAbsorb []*PeerWithIdChain
+}
+
+func NewAbsorbMessage2(peersToAbsorb []*PeerWithIdChain, peerAbsorber *PeerWithIdChain) absorbMessage {
+
+	return absorbMessage{
+		PeersToAbsorb: peersToAbsorb,
+		PeerAbsorber:  peerAbsorber,
+	}
 }
 
 func NewAbsorbMessage(peersToAbsorb MeasuredPeersByLat, peerAbsorber *PeerWithIdChain) absorbMessage {

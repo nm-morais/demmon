@@ -22,7 +22,7 @@ func getRandSample(nrPeersToSelect int, peers ...*PeerWithIdChain) []*PeerWithId
 	return toReturn
 }
 
-func getPeersExcluding(toFilter []*PeerWithIdChain, exclusions ...*PeerWithIdChain) []*PeerWithIdChain {
+func getPeersExcluding(toFilter []*PeerWithIdChain, exclusions ...peer.Peer) []*PeerWithIdChain {
 	toReturn := make([]*PeerWithIdChain, 0)
 	for _, p := range toFilter {
 		excluded := false
@@ -39,7 +39,7 @@ func getPeersExcluding(toFilter []*PeerWithIdChain, exclusions ...*PeerWithIdCha
 	return toReturn
 }
 
-func getRandomExcluding(toFilter []*PeerWithIdChain, exclusions ...*PeerWithIdChain) *PeerWithIdChain {
+func getRandomExcluding(toFilter []*PeerWithIdChain, exclusions ...peer.Peer) *PeerWithIdChain {
 	filtered := getPeersExcluding(toFilter, exclusions...)
 	filteredLen := len(filtered)
 	if filteredLen == 0 {
@@ -48,7 +48,7 @@ func getRandomExcluding(toFilter []*PeerWithIdChain, exclusions ...*PeerWithIdCh
 	return filtered[rand.Intn(filteredLen)]
 }
 
-func getBiasedPeerExcluding(toFilter []*PeerWithIdChain, biasTowards *PeerWithIdChain, exclusions ...*PeerWithIdChain) *PeerWithIdChain {
+func getBiasedPeerExcluding(toFilter []*PeerWithIdChain, biasTowards *PeerWithIdChain, exclusions ...peer.Peer) *PeerWithIdChain {
 	filtered := getPeersExcluding(toFilter, exclusions...)
 	var minDist int64 = -1
 	var bestPeer *PeerWithIdChain

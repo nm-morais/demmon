@@ -1,7 +1,12 @@
 #!/bin/sh
 
+set -e
 
-chown -R nunomorais:nunomorais /code/logs/
+if [$3 -eq 1]
+then
+    rm -rf /code/logs/*
+fi
+
 
 echo "Bootstraping TC"
 ./setupTc.sh $1 $2 $3
