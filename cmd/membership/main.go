@@ -99,28 +99,31 @@ func main() {
 	// }
 
 	landmarks := []*membership.PeerWithIdChain{
-		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{12}}, peer.NewPeer(net.IPv4(10, 10, 1, 16), 1200, 1300), 0, 0, membership.Coordinates{0, 0, 0}),
-		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{17}}, peer.NewPeer(net.IPv4(10, 10, 69, 22), 1200, 1300), 0, 0, membership.Coordinates{0, 0, 0}),
-		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 5, 25), 1200, 1300), 0, 0, membership.Coordinates{0, 0, 0}),
-		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 73, 153), 1200, 1300), 0, 0, membership.Coordinates{0, 0, 0}),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{12}}, peer.NewPeer(net.IPv4(10, 10, 1, 16), 1200, 1300), 0, 0, nil),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{17}}, peer.NewPeer(net.IPv4(10, 10, 69, 22), 1200, 1300), 0, 0, nil),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 5, 25), 1200, 1300), 0, 0, nil),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 73, 153), 1200, 1300), 0, 0, nil),
 	}
 
+	for _, l := range landmarks {
+		l.SetCoords(make(membership.Coordinates, len(landmarks)))
+	}
 	// DEMMON TREE CONFS
 	demmonTreeConf := membership.DemmonTreeConfig{
-		LandmarkRedialTimer:               1 * time.Second,
-		JoinMessageTimeout:                4 * time.Second,
-		MaxTimeToProgressToNextLevel:      4 * time.Second,
-		MaxRetriesJoinMsg:                 3,
-		Landmarks:                         landmarks,
-		MinGrpSize:                        2,
-		MaxGrpSize:                        4,
-		NrPeersToAbsorb:                   1,
-		NrPeersToConsiderAsParentToAbsorb: 4,
-		PhiLevelForNodeDown:               3,
-		SwitchProbability:                 0.5,
+		LandmarkRedialTimer:           1 * time.Second,
+		JoinMessageTimeout:            4 * time.Second,
+		MaxTimeToProgressToNextLevel:  4 * time.Second,
+		MaxRetriesJoinMsg:             3,
+		Landmarks:                     landmarks,
+		MinGrpSize:                    2,
+		MaxGrpSize:                    9,
+		NrPeersToKickPerParent:        3,
+		NrPeersToBecomeParentInAbsorb: 3,
+		PhiLevelForNodeDown:           3,
+		SwitchProbability:             0.5,
 
 		LimitFirstLevelGroupSize:      true,
-		CheckChildenSizeTimerDuration: 5 * time.Second,
+		CheckChildenSizeTimerDuration: 3 * time.Second,
 		ParentRefreshTickDuration:     3 * time.Second,
 		ChildrenRefreshTickDuration:   3 * time.Second,
 		RejoinTimerDuration:           10 * time.Second,
@@ -151,7 +154,7 @@ func main() {
 	fmt.Println("Self peer: ", protoManagerConf.Peer.String())
 	pkg.InitProtoManager(protoManagerConf)
 	pkg.InitNodeWatcher(nodeWatcherConf)
-	pkg.RegisterProtocol(membership.NewDemmonTree(demmonTreeConf))
+	pkg.RegisterProtocol(membership.New(demmonTreeConf))
 	pkg.RegisterListener(stream.NewTCPListener(&net.TCPAddr{IP: protoManagerConf.Peer.IP(), Port: int(protoManagerConf.Peer.ProtosPort())}))
 	pkg.RegisterListener(stream.NewUDPListener(&net.UDPAddr{IP: protoManagerConf.Peer.IP(), Port: int(protoManagerConf.Peer.ProtosPort())}))
 	pkg.Start()

@@ -47,9 +47,12 @@ def parse_files(file_paths, output_folder):
             if "Dialed parent with success" in line and parent_ip == "" and line != "":
                 if "from not my parent" in line:
                     continue
-                # print(line)
-                parent_name = str(line.split(" ")[-1])[:-2]
-                parent_ip = parent_name.split(":")[0][6:]
+                print(line.split(" "))
+                parent_name = str(line.split(" ")[11])
+                print(parent_name)
+                parent_name = parent_name.split(":")[0]
+                print(parent_name)
+                parent_ip = parent_name[6:]
 
             if "My level" in line and node_level == -1:
                 print(line)

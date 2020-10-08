@@ -49,13 +49,11 @@ const joinReplyMessageID = 1001
 type joinReplyMessage struct {
 	Sender   *PeerWithIdChain
 	Children []*PeerWithIdChain
-	Level    uint16
 }
 
-func NewJoinReplyMessage(children []*PeerWithIdChain, level uint16, sender *PeerWithIdChain) joinReplyMessage {
+func NewJoinReplyMessage(children []*PeerWithIdChain, sender *PeerWithIdChain) joinReplyMessage {
 	return joinReplyMessage{
 		Children: children,
-		Level:    level,
 		Sender:   sender,
 	}
 }
@@ -78,9 +76,7 @@ var joinReplyMsgSerializer = JoinReplyMsgSerializer{}
 
 func (JoinReplyMsgSerializer) Serialize(msg message.Message) []byte {
 	jrMsg := msg.(joinReplyMessage)
-	msgBytes := make([]byte, 2)
-	bufPos := 0
-	binary.BigEndian.PutUint16(msgBytes[bufPos:bufPos+2], jrMsg.Level)
+	msgBytes := []byte{}
 	msgBytes = append(msgBytes, jrMsg.Sender.MarshalWithFields()...)
 	msgBytes = append(msgBytes, SerializePeerWithIDChainArray(jrMsg.Children)...)
 	return msgBytes
@@ -88,12 +84,10 @@ func (JoinReplyMsgSerializer) Serialize(msg message.Message) []byte {
 
 func (JoinReplyMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	bufPos := 0
-	level := binary.BigEndian.Uint16(msgBytes[bufPos : bufPos+2])
-	bufPos += 2
 	n, peer := UnmarshalPeerWithIdChain(msgBytes[bufPos:])
 	bufPos += n
 	_, hosts := DeserializePeerWithIDChainArray(msgBytes[bufPos:])
-	return joinReplyMessage{Children: hosts, Level: level, Sender: peer}
+	return joinReplyMessage{Children: hosts, Sender: peer}
 }
 
 // -------------- Update parent --------------
@@ -459,28 +453,14 @@ func (JoinAsChildMessageReplySerializer) Deserialize(msgBytes []byte) message.Me
 const absorbMessageID = 1007
 
 type absorbMessage struct {
-	PeerAbsorber  *PeerWithIdChain
-	PeersToAbsorb []*PeerWithIdChain
+	PeerAbsorber *PeerWithIdChain
+	PeerToKick   *PeerWithIdChain
 }
 
-func NewAbsorbMessage2(peersToAbsorb []*PeerWithIdChain, peerAbsorber *PeerWithIdChain) absorbMessage {
-
+func NewAbsorbMessage(peerToAbsorb *PeerWithIdChain, peerAbsorber *PeerWithIdChain) absorbMessage {
 	return absorbMessage{
-		PeersToAbsorb: peersToAbsorb,
-		PeerAbsorber:  peerAbsorber,
-	}
-}
-
-func NewAbsorbMessage(peersToAbsorb MeasuredPeersByLat, peerAbsorber *PeerWithIdChain) absorbMessage {
-
-	peersToAbsorbAux := make([]*PeerWithIdChain, 0, len(peersToAbsorb))
-	for _, p := range peersToAbsorb {
-		peersToAbsorbAux = append(peersToAbsorbAux, p.PeerWithIdChain)
-	}
-
-	return absorbMessage{
-		PeersToAbsorb: peersToAbsorbAux,
-		PeerAbsorber:  peerAbsorber,
+		PeerToKick:   peerToAbsorb,
+		PeerAbsorber: peerAbsorber,
 	}
 }
 
@@ -505,14 +485,14 @@ func (AbsorbMessageSerializer) Serialize(msg message.Message) []byte {
 	absMsg := msg.(absorbMessage)
 	msgBytes := []byte{}
 	msgBytes = append(msgBytes, absMsg.PeerAbsorber.MarshalWithFields()...)
-	msgBytes = append(msgBytes, SerializePeerWithIDChainArray(absMsg.PeersToAbsorb)...)
+	msgBytes = append(msgBytes, absMsg.PeerToKick.MarshalWithFields()...)
 	return msgBytes
 }
 
 func (AbsorbMessageSerializer) Deserialize(msgBytes []byte) message.Message {
-	n, p := UnmarshalPeerWithIdChain(msgBytes)
-	_, peers := DeserializePeerWithIDChainArray(msgBytes[n:])
-	return absorbMessage{PeersToAbsorb: peers, PeerAbsorber: p}
+	n, peerAbsorber := UnmarshalPeerWithIdChain(msgBytes)
+	_, peerToKick := UnmarshalPeerWithIdChain(msgBytes[n:])
+	return absorbMessage{PeerToKick: peerToKick, PeerAbsorber: peerAbsorber}
 }
 
 // DISCONNECT AS CHILD message
@@ -589,9 +569,7 @@ func (RandomWalkMessageSerializer) Serialize(msg message.Message) []byte {
 	randomWalk := msg.(randomWalkMessage)
 	binary.BigEndian.PutUint16(ttlBytes[0:2], randomWalk.TTL)
 	msgBytes = ttlBytes
-	if len(randomWalk.Sample) == 0 {
-		panic("sample len is 0")
-	}
+
 	msgBytes = append(msgBytes, SerializePeerWithIDChainArray(randomWalk.Sample)...)
 	msgBytes = append(msgBytes, randomWalk.Sender.MarshalWithFields()...)
 	return msgBytes

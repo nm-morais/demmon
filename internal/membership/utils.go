@@ -72,19 +72,6 @@ func getExcludingDescendantsOf(toFilter []*PeerWithIdChain, ascendantChain PeerI
 	return toReturn
 }
 
-func removeNFromSample(sample []*PeerWithIdChain, nrPeersToRemove int, excludeDescendantsOf PeerIDChain) (remaining, removed []*PeerWithIdChain) {
-	for i := 0; i < nrPeersToRemove && i < len(sample); i++ {
-		peer := sample[i]
-		if !peer.IsDescendentOf(excludeDescendantsOf) {
-			copy(sample[i:], sample[i+1:])
-			sample[len(sample)-1] = nil
-			sample = sample[:len(sample)-1]
-			removed = append(removed, peer)
-		}
-	}
-	return sample, removed
-}
-
 func xorDistance(ip1 net.IP, ip2 net.IP) *big.Int {
 	var rawBytes [32]byte
 	ip1_4 := ip1.To4()

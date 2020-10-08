@@ -44,13 +44,12 @@ func DeserializeCoordsFromBinary(bytes []byte) (int, Coordinates) {
 }
 
 func (coords Coordinates) SerializeToBinary() []byte {
-	toReturn := make([]byte, 2+8*len(coords))
-	bufPos := 0
+	toReturn := make([]byte, 2)
 	binary.BigEndian.PutUint16(toReturn, uint16(len(coords)))
-	bufPos += 2
 	for _, coord := range coords {
-		binary.BigEndian.PutUint64(toReturn[bufPos:], coord)
-		bufPos += 8
+		coordBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(coordBytes, coord)
+		toReturn = append(toReturn, coordBytes...)
 	}
 	return toReturn
 }
@@ -97,14 +96,6 @@ func (c PeerIDChain) IsParentOf(otherPeerChain PeerIDChain) bool {
 	return true
 }
 
-func (c PeerIDChain) getParentChain() PeerIDChain {
-	if len(c) < 1 {
-		return nil
-	}
-
-	return c[len(c)-1:]
-}
-
 func (c PeerIDChain) ID() *PeerID {
 	if len(c) < 1 {
 		return nil
@@ -140,6 +131,14 @@ func (p *PeerWithIdChain) Chain() PeerIDChain {
 
 func (p *PeerWithIdChain) SetChain(newChain PeerIDChain) {
 	p.PeerIDChain = newChain
+}
+
+func (p *PeerWithIdChain) SetCoords(newCoords Coordinates) {
+	p.Coordinates = newCoords
+}
+
+func (p *PeerWithIdChain) StringWithFields() string {
+	return fmt.Sprintf("%s:%+v:%+v:v_%d:c(%d)", p.String(), p.Coordinates, p.PeerIDChain, p.version, p.nChildren)
 }
 
 func (p *PeerWithIdChain) NrChildren() uint16 {

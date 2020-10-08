@@ -8,7 +8,7 @@ plot_filepath = "/Users/nunomorais/go/src/github.com/nm-morais/deMMon/topology_c
 plot_folder = "/Users/nunomorais/go/src/github.com/nm-morais/deMMon/"
 parent_edges="parent_edges.txt"
 latency_edges="config/inet100Latencies_x0.04.txt"
-config_file="config/inet50_coords.txt"
+config_file="config/inet100_coords.txt"
 wait = 3
 # scp dicluster:/home/nunomorais/git/nm-morais/deMMon/parent_edges.txt .
 while True:
