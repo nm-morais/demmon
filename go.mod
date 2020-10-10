@@ -4,8 +4,9 @@ go 1.13
 
 require (
 	github.com/nm-morais/go-babel v1.0.0
-	github.com/sirupsen/logrus v1.6.0
-	golang.org/x/tools v0.0.0-20201008025239-9df69603baec // indirect
+	// github.com/prometheus/tsdb v0.10.0
+	github.com/sirupsen/logrus v1.7.0
+	golang.org/x/tools v0.0.0-20201009162240-fcf82128ed91 // indirect
 )
 
 replace github.com/nm-morais/go-babel => ../go-babel
