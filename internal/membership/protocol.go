@@ -16,7 +16,6 @@ import (
 	"github.com/nm-morais/go-babel/pkg/notification"
 	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/protocol"
-	"github.com/nm-morais/go-babel/pkg/stream"
 	"github.com/nm-morais/go-babel/pkg/timer"
 	"github.com/sirupsen/logrus"
 )
@@ -163,11 +162,11 @@ func (d *DemmonTree) Start() {
 			for _, landmark := range d.config.Landmarks {
 				if !peer.PeersEqual(pkg.SelfPeer(), landmark) {
 					d.mySiblings[landmark.String()] = landmark
-					pkg.Dial(landmark, d.ID(), stream.NewTCPDialer())
+					pkg.Dial(d.ID(), landmark, landmark.ToTCPAddr())
 					pkg.GetNodeWatcher().Watch(landmark, d.ID())
 					c := pkg.Condition{
 						Repeatable:                false,
-						CondFunc:                  func(pkg.NodeInfo) bool { return true },
+						CondFunc:                  func(*pkg.NodeInfo) bool { return true },
 						EvalConditionTickDuration: 1000 * time.Millisecond,
 						Notification:              landmarkMeasuredNotification{landmarkMeasured: landmark},
 						Peer:                      landmark,
@@ -319,7 +318,7 @@ func (d *DemmonTree) handleLandmarkRedialTimer(t timer.Timer) {
 	pkg.GetNodeWatcher().Watch(redialTimer.LandmarkToRedial, d.ID())
 	c := pkg.Condition{
 		Repeatable:                false,
-		CondFunc:                  func(pkg.NodeInfo) bool { return true },
+		CondFunc:                  func(*pkg.NodeInfo) bool { return true },
 		EvalConditionTickDuration: 1000 * time.Millisecond,
 		Notification:              landmarkMeasuredNotification{landmarkMeasured: redialTimer.LandmarkToRedial},
 		Peer:                      redialTimer.LandmarkToRedial,
@@ -327,7 +326,7 @@ func (d *DemmonTree) handleLandmarkRedialTimer(t timer.Timer) {
 		ProtoId:                   d.ID(),
 	}
 	pkg.GetNodeWatcher().NotifyOnCondition(c)
-	pkg.Dial(redialTimer.LandmarkToRedial, d.ID(), stream.NewTCPDialer())
+	pkg.Dial(d.ID(), redialTimer.LandmarkToRedial, redialTimer.LandmarkToRedial.ToTCPAddr())
 }
 
 func (d *DemmonTree) handleRefreshParentTimer(timer timer.Timer) {
@@ -563,7 +562,7 @@ func (d *DemmonTree) handleMeasureNewPeersTimer(measureNewPeersTimer timer.Timer
 		pkg.GetNodeWatcher().Watch(p, d.ID())
 		c := pkg.Condition{
 			Repeatable:                false,
-			CondFunc:                  func(pkg.NodeInfo) bool { return true },
+			CondFunc:                  func(*pkg.NodeInfo) bool { return true },
 			EvalConditionTickDuration: 1000 * time.Millisecond,
 			Notification:              peerMeasuredNotification{peerMeasured: p},
 			Peer:                      p,
@@ -1157,7 +1156,12 @@ func (d *DemmonTree) handleSwitchMessage(sender peer.Peer, m message.Message) {
 	}
 }
 
-func (d *DemmonTree) InConnRequested(p peer.Peer) bool {
+func (d *DemmonTree) InConnRequested(dialerProto protocol.ID, p peer.Peer) bool {
+
+	if dialerProto != d.ID() {
+		d.logger.Infof("Not accepting dial from other proto: %d", dialerProto)
+		return false
+	}
 
 	if d.myParent != nil && peer.PeersEqual(d.myParent, p) {
 		d.logger.Infof("My parent dialed me")
@@ -1183,6 +1187,7 @@ func (d *DemmonTree) InConnRequested(p peer.Peer) bool {
 func (d *DemmonTree) DialSuccess(sourceProto protocol.ID, p peer.Peer) bool {
 
 	if sourceProto != d.ID() {
+		d.logger.Infof("Not accepting dial from other proto: %d", sourceProto)
 		return false
 	}
 
@@ -1555,12 +1560,12 @@ func (d *DemmonTree) sendMessageAndMeasureLatency(toSend message.Message, destPe
 
 func (d *DemmonTree) sendMessageTmpTCPChan(toSend message.Message, destPeer peer.Peer) {
 	// d.logger.Infof("Sending message type %s : %+v to: %s", reflect.TypeOf(toSend), toSend, destPeer.String())
-	pkg.SendMessageSideStream(toSend, destPeer, d.ID(), []protocol.ID{d.ID()}, stream.NewTCPDialer())
+	pkg.SendMessageSideStream(toSend, destPeer, destPeer.ToTCPAddr(), d.ID(), []protocol.ID{d.ID()})
 }
 
 func (d *DemmonTree) sendMessageTmpUDPChan(toSend message.Message, destPeer peer.Peer) {
 	// d.logger.Infof("Sending message type %s : %+v to: %s", reflect.TypeOf(toSend), toSend, destPeer.String())
-	pkg.SendMessageSideStream(toSend, destPeer, d.ID(), []protocol.ID{d.ID()}, stream.NewUDPDialer())
+	pkg.SendMessageSideStream(toSend, destPeer, destPeer.ToUDPAddr(), d.ID(), []protocol.ID{d.ID()})
 }
 
 func (d *DemmonTree) sendMessage(toSend message.Message, destPeer peer.Peer) {
@@ -1862,7 +1867,7 @@ func (d *DemmonTree) isNeighbour(toTest peer.Peer) bool {
 	return false
 }
 
-func (d *DemmonTree) isNodeDown(n pkg.NodeInfo) bool {
+func (d *DemmonTree) isNodeDown(n *pkg.NodeInfo) bool {
 	// d.logger.Infof("Node %s phi: %f", n.Peer, n.Detector.Phi())
 	return !n.Detector.IsAvailable()
 }
@@ -1952,7 +1957,7 @@ func (d *DemmonTree) addParent(newParent *PeerWithIdChain, newGrandParent *PeerW
 	}
 
 	if dialParent {
-		pkg.Dial(newParent, d.ID(), stream.NewTCPDialer())
+		pkg.Dial(d.ID(), newParent, newParent.ToTCPAddr())
 	} else {
 		d.logger.Infof("Dialed parent with success, parent: %s", d.myParent.String()) // just here to visualize
 	}
@@ -1988,7 +1993,7 @@ func (d *DemmonTree) addChild(newChild *PeerWithIdChain, dialChild bool, watchCh
 
 	d.myChildren[newChild.String()] = newChild
 	if dialChild {
-		pkg.Dial(newChild, d.ID(), stream.NewTCPDialer())
+		pkg.Dial(d.ID(), newChild, newChild.ToTCPAddr())
 	}
 	newChild.SetChain(append(d.self.PeerIDChain, proposedId))
 	d.self.SetChildrenNr(uint16(len(d.myChildren)))
@@ -2032,7 +2037,7 @@ func (d *DemmonTree) addSibling(newSibling *PeerWithIdChain, watch bool, dial bo
 		pkg.GetNodeWatcher().NotifyOnCondition(c)
 	}
 	if dial {
-		pkg.Dial(newSibling.Peer, d.ID(), stream.NewTCPDialer())
+		pkg.Dial(d.ID(), newSibling.Peer, newSibling.Peer.ToTCPAddr())
 	}
 	d.removeFromMeasuredPeers(newSibling)
 }

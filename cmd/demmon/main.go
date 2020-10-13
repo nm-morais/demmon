@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-	_ "net/http/pprof"
+	"runtime"
 	"time"
 
+	client "github.com/influxdata/influxdb/client/v2"
 	"github.com/nm-morais/DeMMon/internal/membership"
+	"github.com/nm-morais/DeMMon/internal/monitoring/importer"
+	exporter "github.com/nm-morais/deMMon-exporter"
+	"github.com/nm-morais/deMMon-exporter/types/metrics"
 	"github.com/nm-morais/go-babel/pkg"
 	"github.com/nm-morais/go-babel/pkg/peer"
-	"github.com/nm-morais/go-babel/pkg/stream"
 )
 
 func main() {
@@ -155,8 +158,34 @@ func main() {
 	pkg.InitProtoManager(protoManagerConf)
 	pkg.InitNodeWatcher(nodeWatcherConf)
 	pkg.RegisterProtocol(membership.New(demmonTreeConf))
-	pkg.RegisterListener(stream.NewTCPListener(&net.TCPAddr{IP: protoManagerConf.Peer.IP(), Port: int(protoManagerConf.Peer.ProtosPort())}))
-	pkg.RegisterListener(stream.NewUDPListener(&net.UDPAddr{IP: protoManagerConf.Peer.IP(), Port: int(protoManagerConf.Peer.ProtosPort())}))
+	pkg.RegisterProtocol(importer.New())
+
+	// type ExporterConf struct {
+	// 	ImporterAddr  peer.Peer
+	// 	MaxRedials    int
+	// 	RedialTimeout time.Duration
+	// 	BpConf        influxdb.BatchPointsConfig
+	// }
+
+	exporterConfs := exporter.ExporterConf{
+		ExportFrequency: 5 * time.Second,
+		BpConf:          client.BatchPointsConfig{},
+		ImporterAddr:    protoManagerConf.Peer,
+		MaxRedials:      3,
+		RedialTimeout:   3 * time.Second,
+	}
+
+	e := exporter.New(exporterConfs, map[string]string{"protocol": "babel"})
+	pkg.RegisterProtocol(e.Proto())
+	goroutines := e.NewGauge("goroutine_count")
+	go exportGoroutines(goroutines)
+
+	// exporterConf :=
+	// e := exporter.New()
+
+	// pkg.RegisterProtocol()
+	pkg.RegisterListenAddr(protoManagerConf.Peer.ToTCPAddr())
+	pkg.RegisterListenAddr(protoManagerConf.Peer.ToUDPAddr())
 	pkg.Start()
 }
 
@@ -174,4 +203,10 @@ func GetLocalIP() net.IP {
 		}
 	}
 	panic("no available loopback interfaces")
+}
+
+func exportGoroutines(g metrics.Gauge) {
+	for range time.Tick(time.Second) {
+		g.Set(float64(runtime.NumGoroutine()))
+	}
 }

@@ -50,7 +50,7 @@ func (f *Frontend) DialSuccess(sourceProto protocol.ID, peer peer.Peer) bool {
 	return false
 }
 
-func (f *Frontend) InConnRequested(peer peer.Peer) bool {
+func (f *Frontend) InConnRequested(dialerProto protocol.ID, peer peer.Peer) bool {
 	return false
 }
 
