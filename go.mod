@@ -5,7 +5,7 @@ go 1.13
 require (
 	github.com/influxdata/influxdb v1.8.3
 	github.com/influxdata/influxdb1-client v0.0.0-20200827194710-b269163b24ab
-	github.com/nm-morais/deMMon-exporter v0.0.0-20201012104515-e38f0d5bdeb2
+	github.com/nm-morais/deMMon-exporter v0.0.0-20201012110142-aae71bf50c73
 	github.com/nm-morais/go-babel v1.0.0
 
 	// github.com/prometheus/tsdb v0.10.0

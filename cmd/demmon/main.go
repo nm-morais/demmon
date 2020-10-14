@@ -154,19 +154,6 @@ func main() {
 		MinLatencyImprovementPerPeerForSwitch: 10 * time.Millisecond,
 	}
 
-	fmt.Println("Self peer: ", protoManagerConf.Peer.String())
-	pkg.InitProtoManager(protoManagerConf)
-	pkg.InitNodeWatcher(nodeWatcherConf)
-	pkg.RegisterProtocol(membership.New(demmonTreeConf))
-	pkg.RegisterProtocol(importer.New())
-
-	// type ExporterConf struct {
-	// 	ImporterAddr  peer.Peer
-	// 	MaxRedials    int
-	// 	RedialTimeout time.Duration
-	// 	BpConf        influxdb.BatchPointsConfig
-	// }
-
 	exporterConfs := exporter.ExporterConf{
 		ExportFrequency: 5 * time.Second,
 		BpConf:          client.BatchPointsConfig{},
@@ -175,11 +162,17 @@ func main() {
 		RedialTimeout:   3 * time.Second,
 	}
 
-	e := exporter.New(exporterConfs, map[string]string{"protocol": "babel"})
+	fmt.Println("Self peer: ", protoManagerConf.Peer.String())
+	pkg.InitProtoManager(protoManagerConf)
+	pkg.InitNodeWatcher(nodeWatcherConf)
+
+	e := exporter.New(exporterConfs, map[string]string{"protocol": "demmon"})
 	pkg.RegisterProtocol(e.Proto())
+
+	pkg.RegisterProtocol(membership.New(demmonTreeConf, e))
+	pkg.RegisterProtocol(importer.New())
 	goroutines := e.NewGauge("goroutine_count")
 	go exportGoroutines(goroutines)
-
 	// exporterConf :=
 	// e := exporter.New()
 

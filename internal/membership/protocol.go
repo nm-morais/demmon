@@ -9,6 +9,7 @@ import (
 	"sort"
 	"time"
 
+	exporter "github.com/nm-morais/deMMon-exporter"
 	"github.com/nm-morais/go-babel/pkg"
 	"github.com/nm-morais/go-babel/pkg/errors"
 	"github.com/nm-morais/go-babel/pkg/logs"
@@ -72,6 +73,11 @@ type DemmonTreeConfig = struct {
 	MinLatencyImprovementPerPeerForSwitch time.Duration
 }
 
+type DemmonTreeMetrics struct {
+	peerLatencyGauges     map[string]*exporter.InfluxGauge
+	nrMessagesSentCounter *exporter.InfluxCounter
+}
+
 type DemmonTree struct {
 	logger *logrus.Logger
 	config DemmonTreeConfig
@@ -107,9 +113,11 @@ type DemmonTree struct {
 	eView                        []*PeerWithIdChain
 	myPendingParentInImprovement *MeasuredPeer
 	myPendingParentInAbsorb      *PeerWithIdChain
+
+	metrics DemmonTreeMetrics
 }
 
-func New(config DemmonTreeConfig) protocol.Protocol {
+func New(config DemmonTreeConfig, e *exporter.Exporter) protocol.Protocol {
 	return &DemmonTree{
 
 		logger: logs.NewLogger(protoName),
@@ -138,6 +146,11 @@ func New(config DemmonTreeConfig) protocol.Protocol {
 		measuringPeers:               make(map[string]bool),
 		measuredPeers:                MeasuredPeersByLat{},
 		myPendingParentInImprovement: nil,
+
+		metrics: DemmonTreeMetrics{
+			peerLatencyGauges:     map[string]*exporter.InfluxGauge{},
+			nrMessagesSentCounter: e.NewCounter("messages_sent"),
+		},
 	}
 }
 
@@ -526,6 +539,9 @@ func (d *DemmonTree) handleMeasureNewPeersTimer(measureNewPeersTimer timer.Timer
 		toPrint = toPrint + ";" + peer.StringWithFields()
 		i++
 	}
+	for k := i; k < len(d.eView); k++ {
+		d.eView[k] = nil
+	}
 	d.eView = d.eView[:i]
 	d.logger.Infof("d.eView: %s", toPrint)
 
@@ -719,7 +735,6 @@ func (d *DemmonTree) handleRandomWalkMessage(sender peer.Peer, m message.Message
 		sampleToSend, neighboursWithoutSenderDescendants := d.mergeEViewWith(randWalkMsg.Sample, randWalkMsg.Sender, d.config.NrPeersToMergeInWalkSample)
 		randWalkMsg.TTL--
 		p := getRandomExcluding(neighboursWithoutSenderDescendants, randWalkMsg.Sender, d.self, sender)
-
 		if p == nil {
 			d.logger.Infof("have no peers to forward message... merging and sending random walk reply to %s", randWalkMsg.Sender.String())
 			walkReply := NewWalkReplyMessage(sampleToSend)
@@ -788,11 +803,11 @@ func (d *DemmonTree) handleWalkReplyMessage(sender peer.Peer, m message.Message)
 				continue outer
 			}
 
-			if len(d.eView) == d.config.MaxPeersInEView { // eView is full
+			if len(d.eView) >= d.config.MaxPeersInEView { // eView is full
 				toRemoveIdx := rand.Intn(len(d.eView))
-				d.eView[toRemoveIdx] = sample[i]
+				d.eView[toRemoveIdx] = currPeer
 			} else {
-				d.eView = append(d.eView, sample[i])
+				d.eView = append(d.eView, currPeer)
 			}
 		}
 	}
@@ -1309,6 +1324,7 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer) {
 
 func (d *DemmonTree) MessageDelivered(message message.Message, peer peer.Peer) {
 	// d.logger.Infof("Message %+v delivered to: %s", message, peer.String())
+	d.metrics.nrMessagesSentCounter.Add(1)
 }
 
 func (d *DemmonTree) MessageDeliveryErr(message message.Message, p peer.Peer, error errors.Error) {
@@ -1731,7 +1747,7 @@ func (d *DemmonTree) mergeEViewWith(sample []*PeerWithIdChain, sender *PeerWithI
 			}
 
 			if nrPeersMerged < nrPeersToMerge {
-				if len(d.eView) == d.config.MaxPeersInEView { // eView is full
+				if len(d.eView) >= d.config.MaxPeersInEView { // eView is full
 					toRemoveIdx := rand.Intn(len(d.eView))
 					d.eView[toRemoveIdx] = currPeer
 				} else {
