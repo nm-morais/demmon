@@ -700,11 +700,11 @@ func (d *DemmonTree) handleRandomWalkMessage(sender peer.Peer, m message.Message
 		if p == nil {
 			sampleToSend, _ := d.mergeEViewWith(randWalkMsg.Sample, randWalkMsg.Sender, d.config.NrPeersToMergeInWalkSample)
 			walkReply := NewWalkReplyMessage(sampleToSend)
-			d.logger.Infof("have no peers to forward message... sending random walk reply to %s", randWalkMsg.Sender.String())
+			d.logger.Infof("have no peers to forward message... merging and sending random walk reply to %s", randWalkMsg.Sender.String())
 			d.sendMessageTmpTCPChan(walkReply, randWalkMsg.Sender)
 			return
 		}
-		d.logger.Infof("forwarding random walk message to: %s", p.String())
+		d.logger.Infof("hopsTaken < d.config.NrHopsToIgnoreWalk, simply forwarding random walk message %+v to: %s", randWalkMsg, p.String())
 		d.sendMessage(randWalkMsg, p)
 		return
 	}
@@ -721,12 +721,12 @@ func (d *DemmonTree) handleRandomWalkMessage(sender peer.Peer, m message.Message
 		p := getRandomExcluding(neighboursWithoutSenderDescendants, randWalkMsg.Sender, d.self, sender)
 
 		if p == nil {
-			d.logger.Infof("have no peers to forward message... sending random walk reply to %s", randWalkMsg.Sender.String())
+			d.logger.Infof("have no peers to forward message... merging and sending random walk reply to %s", randWalkMsg.Sender.String())
 			walkReply := NewWalkReplyMessage(sampleToSend)
 			d.sendMessageTmpTCPChan(walkReply, randWalkMsg.Sender)
 			return
 		}
-		d.logger.Infof("forwarding random walk message to: %s", p.String())
+		d.logger.Infof("hopsTaken >= d.config.NrHopsToIgnoreWalk, merging and forwarding random walk message %+v to: %s", randWalkMsg, p.String())
 		randWalkMsg.Sample = sampleToSend
 		d.sendMessage(randWalkMsg, p)
 		return
@@ -1733,9 +1733,9 @@ func (d *DemmonTree) mergeEViewWith(sample []*PeerWithIdChain, sender *PeerWithI
 			if nrPeersMerged < nrPeersToMerge {
 				if len(d.eView) == d.config.MaxPeersInEView { // eView is full
 					toRemoveIdx := rand.Intn(len(d.eView))
-					d.eView[toRemoveIdx] = sample[i]
+					d.eView[toRemoveIdx] = currPeer
 				} else {
-					d.eView = append(d.eView, sample[i])
+					d.eView = append(d.eView, currPeer)
 				}
 				nrPeersMerged++
 			} else {
@@ -1833,7 +1833,7 @@ func (d *DemmonTree) getChildrenAsPeerWithIdChainArray(exclusions ...*PeerWithId
 }
 
 func (d *DemmonTree) getNeighborsAsPeerWithIdChainArray() []*PeerWithIdChain {
-	possibilitiesToSend := make([]*PeerWithIdChain, 0, int(d.self.NrChildren())+len(d.eView)+len(d.mySiblings)+1) // parent and me
+	possibilitiesToSend := make([]*PeerWithIdChain, 0) // parent and me
 	if len(d.self.Chain()) > 0 {
 		for _, child := range d.myChildren {
 			possibilitiesToSend = append(possibilitiesToSend, child)

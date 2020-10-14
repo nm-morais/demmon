@@ -47,17 +47,22 @@ def parse_files(file_paths, output_folder):
             if "Dialed parent with success" in line and parent_ip == "" and line != "":
                 if "from not my parent" in line:
                     continue
-                print(line.split(" "))
-                parent_name = str(line.split(" ")[11])
-                print(parent_name)
+                # print(line)
+
+                # print(line.split(" "))
+                # split = line.split(" ")
+                # for i, s in enumerate(split):
+                    # print(i, s)
+                parent_name = str(line.split(" ")[10])
+                # print(parent_name)
                 parent_name = parent_name.split(":")[0]
-                print(parent_name)
+                # print(parent_name)
                 parent_ip = parent_name[6:]
 
             if "My level" in line and node_level == -1:
-                print(line)
+                # print(line)
                 node_level = int(line.split(" ")[-1][:-2])
-                print(node_level)
+                # print(node_level)
                 if node_level > max_level:
                     max_level = node_level
 
@@ -66,15 +71,18 @@ def parse_files(file_paths, output_folder):
                     continue
 
                 split = line.split(" ")
-                ip_port = str(split[7])[:-1]
+                # print(split)
+
+                ip_port = str(split[6])[:-1]
                 ip = str(ip_port.split(":")[0])[6:]
 
                 # for i, s in enumerate(split):
                 #     print(i, s)
+                # print(ip)
                 
-                latStr = split[14]
-                latStr2 = latStr[:-1]
                 # print(line)
+                latStr = split[13]
+                latStr2 = latStr[:-1]
                 
                 try:
                     added = latencies_added[(node_ip, ip)]

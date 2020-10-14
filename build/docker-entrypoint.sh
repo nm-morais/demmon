@@ -1,6 +1,8 @@
 #!/bin/sh
 
-if [$3 -eq 1]; then
+set -e
+
+if [ $3 -eq 0 ]; then
     rm -rf /code/logs/*
 fi
 
@@ -9,7 +11,6 @@ echo "Bootstraping influxDB"
 
 while true  # infinite loop
 do
-    
     if curl -XPOST  -o /dev/null -s 'http://localhost:8086/query' --data-urlencode 'q=CREATE DATABASE "metrics"'; then
         # curl didn't return 0 - failure
         break # terminate loop

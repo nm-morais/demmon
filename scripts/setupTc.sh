@@ -43,7 +43,7 @@ i=0
 echo "Setting up tc emulated network for node ${idx}..."
 while read -r line
 do
-  if [ $idx -eq $i ]; then
+  if [ $idx == $i ]; then
     echo "Setting up with line ${line}"
     setuptc "${line}"
     break
