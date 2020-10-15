@@ -81,7 +81,7 @@ def parse_files(file_paths, output_folder):
                 # print(ip)
                 
                 # print(line)
-                latStr = split[13]
+                latStr = split[10]
                 latStr2 = latStr[:-1]
                 
                 try:

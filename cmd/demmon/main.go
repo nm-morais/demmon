@@ -8,11 +8,9 @@ import (
 	"runtime"
 	"time"
 
-	client "github.com/influxdata/influxdb/client/v2"
+	"github.com/go-kit/kit/metrics"
 	"github.com/nm-morais/DeMMon/internal/membership"
 	"github.com/nm-morais/DeMMon/internal/monitoring/importer"
-	exporter "github.com/nm-morais/deMMon-exporter"
-	"github.com/nm-morais/deMMon-exporter/types/metrics"
 	"github.com/nm-morais/go-babel/pkg"
 	"github.com/nm-morais/go-babel/pkg/peer"
 )
@@ -102,15 +100,12 @@ func main() {
 	// }
 
 	landmarks := []*membership.PeerWithIdChain{
-		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{12}}, peer.NewPeer(net.IPv4(10, 10, 1, 16), 1200, 1300), 0, 0, nil),
-		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{17}}, peer.NewPeer(net.IPv4(10, 10, 69, 22), 1200, 1300), 0, 0, nil),
-		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 5, 25), 1200, 1300), 0, 0, nil),
-		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 73, 153), 1200, 1300), 0, 0, nil),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{12}}, peer.NewPeer(net.IPv4(10, 10, 1, 16), 1200, 1300), 0, 0, make(membership.Coordinates, 4)),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{17}}, peer.NewPeer(net.IPv4(10, 10, 69, 22), 1200, 1300), 0, 0, make(membership.Coordinates, 4)),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 5, 25), 1200, 1300), 0, 0, make(membership.Coordinates, 4)),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 73, 153), 1200, 1300), 0, 0, make(membership.Coordinates, 4)),
 	}
 
-	for _, l := range landmarks {
-		l.SetCoords(make(membership.Coordinates, len(landmarks)))
-	}
 	// DEMMON TREE CONFS
 	demmonTreeConf := membership.DemmonTreeConfig{
 		LandmarkRedialTimer:           1 * time.Second,
@@ -147,36 +142,34 @@ func main() {
 		MeasuredPeersSize:                  5,
 		NrHopsToIgnoreWalk:                 2,
 		NrPeersInWalkMessage:               20,
-		NrPeersToMeasure:                   3,
+		NrPeersToMeasureBiased:             2,
+		NrPeersToMeasureRandom:             1,
 		NrPeersToMergeInWalkSample:         5,
 
 		CheckSwitchOportunityTimeout:          7500 * time.Millisecond,
 		MinLatencyImprovementPerPeerForSwitch: 10 * time.Millisecond,
 	}
 
-	exporterConfs := exporter.ExporterConf{
-		ExportFrequency: 5 * time.Second,
-		BpConf:          client.BatchPointsConfig{},
-		ImporterAddr:    protoManagerConf.Peer,
-		MaxRedials:      3,
-		RedialTimeout:   3 * time.Second,
-	}
-
 	fmt.Println("Self peer: ", protoManagerConf.Peer.String())
 	pkg.InitProtoManager(protoManagerConf)
 	pkg.InitNodeWatcher(nodeWatcherConf)
 
-	e := exporter.New(exporterConfs, map[string]string{"protocol": "demmon"})
-	pkg.RegisterProtocol(e.Proto())
-
-	pkg.RegisterProtocol(membership.New(demmonTreeConf, e))
 	pkg.RegisterProtocol(importer.New())
-	goroutines := e.NewGauge("goroutine_count")
-	go exportGoroutines(goroutines)
+
+	// exporterConfs := exporter.ExporterConf{
+	// 	ExportFrequency: 5 * time.Second,
+	// 	ImporterAddr:    protoManagerConf.Peer,
+	// 	MaxRedials:      3,
+	// 	RedialTimeout:   3 * time.Second,
+	// }
+
+	// e := exporter.New(exporterConfs, map[string]string{"protocol": "demmon"})
+	// goroutines := e.NewGauge("goroutine_count")
+	// pkg.RegisterProtocol(e.Proto())
+	// go exportGoroutines(goroutines)
 	// exporterConf :=
 	// e := exporter.New()
-
-	// pkg.RegisterProtocol()
+	pkg.RegisterProtocol(membership.New(demmonTreeConf))
 	pkg.RegisterListenAddr(protoManagerConf.Peer.ToTCPAddr())
 	pkg.RegisterListenAddr(protoManagerConf.Peer.ToUDPAddr())
 	pkg.Start()

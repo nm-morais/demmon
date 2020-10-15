@@ -121,20 +121,8 @@ func NewPeerWithIdChain(peerIdChain PeerIDChain, self Peer, nChildren uint16, ve
 	}
 }
 
-func (p *PeerWithIdChain) SetChildrenNr(nChildren uint16) {
-	p.nChildren = nChildren
-}
-
 func (p *PeerWithIdChain) Chain() PeerIDChain {
 	return p.PeerIDChain
-}
-
-func (p *PeerWithIdChain) SetChain(newChain PeerIDChain) {
-	p.PeerIDChain = newChain
-}
-
-func (p *PeerWithIdChain) SetCoords(newCoords Coordinates) {
-	p.Coordinates = newCoords
 }
 
 func (p *PeerWithIdChain) StringWithFields() string {
@@ -149,16 +137,16 @@ func (p *PeerWithIdChain) Version() PeerVersion {
 	return p.version
 }
 
-func (p *PeerWithIdChain) SetVersion(v PeerVersion) {
-	p.version = v
-}
-
 func (p *PeerWithIdChain) IsDescendentOf(otherPeerChain PeerIDChain) bool {
 	return p.PeerIDChain.IsDescendentOf(otherPeerChain)
 }
 
 func (p *PeerWithIdChain) IsParentOf(otherPeer *PeerWithIdChain) bool {
 	return p.PeerIDChain.IsParentOf(otherPeer.PeerIDChain)
+}
+
+func (p *PeerWithIdChain) IsHigherVersionThan(otherPeer *PeerWithIdChain) bool {
+	return p.Version() > otherPeer.Version()
 }
 
 func (p *PeerWithIdChain) MarshalWithFields() []byte {
@@ -212,7 +200,10 @@ func DeserializePeerWithIDChainArray(buf []byte) (int, []*PeerWithIdChain) {
 func SerializePeerWithIDChainArray(peers []*PeerWithIdChain) []byte {
 	totalBytes := make([]byte, 4)
 	binary.BigEndian.PutUint32(totalBytes, uint32(len(peers)))
-	for _, p := range peers {
+	for idx, p := range peers {
+		if p == nil {
+			panic(fmt.Sprintf("peer at index %d is nil", idx))
+		}
 		totalBytes = append(totalBytes, p.MarshalWithFields()...)
 	}
 	return totalBytes
@@ -263,6 +254,14 @@ type MeasuredPeer struct {
 }
 
 type MeasuredPeersByLat []*MeasuredPeer
+
+func (p MeasuredPeersByLat) String() string {
+	toPrint := ""
+	for _, measuredPeer := range p {
+		toPrint = toPrint + "; " + fmt.Sprintf("%s : %s", measuredPeer.String(), measuredPeer.MeasuredLatency)
+	}
+	return toPrint
+}
 
 func (p MeasuredPeersByLat) Len() int {
 	return len(p)

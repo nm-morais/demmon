@@ -32,7 +32,6 @@ func New() protocol.Protocol {
 func (i *Importer) handleMetricsMessage(peer peer.Peer, message message.Message) {
 	metricsMsg := message.(metricMessage)
 	i.logger.Infof("Got metricsMessage %+v", metricsMsg)
-	i.db.AddBatchPoints(metricsMsg.Metrics)
 }
 
 func (i *Importer) MessageDelivered(message message.Message, peer peer.Peer) {

@@ -15,9 +15,9 @@ func getRandSample(nrPeersToSelect int, peers ...*PeerWithIdChain) []*PeerWithId
 		nrPeersToReturn = len(peers)
 	}
 
-	toReturn := make([]*PeerWithIdChain, nrPeersToReturn)
+	toReturn := make([]*PeerWithIdChain, 0)
 	for i := 0; i < len(peers) && i < nrPeersToReturn; i++ {
-		toReturn[i] = peers[i]
+		toReturn = append(toReturn, peers[i])
 	}
 	return toReturn
 }
