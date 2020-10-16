@@ -66,6 +66,7 @@ def parse_files(file_paths, output_folder):
                 if node_level > max_level:
                     max_level = node_level
 
+            print(line)
             if "Latency:" in line and "[NodeWatcher]" in line:
                 if "Lowest Latency Peer" in line:
                     continue
@@ -113,7 +114,7 @@ def parse_files(file_paths, output_folder):
                     "pos": [parent_less_nodes, -3],
                     "landmark": landmark
                 }
-                parent_less_nodes += 5
+                parent_less_nodes += 100
             else :
                 nodes[node_ip] = {
                     "node_level": node_level,
@@ -122,7 +123,7 @@ def parse_files(file_paths, output_folder):
                     "landmark": landmark,
                     "pos": [parent_less_nodes, -3],
                 }
-                parent_less_nodes += 5
+                parent_less_nodes += 100
 
     children = {}
     currChildren = {}
@@ -160,9 +161,7 @@ def parse_files(file_paths, output_folder):
             landmark_list.append(node)
 
         else:
-
             nodeLabels[node] = node
-
             if nodes[node]["parent"] != "":
                 parentId = nodes[node]["parent"]
                 parent = nodes[parentId]
@@ -170,8 +169,9 @@ def parse_files(file_paths, output_folder):
                     curr = currChildren[parentId]
                     parentPos = parent["pos"]
                 except KeyError:
+                    curr = 0
                     parentPos = (parent_less_nodes,-10)
-                    parent_less_nodes += 5
+                    parent_less_nodes += 100
                     print("err: {} has no parent, supposed to be: {}".format(node, parent))
                     print("parent: {}".format(parent))
 

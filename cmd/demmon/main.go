@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-kit/kit/metrics"
 	"github.com/nm-morais/DeMMon/internal/membership"
-	"github.com/nm-morais/DeMMon/internal/monitoring/importer"
 	"github.com/nm-morais/go-babel/pkg"
 	"github.com/nm-morais/go-babel/pkg/peer"
 )
@@ -50,6 +49,10 @@ func main() {
 		analyticsPortVar = rand.Intn(maxAnalyticsPort-minAnalyticsPort) + minAnalyticsPort
 	}
 
+	smConf := pkg.StreamManagerConf{
+		DialTimeout: 3 * time.Second,
+	}
+
 	// PROTO MANAGER CONFS
 
 	protoManagerConf := pkg.ProtocolManagerConfig{
@@ -57,11 +60,10 @@ func main() {
 		Memprofile:       memprofile,
 		LogFolder:        "/code/logs/",
 		HandshakeTimeout: 3 * time.Second,
-		DialTimeout:      3 * time.Second,
 		Peer:             peer.NewPeer(GetLocalIP(), uint16(protosPortVar), uint16(analyticsPortVar)),
 	}
 
-	// protoManagerConf := pkg.ProtocolManagerConfig{
+	// protoManagerConf := protocolManager.ProtocolManagerConfig{
 	// 	Cpuprofile:       cpuprofile,
 	// 	Memprofile:       cpuprofile,
 	// 	LogFolder:        "/tmp/demmon_logs/",
@@ -151,10 +153,8 @@ func main() {
 	}
 
 	fmt.Println("Self peer: ", protoManagerConf.Peer.String())
-	pkg.InitProtoManager(protoManagerConf)
-	pkg.InitNodeWatcher(nodeWatcherConf)
-
-	pkg.RegisterProtocol(importer.New())
+	p := pkg.NewProtoManager(protoManagerConf, smConf)
+	nw := pkg.NewNodeWatcher(nodeWatcherConf, p)
 
 	// exporterConfs := exporter.ExporterConf{
 	// 	ExportFrequency: 5 * time.Second,
@@ -165,14 +165,15 @@ func main() {
 
 	// e := exporter.New(exporterConfs, map[string]string{"protocol": "demmon"})
 	// goroutines := e.NewGauge("goroutine_count")
-	// pkg.RegisterProtocol(e.Proto())
+	// p.RegisterProtocol(e.Proto())
 	// go exportGoroutines(goroutines)
 	// exporterConf :=
 	// e := exporter.New()
-	pkg.RegisterProtocol(membership.New(demmonTreeConf))
-	pkg.RegisterListenAddr(protoManagerConf.Peer.ToTCPAddr())
-	pkg.RegisterListenAddr(protoManagerConf.Peer.ToUDPAddr())
-	pkg.Start()
+	p.RegisterProtocol(membership.New(demmonTreeConf, p, nw))
+	p.RegisterListenAddr(protoManagerConf.Peer.ToTCPAddr())
+	p.RegisterListenAddr(protoManagerConf.Peer.ToUDPAddr())
+	p.RegisterNodeWatcher(nw)
+	p.Start()
 }
 
 func GetLocalIP() net.IP {

@@ -2,12 +2,12 @@ package importer
 
 import (
 	"github.com/nm-morais/DeMMon/internal/monitoring/storage"
-	"github.com/nm-morais/go-babel/pkg"
 	"github.com/nm-morais/go-babel/pkg/errors"
 	"github.com/nm-morais/go-babel/pkg/logs"
 	"github.com/nm-morais/go-babel/pkg/message"
 	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/protocol"
+	"github.com/nm-morais/go-babel/pkg/protocolManager"
 	"github.com/sirupsen/logrus"
 )
 
@@ -20,10 +20,12 @@ const (
 type Importer struct {
 	logger *logrus.Logger
 	db     *storage.TSDB
+	babel  protocolManager.ProtocolManager
 }
 
-func New() protocol.Protocol {
+func New(babel protocolManager.ProtocolManager) protocol.Protocol {
 	return &Importer{
+		babel:  babel,
 		logger: logs.NewLogger(name),
 		db:     storage.New(),
 	}
@@ -53,7 +55,7 @@ func (i *Importer) Logger() *logrus.Logger {
 }
 
 func (i *Importer) Init() {
-	pkg.RegisterMessageHandler(i.ID(), metricMessage{}, i.handleMetricsMessage)
+	i.babel.RegisterMessageHandler(i.ID(), metricMessage{}, i.handleMetricsMessage)
 }
 
 func (i *Importer) Start() {
