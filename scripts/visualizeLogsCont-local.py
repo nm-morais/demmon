@@ -4,8 +4,8 @@ import subprocess
 import time
 import cv2
 
-plot_filepath = "/Users/nunomorais/go/src/github.com/nm-morais/deMMon/topology.png"
-plot_folder = "/Users/nunomorais/go/src/github.com/nm-morais/deMMon/"
+plot_filepath = "/Users/nunomorais/go/src/github.com/nm-morais/demmon/topology.png"
+plot_folder = "/Users/nunomorais/go/src/github.com/nm-morais/demmon/"
 logs_folder="/tmp/demmon_logs"
 wait = 3
 

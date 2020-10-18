@@ -6,5 +6,16 @@ if [ -z $DOCKER_IMAGE ]; then
   exit
 fi
 
+cd ..
+cd go-babel
+./scripts/buildImage.sh
+cd ..
+cd demmon-common
+./scripts/buildImage.sh
+cd ..
+cd demmon-exporter
+./scripts/buildImage.sh
+cd ..
 
+cd demmon
 docker build --build-arg LATENCY_MAP --build-arg IPS_MAP -f build/Dockerfile -t $DOCKER_IMAGE .

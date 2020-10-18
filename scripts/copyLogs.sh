@@ -2,5 +2,5 @@
 set -e
 
 rm -rf logs/
-scp -r dicluster:~/git/nm-morais/deMMon/logs.tar logs.tar
+scp -r dicluster:~/git/nm-morais/demmon/logs.tar logs.tar
 tar -xf logs.tar

@@ -8,8 +8,9 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/go-kit/kit/metrics"
-	"github.com/nm-morais/DeMMon/internal/membership"
+	exporter "github.com/nm-morais/demmon-exporter"
+	"github.com/nm-morais/demmon/internal/membership"
+	"github.com/nm-morais/demmon/internal/monitoring/importer"
 	"github.com/nm-morais/go-babel/pkg"
 	"github.com/nm-morais/go-babel/pkg/peer"
 )
@@ -156,20 +157,21 @@ func main() {
 	p := pkg.NewProtoManager(protoManagerConf, smConf)
 	nw := pkg.NewNodeWatcher(nodeWatcherConf, p)
 
-	// exporterConfs := exporter.ExporterConf{
-	// 	ExportFrequency: 5 * time.Second,
-	// 	ImporterAddr:    protoManagerConf.Peer,
-	// 	MaxRedials:      3,
-	// 	RedialTimeout:   3 * time.Second,
-	// }
+	exporterConfs := exporter.ExporterConf{
+		ExportFrequency: 5 * time.Second,
+		ImporterAddr:    protoManagerConf.Peer,
+		MaxRedials:      3,
+		RedialTimeout:   3 * time.Second,
+	}
 
-	// e := exporter.New(exporterConfs, map[string]string{"protocol": "demmon"})
-	// goroutines := e.NewGauge("goroutine_count")
-	// p.RegisterProtocol(e.Proto())
-	// go exportGoroutines(goroutines)
-	// exporterConf :=
-	// e := exporter.New()
+	e := exporter.New(exporterConfs, p)
+	e.NewGauge("goroutine_count", func() float64 { return float64(runtime.NumGoroutine()) })
+
+	p.RegisterProtocol(e.Proto())
+	p.RegisterProtocol(importer.New(p))
+
 	p.RegisterProtocol(membership.New(demmonTreeConf, p, nw))
+
 	p.RegisterListenAddr(protoManagerConf.Peer.ToTCPAddr())
 	p.RegisterListenAddr(protoManagerConf.Peer.ToUDPAddr())
 	p.RegisterNodeWatcher(nw)
@@ -190,10 +192,4 @@ func GetLocalIP() net.IP {
 		}
 	}
 	panic("no available loopback interfaces")
-}
-
-func exportGoroutines(g metrics.Gauge) {
-	for range time.Tick(time.Second) {
-		g.Set(float64(runtime.NumGoroutine()))
-	}
 }

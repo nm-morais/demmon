@@ -9,5 +9,5 @@ fi
 echo "Bootstraping TC"
 ./setupTc.sh $1 $2 $3
 
-echo "Bootstraping deMMon"
-./go/bin/deMMon -protos 1200 -analytics 1300
+echo "Bootstraping demmon"
+./go/bin/demmon -protos 1200 -analytics 1300

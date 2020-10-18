@@ -1,29 +1,28 @@
 package importer
 
-import (
-	"github.com/nm-morais/go-babel/pkg/message"
-)
-
-// -------------- Metric --------------
+import "github.com/nm-morais/go-babel/pkg/message"
 
 const metricMessageID = 100
 
-type metricMessage struct {
+type MetricsMessage struct {
+	Metrics []byte
 }
 
-func NewMetricMessage(metrics string) metricMessage {
-	return metricMessage{}
+func NewMetricMessage(metrics []byte) MetricsMessage {
+	return MetricsMessage{
+		Metrics: metrics,
+	}
 }
 
-func (metricMessage) Type() message.ID {
+func (MetricsMessage) Type() message.ID {
 	return metricMessageID
 }
 
-func (metricMessage) Serializer() message.Serializer {
+func (MetricsMessage) Serializer() message.Serializer {
 	return metricMsgSerializer
 }
 
-func (metricMessage) Deserializer() message.Deserializer {
+func (MetricsMessage) Deserializer() message.Deserializer {
 	return metricMsgSerializer
 }
 
@@ -33,9 +32,11 @@ type MetricMsgSerializer struct {
 }
 
 func (MetricMsgSerializer) Serialize(m message.Message) []byte { // can be optimized to spend less memory
-	return []byte{}
+	return m.(MetricsMessage).Metrics
 }
 
 func (MetricMsgSerializer) Deserialize(msgBytes []byte) message.Message {
-	return metricMessage{}
+	return MetricsMessage{
+		Metrics: msgBytes,
+	}
 }

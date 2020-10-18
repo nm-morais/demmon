@@ -1,7 +1,7 @@
 package importer
 
 import (
-	"github.com/nm-morais/DeMMon/internal/monitoring/storage"
+	"github.com/nm-morais/demmon/internal/monitoring/storage"
 	"github.com/nm-morais/go-babel/pkg/errors"
 	"github.com/nm-morais/go-babel/pkg/logs"
 	"github.com/nm-morais/go-babel/pkg/message"
@@ -32,8 +32,8 @@ func New(babel protocolManager.ProtocolManager) protocol.Protocol {
 }
 
 func (i *Importer) handleMetricsMessage(peer peer.Peer, message message.Message) {
-	metricsMsg := message.(metricMessage)
-	i.logger.Infof("Got metricsMessage %+v", metricsMsg)
+	metricsMsg := message.(MetricsMessage)
+	i.logger.Infof("Got metricsMessage \n%s", string(metricsMsg.Metrics))
 }
 
 func (i *Importer) MessageDelivered(message message.Message, peer peer.Peer) {
@@ -55,7 +55,7 @@ func (i *Importer) Logger() *logrus.Logger {
 }
 
 func (i *Importer) Init() {
-	i.babel.RegisterMessageHandler(i.ID(), metricMessage{}, i.handleMetricsMessage)
+	i.babel.RegisterMessageHandler(i.ID(), MetricsMessage{}, i.handleMetricsMessage)
 }
 
 func (i *Importer) Start() {

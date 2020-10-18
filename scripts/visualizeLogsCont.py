@@ -5,14 +5,14 @@ import time
 import cv2
 
 
-plot_filepath_remote = "/home/nunomorais/git/nm-morais/deMMon"
-plot_filepath_local = "/Users/nunomorais/go/src/github.com/nm-morais/deMMon/topology.png"
+plot_filepath_remote = "/home/nunomorais/git/nm-morais/demmon"
+plot_filepath_local = "/Users/nunomorais/go/src/github.com/nm-morais/demmon/topology.png"
 logs_folder="/tmp/demmon_logs"
 wait = 3
 
 while True:
   try:
-    subprocess.run(["ssh", "dicluster", "ssh node16 'python3 /home/nunomorais/git/nm-morais/deMMon/scripts/visualizeLogs.py {} {}'".format(logs_folder, plot_filepath_remote)], check=True)
+    subprocess.run(["ssh", "dicluster", "ssh node16 'python3 /home/nunomorais/git/nm-morais/demmon/scripts/visualizeLogs.py {} {}'".format(logs_folder, plot_filepath_remote)], check=True)
   except subprocess.CalledProcessError as e:
     print(e)
 
