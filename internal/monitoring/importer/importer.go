@@ -1,7 +1,6 @@
 package importer
 
 import (
-	"github.com/nm-morais/demmon/internal/monitoring/storage"
 	"github.com/nm-morais/go-babel/pkg/errors"
 	"github.com/nm-morais/go-babel/pkg/logs"
 	"github.com/nm-morais/go-babel/pkg/message"
@@ -12,14 +11,14 @@ import (
 )
 
 const (
-	exporterProtoID = 100
-	importerProtoID = 101
+	exporterProtoID = 1020
+	importerProtoID = 1010
 	name            = "importer"
 )
 
 type Importer struct {
 	logger *logrus.Logger
-	db     *storage.TSDB
+	db     *TSDB
 	babel  protocolManager.ProtocolManager
 }
 
@@ -27,7 +26,7 @@ func New(babel protocolManager.ProtocolManager) protocol.Protocol {
 	return &Importer{
 		babel:  babel,
 		logger: logs.NewLogger(name),
-		db:     storage.New(),
+		db:     NewTSDB(),
 	}
 }
 

@@ -3,6 +3,7 @@ package membership
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -17,17 +18,17 @@ type PeerVersion uint64
 
 type Coordinates []uint64
 
-func EuclideanDist(coords1, coords2 Coordinates) float64 {
+func EuclideanDist(coords1, coords2 Coordinates) (float64, error) {
 	if len(coords1) != len(coords2) {
 		fmt.Println("coords1", fmt.Sprintf("%+v", coords1))
 		fmt.Println("coords2", fmt.Sprintf("%+v", coords2))
-		panic("Different size coordinates")
+		return -1, errors.New("Different size coordinates")
 	}
 	var dist float64 = 0
 	for i := 0; i < len(coords1); i++ {
 		dist += math.Pow(float64(coords2[i]-coords1[i]), 2)
 	}
-	return math.Sqrt(dist)
+	return math.Sqrt(dist), nil
 }
 
 func DeserializeCoordsFromBinary(bytes []byte) (int, Coordinates) {

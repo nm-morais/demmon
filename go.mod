@@ -9,5 +9,7 @@ require (
 )
 
 replace github.com/nm-morais/demmon-exporter => ../demmon-exporter
+
 replace github.com/nm-morais/demmon-common => ../demmon-common
+
 replace github.com/nm-morais/go-babel => ../go-babel

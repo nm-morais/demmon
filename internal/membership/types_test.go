@@ -93,6 +93,10 @@ func TestEuclideanDist(t *testing.T) {
 	c1 := Coordinates{5, 5}
 	c2 := Coordinates{10, 10}
 
-	dist := EuclideanDist(c1, c2)
+	dist, err := EuclideanDist(c1, c2)
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
 	t.Logf("%f", dist)
 }

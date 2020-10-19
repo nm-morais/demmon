@@ -1,64 +1,83 @@
 package frontend
 
 import (
+	"github.com/nm-morais/demmon/internal/membership"
 	"github.com/nm-morais/go-babel/pkg/errors"
-	"github.com/nm-morais/go-babel/pkg/logs"
 	"github.com/nm-morais/go-babel/pkg/message"
+	"github.com/nm-morais/go-babel/pkg/notification"
 	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/protocol"
+	"github.com/nm-morais/go-babel/pkg/protocolManager"
+	"github.com/nm-morais/go-babel/pkg/request"
 	"github.com/sirupsen/logrus"
 )
 
-type Frontend struct {
-	name   string
-	id     protocol.ID
-	logger *logrus.Logger
+type FrontendProto struct {
+	currRequest chan interface{}
+	logger      *logrus.Logger
+	babel       protocolManager.ProtocolManager
+	nodeUps     chan NodeUpdates
+	nodeDowns   chan NodeUpdates
 }
 
-const protoName = "Frontend"
-
-func New() protocol.Protocol {
-	return &Frontend{
-		id:     1001,
-		name:   protoName,
-		logger: logs.NewLogger(protoName),
-	}
+func (f *FrontendProto) ID() protocol.ID {
+	return protoID
 }
 
-func (f *Frontend) ID() protocol.ID {
-	return f.id
+func (f *FrontendProto) Name() string {
+	return name
 }
 
-func (f *Frontend) Name() string {
-	return f.name
-}
-
-func (f *Frontend) Logger() *logrus.Logger {
+func (f *FrontendProto) Logger() *logrus.Logger {
 	return f.logger
 }
 
-func (f *Frontend) Init() {
+func (f *FrontendProto) Init() {
+	f.babel.RegisterRequestReplyHandler(f.ID(), membership.GetNeighboursReqReplyId, f.handleGetInViewReply)
+	f.babel.RegisterNotificationHandler(f.ID(), membership.NodeUpNotification{}, f.handleNodeUp)
+	f.babel.RegisterNotificationHandler(f.ID(), membership.NodeDownNotification{}, f.handleNodeDown)
 }
 
-func (f *Frontend) Start() {
+func (f *FrontendProto) handleGetInViewReply(r request.Reply) {
+	inView := r.(membership.GetNeighboutsReply).InView
+	f.currRequest <- inView
 }
 
-func (f *Frontend) DialFailed(p peer.Peer) {
+func (f *FrontendProto) handleNodeUp(n notification.Notification) {
+	nodeUp := n.(membership.NodeUpNotification)
+	select {
+	case f.nodeUps <- NodeUpdates{Node: nodeUp.PeerUp, View: nodeUp.InView}:
+	default:
+	}
 }
 
-func (f *Frontend) DialSuccess(sourceProto protocol.ID, peer peer.Peer) bool {
+func (f *FrontendProto) handleNodeDown(n notification.Notification) {
+	nodeDown := n.(membership.NodeDownNotification)
+	select {
+	case f.nodeDowns <- NodeUpdates{Node: nodeDown.PeerDown, View: nodeDown.InView}:
+	default:
+	}
+}
+
+func (f *FrontendProto) Start() {
+}
+
+func (f *FrontendProto) MessageDelivered(message message.Message, peer peer.Peer) {
+}
+
+func (f *FrontendProto) MessageDeliveryErr(message message.Message, peer peer.Peer, error errors.Error) {
+}
+
+func (f *FrontendProto) DialFailed(p peer.Peer) {
+}
+
+func (f *FrontendProto) DialSuccess(sourceProto protocol.ID, peer peer.Peer) bool {
 	return false
 }
 
-func (f *Frontend) InConnRequested(dialerProto protocol.ID, peer peer.Peer) bool {
+func (f *FrontendProto) InConnRequested(dialerProto protocol.ID, peer peer.Peer) bool {
 	return false
 }
 
-func (f *Frontend) OutConnDown(peer peer.Peer) {
-}
-
-func (f *Frontend) MessageDelivered(message message.Message, peer peer.Peer) {
-}
-
-func (f *Frontend) MessageDeliveryErr(message message.Message, peer peer.Peer, error errors.Error) {
+func (f *FrontendProto) OutConnDown(peer peer.Peer) {
 }

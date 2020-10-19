@@ -15,3 +15,6 @@ logs/
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
+topology_coords.png
+topology.png
+topology_demmon.png
