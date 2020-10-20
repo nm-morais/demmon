@@ -66,7 +66,7 @@ def parse_files(file_paths, output_folder):
                 if node_level > max_level:
                     max_level = node_level
 
-            print(line)
+            # print(line)
             if "Latency:" in line and "[NodeWatcher]" in line:
                 if "Lowest Latency Peer" in line:
                     continue
@@ -91,8 +91,8 @@ def parse_files(file_paths, output_folder):
                     latencies.append((node_ip, ip, (int(latStr2)/ 1000000)/ 2))
                     latencies_added[(node_ip, ip)] = {}
 
-        print(latencies_added)
-        print(latencies)
+        # print(latencies_added)
+        # print(latencies)
             
         if landmark:
             xPos = landmarks * level_width * 1.85
@@ -251,8 +251,13 @@ def parse_files(file_paths, output_folder):
             parent_colors.append(latencyEdges[p])
             latencyEdgeLabels[p] = latencyEdges[p]
         except KeyError:
-            parent_colors.append(latencyEdges[(p[1], p[0])])
-            latencyEdgeLabels[(p[1], p[0])] = latencyEdges[(p[1], p[0])]
+            try:
+                parent_colors.append(latencyEdges[(p[1], p[0])])
+                latencyEdgeLabels[(p[1], p[0])] = latencyEdges[(p[1], p[0])]
+            except KeyError:
+                parent_colors.append(10000000,10000000)
+                latencyEdgeLabels[(p[1], p[0])] = "missing"
+
 
     #print(parent_colors)
     #print(minLat, maxLat)

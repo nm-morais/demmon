@@ -389,16 +389,21 @@ var joinAsChildMessageReplySerializer = JoinAsChildMessageReplySerializer{}
 
 func (JoinAsChildMessageReplySerializer) Serialize(msg message.Message) []byte {
 	jacMsgR := msg.(joinAsChildMessageReply)
-	if !jacMsgR.Accepted {
-		return []byte{0}
-	}
 	msgBytes := make([]byte, 3)
-	bufPos := 0
-	msgBytes[bufPos] = 1
-	bufPos++
+	if jacMsgR.Accepted {
+		msgBytes[0] = 1
+	} else {
+		msgBytes[0] = 0
+	}
+	bufPos := 1
 	binary.BigEndian.PutUint16(msgBytes[bufPos:], jacMsgR.ParentLevel)
-	msgBytes = append(msgBytes, jacMsgR.ProposedId[:]...)
 	msgBytes = append(msgBytes, jacMsgR.Parent.MarshalWithFields()...)
+
+	if !jacMsgR.Accepted {
+		return msgBytes
+	}
+	msgBytes = append(msgBytes, jacMsgR.ProposedId[:]...)
+
 	msgBytes = append(msgBytes, SerializePeerWithIDChainArray(jacMsgR.Siblings)...)
 	if jacMsgR.GrandParent == nil {
 		msgBytes = append(msgBytes, 0)
@@ -411,20 +416,22 @@ func (JoinAsChildMessageReplySerializer) Serialize(msg message.Message) []byte {
 
 func (JoinAsChildMessageReplySerializer) Deserialize(msgBytes []byte) message.Message {
 	accepted := msgBytes[0] == 1
-	if !accepted {
-		return joinAsChildMessageReply{Accepted: false}
-	}
-
 	bufPos := 1
 	level := binary.BigEndian.Uint16(msgBytes[bufPos:])
 	bufPos += 2
+
+	n, parent := UnmarshalPeerWithIdChain(msgBytes[bufPos:])
+	bufPos += n
+
+	if !accepted {
+		return joinAsChildMessageReply{Accepted: accepted, Parent: parent, ParentLevel: level}
+	}
+
 	var proposedId PeerID
 	for i := 0; i < IdSegmentLen; i++ {
 		proposedId[i] = msgBytes[bufPos]
 		bufPos++
 	}
-	n, parent := UnmarshalPeerWithIdChain(msgBytes[bufPos:])
-	bufPos += n
 	n, siblings := DeserializePeerWithIDChainArray(msgBytes[bufPos:])
 	bufPos += n
 	if msgBytes[bufPos] == 0 {

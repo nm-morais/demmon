@@ -90,10 +90,10 @@ var (
 	}
 
 	landmarks = []*membership.PeerWithIdChain{
-		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{12}}, peer.NewPeer(net.IPv4(10, 10, 1, 16), 1200, 1300), 0, 0, make(membership.Coordinates, 4)),
-		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{17}}, peer.NewPeer(net.IPv4(10, 10, 69, 22), 1200, 1300), 0, 0, make(membership.Coordinates, 4)),
-		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 5, 25), 1200, 1300), 0, 0, make(membership.Coordinates, 4)),
-		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 73, 153), 1200, 1300), 0, 0, make(membership.Coordinates, 4)),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{12}}, peer.NewPeer(net.IPv4(10, 10, 211, 91), 1200, 1300), 0, 0, make(membership.Coordinates, 4)),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{17}}, peer.NewPeer(net.IPv4(10, 10, 50, 133), 1200, 1300), 0, 0, make(membership.Coordinates, 4)),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 29, 25), 1200, 1300), 0, 0, make(membership.Coordinates, 4)),
+		membership.NewPeerWithIdChain(membership.PeerIDChain{membership.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 1, 21), 1200, 1300), 0, 0, make(membership.Coordinates, 4)),
 	}
 
 	smConf = pkg.StreamManagerConf{

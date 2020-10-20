@@ -38,7 +38,7 @@ def read_conf_file(file_path):
         node_id = split[0]
         node_x = split[1]
         node_y = split[2]
-        node_positions[node_id] = (int(node_x), int(node_y))
+        node_positions[node_id] = (float(node_x), float(node_y))
         node_ids.append(node_id)
     return node_positions, node_ids
 

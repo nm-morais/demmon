@@ -7,8 +7,8 @@ import cv2
 plot_filepath = "/Users/nunomorais/go/src/github.com/nm-morais/demmon/topology_coords.png"
 plot_folder = "/Users/nunomorais/go/src/github.com/nm-morais/demmon/"
 parent_edges="parent_edges.txt"
-latency_edges="config/inet100Latencies_x0.04.txt"
-config_file="config/inet100_coords.txt"
+latency_edges="config/akos100_latencies.txt"
+config_file="config/akos100_coords.txt"
 wait = 3
 # scp dicluster:/home/nunomorais/git/nm-morais/demmon/parent_edges.txt .
 while True:
