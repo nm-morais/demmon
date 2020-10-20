@@ -20,7 +20,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const ProtoID = 1000
+const ProtoID = 2000
 const ProtoName = "DemonTree"
 
 type DemmonTreeConfig = struct {

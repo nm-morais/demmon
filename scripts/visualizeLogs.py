@@ -255,7 +255,7 @@ def parse_files(file_paths, output_folder):
                 parent_colors.append(latencyEdges[(p[1], p[0])])
                 latencyEdgeLabels[(p[1], p[0])] = latencyEdges[(p[1], p[0])]
             except KeyError:
-                parent_colors.append(10000000,10000000)
+                parent_colors.append(1000000000)
                 latencyEdgeLabels[(p[1], p[0])] = "missing"
 
 

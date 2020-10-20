@@ -65,6 +65,7 @@ func Repl(frontend *frontend.Frontend) {
 		switch op {
 
 		case metricsOp:
+			fmt.Fprintf(f, "%+v\n", frontend.GetActiveMetrics())
 
 		case inViewOp:
 			fmt.Fprintf(f, "%+v\n", frontend.GetInView())

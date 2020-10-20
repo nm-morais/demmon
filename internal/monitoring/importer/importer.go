@@ -7,12 +7,13 @@ import (
 	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/protocol"
 	"github.com/nm-morais/go-babel/pkg/protocolManager"
+	"github.com/nm-morais/go-babel/pkg/request"
 	"github.com/sirupsen/logrus"
 )
 
 const (
-	exporterProtoID = 1020
-	importerProtoID = 1010
+	ExporterProtoID = 3000
+	ImporterProtoID = 4000
 	name            = "importer"
 )
 
@@ -33,6 +34,19 @@ func New(babel protocolManager.ProtocolManager) protocol.Protocol {
 func (i *Importer) handleMetricsMessage(peer peer.Peer, message message.Message) {
 	metricsMsg := message.(MetricsMessage)
 	i.logger.Infof("Got metricsMessage \n%s", string(metricsMsg.Metrics))
+	err := i.db.AddMetricBlob(metricsMsg.Metrics)
+	if err != nil {
+		i.logger.Errorf("Got error parsing metrics: %s", err.Reason())
+	}
+	i.logger.Info("Added metrics successfully")
+}
+
+func (i *Importer) handleGetMetricsRequest(req request.Request) request.Reply {
+	mapCopy := make(map[string]float64, len(i.db.metricValues))
+	for metricId, metric := range i.db.metricValues {
+		mapCopy[metricId] = metric
+	}
+	return NewGetMetricsReqReply(mapCopy)
 }
 
 func (i *Importer) MessageDelivered(message message.Message, peer peer.Peer) {
@@ -42,7 +56,7 @@ func (i *Importer) MessageDeliveryErr(message message.Message, peer peer.Peer, e
 }
 
 func (i *Importer) ID() protocol.ID {
-	return importerProtoID
+	return ImporterProtoID
 }
 
 func (i *Importer) Name() string {
@@ -55,6 +69,7 @@ func (i *Importer) Logger() *logrus.Logger {
 
 func (i *Importer) Init() {
 	i.babel.RegisterMessageHandler(i.ID(), MetricsMessage{}, i.handleMetricsMessage)
+	i.babel.RegisterRequestHandler(i.ID(), GetMetricsReqId, i.handleGetMetricsRequest)
 }
 
 func (i *Importer) Start() {
@@ -68,7 +83,7 @@ func (i *Importer) DialSuccess(sourceProto protocol.ID, peer peer.Peer) bool {
 }
 
 func (i *Importer) InConnRequested(dialerProto protocol.ID, peer peer.Peer) bool {
-	return dialerProto == exporterProtoID
+	return dialerProto == ExporterProtoID
 }
 
 func (i *Importer) OutConnDown(peer peer.Peer) {

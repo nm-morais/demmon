@@ -1,10 +1,15 @@
 package importer
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/nm-morais/go-babel/pkg/errors"
 )
+
+const tsdb = "tsdb"
 
 type TSDB struct {
 	mux          *sync.RWMutex
@@ -28,30 +33,29 @@ func (db *TSDB) GetActiveMetrics(metricName string) []string {
 	return metricNames
 }
 
-func (db *TSDB) ParseMetrics(metrics []byte) {
+func (db *TSDB) AddMetricBlob(metrics []byte) errors.Error {
 	metricsStr := string(metrics)
 	lines := strings.Split(metricsStr, `\n`)
-	for _, line := range lines {
+	for lineNr, line := range lines {
+		line = strings.TrimSpace(line)
 		lineSplit := strings.Split(line, ` `)
-		var metricName, metricValStr string
-
-		if len(lineSplit) <= 1 {
-			continue
+		if len(lineSplit) != 2 {
+			return errors.NonFatalError(500, fmt.Sprintf("Invalid metric in line %d (%s)", lineNr, line), tsdb)
 		}
 
-		metricName = lineSplit[0]
-		metricValStr = lineSplit[1]
+		metricName := lineSplit[0]
+		metricValStr := lineSplit[1]
 		metricVal, err := strconv.ParseFloat(metricValStr, 32)
 		if err != nil {
-			continue
+			return errors.NonFatalError(500, err.Error(), tsdb)
 		}
 		db.AddMetric(metricName, metricVal)
 	}
+	return nil
 }
 
 func (db *TSDB) AddMetric(name string, value float64) { // TODO batch
 	db.mux.Lock()
 	defer db.mux.Unlock()
 	db.metricValues[name] = value
-
 }

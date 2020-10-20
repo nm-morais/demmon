@@ -13,7 +13,7 @@ COPY --from=nmmorais/demmon-exporter:latest /src/github.com/nm-morais/demmon-exp
 RUN go get -d -v ./...
 
 #build
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -race -ldflags="-w -s" -o /go/bin/demmon cmd/demmon/*
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /go/bin/demmon cmd/demmon/*
 
 # EXECUTABLE IMG
 FROM alpine:edge as demmon

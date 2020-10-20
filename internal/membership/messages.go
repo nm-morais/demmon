@@ -9,7 +9,7 @@ import (
 
 // -------------- Join --------------
 
-const joinMessageID = 1000
+const joinMessageID = 2000
 
 type joinMessage struct {
 }
@@ -44,7 +44,7 @@ func (JoinMsgSerializer) Deserialize(_ []byte) message.Message {
 
 // -------------- Join Reply --------------
 
-const joinReplyMessageID = 1001
+const joinReplyMessageID = 2001
 
 type joinReplyMessage struct {
 	Sender   *PeerWithIdChain
@@ -92,7 +92,7 @@ func (JoinReplyMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 
 // -------------- Update parent --------------
 
-const updateParentMessageID = 1002
+const updateParentMessageID = 2002
 
 type updateParentMessage struct {
 	GrandParent *PeerWithIdChain
@@ -177,7 +177,7 @@ type updateChildMessage struct {
 
 type updateChildMessageSerializer struct{}
 
-const updateChildMessageID = 1003
+const updateChildMessageID = 2003
 
 func (updateChildMessage) Type() message.ID {
 	return updateChildMessageID
@@ -222,7 +222,7 @@ var updateChildMsgSerializer = updateChildMessageSerializer{}
 
 // -------------- JoinAsParent --------------
 
-const joinAsParentMessageID = 1004
+const joinAsParentMessageID = 2004
 
 type joinAsParentMessage struct {
 	ExpectedId PeerIDChain
@@ -286,7 +286,7 @@ func (JoinAsParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 
 // -------------- Join As Child --------------
 
-const joinAsChildMessageID = 1005
+const joinAsChildMessageID = 2005
 
 type joinAsChildMessage struct {
 	Urgent          bool
@@ -348,7 +348,7 @@ func (JoinAsChildMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	return joinAsChildMessage{MeasuredLatency: measuredLatency, ExpectedId: peerIdChain, Urgent: urgent, Sender: sender}
 }
 
-const joinAsChildMessageReplyID = 1006
+const joinAsChildMessageReplyID = 2006
 
 type joinAsChildMessageReply struct {
 	ParentLevel uint16
@@ -457,7 +457,7 @@ func (JoinAsChildMessageReplySerializer) Deserialize(msgBytes []byte) message.Me
 
 // ABSORB message
 
-const absorbMessageID = 1007
+const absorbMessageID = 2007
 
 type absorbMessage struct {
 	PeerAbsorber *PeerWithIdChain
@@ -504,7 +504,7 @@ func (AbsorbMessageSerializer) Deserialize(msgBytes []byte) message.Message {
 
 // DISCONNECT AS CHILD message
 
-const disconnectAsChildMessageID = 1008
+const disconnectAsChildMessageID = 2008
 
 func NewDisconnectAsChildMessage() disconnectAsChildMessage {
 	return disconnectAsChildMessage{}
@@ -538,7 +538,7 @@ func (DisconnectAsChildMsgSerializer) Deserialize(msgBytes []byte) message.Messa
 
 // Random walk
 
-const randomWalkMessageID = 1009
+const randomWalkMessageID = 2009
 
 func NewRandomWalkMessage(ttl uint16, sender *PeerWithIdChain, sample []*PeerWithIdChain) randomWalkMessage {
 	return randomWalkMessage{

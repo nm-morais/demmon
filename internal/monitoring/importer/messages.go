@@ -2,7 +2,7 @@ package importer
 
 import "github.com/nm-morais/go-babel/pkg/message"
 
-const metricMessageID = 100
+const metricMessageID = 3000
 
 type MetricsMessage struct {
 	Metrics []byte

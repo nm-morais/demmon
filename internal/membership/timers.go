@@ -7,7 +7,7 @@ import (
 	"github.com/nm-morais/go-babel/pkg/timer"
 )
 
-const joinTimerID = 1000
+const joinTimerID = 2000
 
 type joinTimer struct {
 	deadline time.Time
@@ -27,7 +27,7 @@ func (t *joinTimer) Deadline() time.Time {
 	return t.deadline
 }
 
-const peerJoinMessageResponseTimeoutID = 1001
+const peerJoinMessageResponseTimeoutID = 2001
 
 type peerJoinMessageResponseTimeout struct {
 	deadline time.Time
@@ -52,7 +52,7 @@ func (t *peerJoinMessageResponseTimeout) Deadline() time.Time {
 // ---------------- parentRefreshTimer ----------------
 // This timer represents a timer to send a message to the children of a node, informing them about the parent and the grandparent
 
-const parentRefreshTimerID = 1002
+const parentRefreshTimerID = 2002
 
 type parentRefreshTimer struct {
 	deadline time.Time
@@ -74,7 +74,7 @@ func (t *parentRefreshTimer) Deadline() time.Time {
 
 // ---------------- childRefreshTimer ----------------
 
-const updateChildTimerID = 1003
+const updateChildTimerID = 2003
 
 type updateChildTimer struct {
 	deadline time.Time
@@ -96,7 +96,7 @@ func (t *updateChildTimer) Deadline() time.Time {
 
 // ---------------- checkChidrenSizeTimer ----------------
 
-const checkChidrenSizeTimerID = 1004
+const checkChidrenSizeTimerID = 2004
 
 type checkChidrenSizeTimer struct {
 	deadline time.Time
@@ -118,7 +118,7 @@ func (t *checkChidrenSizeTimer) Deadline() time.Time {
 
 // ---------------- externalNeighboringTimer ----------------
 
-const externalNeighboringTimerID = 1005
+const externalNeighboringTimerID = 2005
 
 type externalNeighboringTimer struct {
 	deadline time.Time
@@ -140,7 +140,7 @@ func (t *externalNeighboringTimer) Deadline() time.Time {
 
 // measureNewPeersTimer
 
-const measureNewPeersTimerID = 1006
+const measureNewPeersTimerID = 2006
 
 type measureNewPeersTimer struct {
 	deadline time.Time
@@ -162,7 +162,7 @@ func (t *measureNewPeersTimer) Deadline() time.Time {
 
 // eval measured peers
 
-const evalMeasuredPeersTimerID = 1007
+const evalMeasuredPeersTimerID = 2007
 
 type evalMeasuredPeersTimer struct {
 	deadline time.Time
@@ -184,7 +184,7 @@ func (t *evalMeasuredPeersTimer) Deadline() time.Time {
 
 // landmark redial
 
-const landmarkRedialTimerID = 1008
+const landmarkRedialTimerID = 2008
 
 type landmarkRedialTimer struct {
 	deadline         time.Time
@@ -208,7 +208,7 @@ func (t *landmarkRedialTimer) Deadline() time.Time {
 
 // switch
 
-const switchTimerID = 1009
+const switchTimerID = 2009
 
 type switchTimer struct {
 	deadline time.Time
@@ -230,7 +230,7 @@ func (t *switchTimer) Deadline() time.Time {
 
 // debugTimer
 
-const debugTimerID = 1010
+const debugTimerID = 2010
 
 type debugTimer struct {
 	deadline time.Time

@@ -8,7 +8,7 @@ import (
 type GetNeighboursReq struct {
 }
 
-const GetNeighboursReqId = 100
+const GetNeighboursReqId = 2000
 
 func (r GetNeighboursReq) ID() protocol.ID {
 	return GetNeighboursReqId
@@ -18,7 +18,7 @@ func NewGetNeighboursReq() request.Request {
 	return GetNeighboursReq{}
 }
 
-const GetNeighboursReqReplyId = 101
+const GetNeighboursReqReplyId = 2001
 
 type GetNeighboutsReply struct {
 	InView []*PeerWithIdChain

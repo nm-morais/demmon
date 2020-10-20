@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"github.com/nm-morais/demmon/internal/membership"
+	"github.com/nm-morais/demmon/internal/monitoring/importer"
 	"github.com/nm-morais/go-babel/pkg/errors"
 	"github.com/nm-morais/go-babel/pkg/message"
 	"github.com/nm-morais/go-babel/pkg/notification"
@@ -33,6 +34,7 @@ func (f *FrontendProto) Logger() *logrus.Logger {
 }
 
 func (f *FrontendProto) Init() {
+	f.babel.RegisterRequestReplyHandler(f.ID(), importer.GetMetricsReqReplyId, f.handleGetMetricsReply)
 	f.babel.RegisterRequestReplyHandler(f.ID(), membership.GetNeighboursReqReplyId, f.handleGetInViewReply)
 	f.babel.RegisterNotificationHandler(f.ID(), membership.NodeUpNotification{}, f.handleNodeUp)
 	f.babel.RegisterNotificationHandler(f.ID(), membership.NodeDownNotification{}, f.handleNodeDown)
@@ -41,6 +43,11 @@ func (f *FrontendProto) Init() {
 func (f *FrontendProto) handleGetInViewReply(r request.Reply) {
 	inView := r.(membership.GetNeighboutsReply).InView
 	f.currRequest <- inView
+}
+
+func (f *FrontendProto) handleGetMetricsReply(r request.Reply) {
+	metrics := r.(importer.GetMetricsReqReply).Metrics
+	f.currRequest <- metrics
 }
 
 func (f *FrontendProto) handleNodeUp(n notification.Notification) {

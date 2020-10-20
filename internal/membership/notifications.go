@@ -2,7 +2,7 @@ package membership
 
 import "github.com/nm-morais/go-babel/pkg/notification"
 
-const peerMeasuredNotificationID = 1000
+const peerMeasuredNotificationID = 2000
 
 type peerMeasuredNotification struct {
 	peerMeasured *PeerWithIdChain
@@ -18,7 +18,7 @@ func (peerMeasuredNotification) ID() notification.ID {
 	return peerMeasuredNotificationID
 }
 
-const landmarkMeasuredNotificationID = 1001
+const landmarkMeasuredNotificationID = 2001
 
 type landmarkMeasuredNotification struct {
 	landmarkMeasured *PeerWithIdChain
@@ -34,7 +34,7 @@ func (landmarkMeasuredNotification) ID() notification.ID {
 	return landmarkMeasuredNotificationID
 }
 
-const suspectNotificationID = 1002
+const suspectNotificationID = 2002
 
 type suspectNotification struct {
 	peerDown *PeerWithIdChain
@@ -50,7 +50,7 @@ func (suspectNotification) ID() notification.ID {
 	return suspectNotificationID
 }
 
-const NodeUpNotificationID = 1003
+const NodeUpNotificationID = 2003
 
 type NodeUpNotification struct {
 	InView []*PeerWithIdChain
@@ -68,7 +68,7 @@ func (NodeUpNotification) ID() notification.ID {
 	return NodeUpNotificationID
 }
 
-const NodeDownNotificationID = 1004
+const NodeDownNotificationID = 2004
 
 type NodeDownNotification struct {
 	InView   []*PeerWithIdChain
