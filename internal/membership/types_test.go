@@ -84,7 +84,7 @@ func TestIsEqual(t *testing.T) {
 
 	peer1 = nil
 	peer2 = nil
-	if !peer.PeersEqual(peer1, peer2) {
+	if peer.PeersEqual(peer1, peer2) {
 		t.FailNow()
 	}
 }

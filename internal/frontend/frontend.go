@@ -4,6 +4,8 @@ import (
 	"github.com/nm-morais/demmon/internal/membership"
 	"github.com/nm-morais/demmon/internal/monitoring/importer"
 	"github.com/nm-morais/go-babel/pkg/logs"
+	"github.com/nm-morais/go-babel/pkg/message"
+	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/protocolManager"
 )
 
@@ -51,14 +53,45 @@ func (f *Frontend) GetInView() []*membership.PeerWithIdChain {
 	return ans.([]*membership.PeerWithIdChain)
 }
 
+func (f *Frontend) GetPeerNotificationChans() (nodeUps, nodeDowns chan NodeUpdates) {
+	return f.nodeUps, f.nodeDowns
+}
+
 func (f *Frontend) GetActiveMetrics() map[string]float64 {
 	f.babel.SendRequest(importer.NewGetMetricsReq(), f.proto.ID(), importer.ImporterProtoID)
 	ans := <-f.currRequest
 	return ans.(map[string]float64)
 }
 
-func (f *Frontend) GetPeerNotificationChans() (nodeUps, nodeDowns chan NodeUpdates) {
-	return f.nodeUps, f.nodeDowns
+func (f *Frontend) IsMetricActive(string) bool {
+	return false
+}
+
+func (f *Frontend) BroadcastMessage(msg message.Message, nrHops int) {
+
+}
+
+func (f *Frontend) RegisterBroadcastMessageHandler(msgId message.ID, handler func(message.Message)) {
+
+}
+
+func (f *Frontend) QueryLocalMetric(metricName string, expression string) float64 {
+	return 0
+}
+
+func (f *Frontend) InstallLocalAggregationFunction(sourceMetricName, resultingMetricName, timeFrame, expression string) { // TODO queries
+}
+
+func (f *Frontend) QueryPeerMetric(peer peer.Peer, metricName, expression string) float64 {
+	return 0
+}
+
+func (f *Frontend) SubscribeToPeerMetric(peer peer.Peer, destMetricName, peerMetricName, timeFrame string) {
+
+}
+
+func (f *Frontend) InstallTreeAggregationFunction(nrHops int, sourceMetricName, resultingMetricName, timeFrame, expression string) { // TODO queries
+
 }
 
 // func (f *Frontend) GetMetrics() []string {

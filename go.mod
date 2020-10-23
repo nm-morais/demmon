@@ -3,6 +3,8 @@ module github.com/nm-morais/demmon
 go 1.15
 
 require (
+	github.com/Knetic/govaluate v3.0.0+incompatible
+	github.com/benbjohnson/clock v1.0.3
 	github.com/nm-morais/demmon-exporter v1.0.2
 	github.com/nm-morais/go-babel v1.0.0
 	github.com/sirupsen/logrus v1.7.0

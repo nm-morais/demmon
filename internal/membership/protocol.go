@@ -1106,6 +1106,7 @@ func (d *DemmonTree) DialSuccess(sourceProto protocol.ID, p peer.Peer) bool {
 	if d.landmark {
 		for _, l := range d.config.Landmarks {
 			if peer.PeersEqual(l, p) {
+				d.babel.SendNotification(NewNodeUpNotification(l, d.getNeighborsAsPeerWithIdChainArray()))
 				return true
 			}
 		}

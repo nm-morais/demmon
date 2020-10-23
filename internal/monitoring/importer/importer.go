@@ -1,6 +1,7 @@
 package importer
 
 import (
+	tsdb "github.com/nm-morais/demmon/internal/monitoring/TSDB"
 	"github.com/nm-morais/go-babel/pkg/errors"
 	"github.com/nm-morais/go-babel/pkg/logs"
 	"github.com/nm-morais/go-babel/pkg/message"
@@ -19,7 +20,7 @@ const (
 
 type Importer struct {
 	logger *logrus.Logger
-	db     *TSDB
+	db     *tsdb.TSDB
 	babel  protocolManager.ProtocolManager
 }
 
@@ -27,7 +28,7 @@ func New(babel protocolManager.ProtocolManager) protocol.Protocol {
 	return &Importer{
 		babel:  babel,
 		logger: logs.NewLogger(name),
-		db:     NewTSDB(),
+		db:     tsdb.NewTSDB(),
 	}
 }
 
@@ -36,17 +37,17 @@ func (i *Importer) handleMetricsMessage(peer peer.Peer, message message.Message)
 	i.logger.Infof("Got metricsMessage \n%s", string(metricsMsg.Metrics))
 	err := i.db.AddMetricBlob(metricsMsg.Metrics)
 	if err != nil {
-		i.logger.Errorf("Got error parsing metrics: %s", err.Reason())
+		i.logger.Errorf("Got error parsing metrics: %s", err)
 	}
 	i.logger.Info("Added metrics successfully")
 }
 
 func (i *Importer) handleGetMetricsRequest(req request.Request) request.Reply {
-	mapCopy := make(map[string]float64, len(i.db.metricValues))
-	for metricId, metric := range i.db.metricValues {
-		mapCopy[metricId] = metric
-	}
-	return NewGetMetricsReqReply(mapCopy)
+	// mapCopy := make(map[string]float64, len(i.db.metricValues))
+	// for metricId, metric := range i.db.metricValues {
+	// 	mapCopy[metricId] = metric
+	// }
+	return NewGetMetricsReqReply(i.db.GetActiveMetrics())
 }
 
 func (i *Importer) MessageDelivered(message message.Message, peer peer.Peer) {

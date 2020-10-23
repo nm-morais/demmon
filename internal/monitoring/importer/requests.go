@@ -19,7 +19,7 @@ func NewGetMetricsReq() request.Request {
 }
 
 type GetMetricsReqReply struct {
-	Metrics map[string]float64
+	Metrics []string
 }
 
 const GetMetricsReqReplyId = 3000
@@ -28,6 +28,33 @@ func (r GetMetricsReqReply) ID() protocol.ID {
 	return GetMetricsReqReplyId
 }
 
-func NewGetMetricsReqReply(metrics map[string]float64) request.Request {
+func NewGetMetricsReqReply(metrics []string) request.Request {
 	return GetMetricsReqReply{Metrics: metrics}
+}
+
+type IsMetricActive struct {
+}
+
+const IsMetricActiveId = 3001
+
+func (r IsMetricActive) ID() protocol.ID {
+	return IsMetricActiveId
+}
+
+func NewIsMetricActive() request.Request {
+	return IsMetricActive{}
+}
+
+type IsMetricActiveReply struct {
+	Active bool
+}
+
+const IsMetricActiveReplyId = 3001
+
+func (r IsMetricActiveReply) ID() protocol.ID {
+	return IsMetricActiveReplyId
+}
+
+func NewIsMetricActiveReply(active bool) request.Request {
+	return IsMetricActiveReply{Active: active}
 }
