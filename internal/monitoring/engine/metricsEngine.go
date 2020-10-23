@@ -69,7 +69,6 @@ var aggregationFunctions = map[string]govaluate.ExpressionFunction{
 	"avg": func(args ...interface{}) (interface{}, error) {
 		var ts timeseries.TimeSeries
 		var total float64
-
 		switch converted := args[0].(type) {
 		case timeseries.TimeSeries:
 			ts = converted
@@ -94,6 +93,31 @@ var aggregationFunctions = map[string]govaluate.ExpressionFunction{
 			total += s.Value
 		}
 		return (float64)(total / float64(len(all))), nil
+	},
+	"mode": func(args ...interface{}) (interface{}, error) {
+		var ts timeseries.TimeSeries
+		switch converted := args[0].(type) {
+		case timeseries.TimeSeries:
+			ts = converted
+		case string:
+			aux, err := instance.db.GetTimeseries(args[0].(string))
+			if err != nil {
+				return nil, err
+			}
+			ts = aux
+		case []float64:
+			fmt.Println("Converted:", converted)
+			return getMode(converted), nil
+		default:
+			return nil, fmt.Errorf("Invalid type %s", reflect.TypeOf(args[0]))
+		}
+		all := ts.All()
+		fmt.Println("All:", all)
+		tmp := make([]float64, 0, len(all))
+		for i, entry := range all {
+			tmp[i] = entry.Value
+		}
+		return (float64)(getMode(tmp)), nil
 	},
 	"last": func(args ...interface{}) (interface{}, error) {
 		var ts timeseries.TimeSeries
@@ -219,4 +243,20 @@ func (e *engine) evalBoolQuery(query string) (bool, error) {
 
 func (e *engine) getMetric(metricName string) (timeseries.TimeSeries, error) {
 	return e.db.GetTimeseries(metricName)
+}
+
+func getMode(testArray []float64) (mode float64) {
+	countMap := make(map[float64]int)
+	for _, value := range testArray {
+		countMap[value] += 1
+	}
+	max := 0
+	for _, key := range testArray {
+		freq := countMap[key]
+		if freq > max {
+			mode = key
+			max = freq
+		}
+	}
+	return
 }
