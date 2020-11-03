@@ -3,93 +3,121 @@ package tsdb
 import (
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
+	"net/http"
 	"sync"
 	"time"
 
-	timeseries "github.com/nm-morais/demmon/internal/monitoring/metrics/timeSeries"
+	timeseries "github.com/nm-morais/demmon-common/timeseries"
+	"github.com/nm-morais/demmon/internal/monitoring/app_errors"
+	"github.com/nm-morais/trie"
 )
 
-const tsdb = "tsdb"
+var (
+	NotFoundErr      = errors.New("timeseries not found")
+	AlreadyExistsErr = errors.New("timeseries already exists")
+)
+
+var createOnce sync.Once
+var db *TSDB
 
 type TSDB struct {
-	metricValues *sync.Map
+	t *trie.PathTrie
 }
 
-func NewTSDB() *TSDB {
-	return &TSDB{
-		metricValues: &sync.Map{},
+func GetDB() *TSDB {
+	if db == nil {
+		createOnce.Do(func() {
+			db = &TSDB{
+				t: trie.NewPathTrie(),
+			}
+		})
 	}
+	return db
 }
 
-func (db *TSDB) GetActiveMetrics() []string {
-	metricNames := make([]string, 0)
-	db.metricValues.Range(func(k, _ interface{}) bool {
-		metricNames = append(metricNames, k.(string))
-		return true
-	})
-	return metricNames
-}
-
-func (db *TSDB) AddMetricBlob(metrics []byte) error {
-	metricsStr := string(metrics)
-	lines := strings.Split(metricsStr, `\n`)
-	for lineNr, line := range lines {
-		line = strings.TrimSpace(line)
-		lineSplit := strings.Split(line, ` `)
-		if len(lineSplit) != 2 {
-			return fmt.Errorf("Invalid metric in line %d (%s)", lineNr, line)
-		}
-
-		metricName := lineSplit[0]
-		metricValStr := lineSplit[1]
-		metricVal, err := strconv.ParseFloat(metricValStr, 32)
-		if err != nil {
-			return err
-		}
-		db.AddMetric(metricName, metricVal)
+func (db *TSDB) AddTimeseries(tsName string, opts ...timeseries.Option) *app_errors.AppError {
+	_, err := db.GetTimeseries(tsName)
+	if err == nil { // ts already exists
+		return app_errors.New(AlreadyExistsErr, http.StatusConflict)
 	}
+	newTs, createErr := timeseries.NewTimeSeries(opts...)
+	if createErr != nil {
+		if errors.Is(createErr, timeseries.ErrNilGranularities) {
+			return app_errors.New(createErr, http.StatusBadRequest)
+		}
+		return app_errors.New(createErr, http.StatusInternalServerError)
+	}
+	fmt.Printf("Registered metric %s\n", tsName)
+	db.t.Put(tsName, newTs)
 	return nil
 }
 
-func (db *TSDB) RegisterMetric(name string, opts ...timeseries.Option) error {
-	newTs, err := timeseries.NewTimeSeries(opts...)
+func (db *TSDB) AddMetricCurrTime(metricName string, value timeseries.Value) *app_errors.AppError {
+	ts, err := db.GetTimeseries(metricName)
 	if err != nil {
 		return err
 	}
-	db.metricValues.Store(name, newTs)
+	p := &timeseries.PointValue{
+		Time:  time.Now(),
+		Value: value,
+	}
+	ts.AddPoint(p)
 	return nil
 }
 
-func (db *TSDB) AddMetric(name string, value float64) error {
-	var series timeseries.TimeSeries
-	seriesInt, ok := db.metricValues.Load(name)
-	if !ok {
-		return errors.New("Metric not installed")
+func (db *TSDB) DeleteTimeseries(tsName string) *app_errors.AppError {
+	_, err := db.GetTimeseries(tsName)
+	if err != nil {
+		return err
 	}
-	series = seriesInt.(timeseries.TimeSeries)
-	series.Add(value)
+	db.t.Delete(tsName)
 	return nil
 }
 
-func (db *TSDB) AddMetricAtTime(name string, value float64, time time.Time) error {
-	var series timeseries.TimeSeries
-	seriesInt, ok := db.metricValues.Load(name)
-	if !ok {
-		return errors.New("Metric not installed")
+func (db *TSDB) AddMetricAtTime(name string, v timeseries.Value, t time.Time) *app_errors.AppError {
+	ts, err := db.GetTimeseries(name)
+	if err != nil {
+		return err
 	}
-	series = seriesInt.(timeseries.TimeSeries)
-	series.AddAt(value, time)
+	p := &timeseries.PointValue{
+		Time:  t,
+		Value: v,
+	}
+	ts.AddPoint(p)
 	return nil
 }
 
-func (db *TSDB) GetTimeseries(name string) (timeseries.TimeSeries, error) {
-	seriesInt, ok := db.metricValues.Load(name)
-	if !ok {
-		return nil, errors.New("timeseries not found")
+func (db *TSDB) GetTimeseries(tsName string) (timeseries.TimeSeries, *app_errors.AppError) {
+	res := db.t.Get(tsName)
+	if res == nil {
+		return nil, app_errors.New(NotFoundErr, http.StatusNotFound)
 	}
-	return seriesInt.(timeseries.TimeSeries), nil
+	return res.(timeseries.TimeSeries), nil
+}
+
+func (db *TSDB) GetTimeseriesByPrefix(prefix string) ([]timeseries.TimeSeries, error) {
+	tsCollection := make([]timeseries.TimeSeries, 0)
+	err := db.t.Walk(prefix, func(k string, v interface{}) error {
+		ts := v.(timeseries.TimeSeries)
+		tsCollection = append(tsCollection, ts)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return tsCollection, nil
+}
+
+func (db *TSDB) GetRegisteredTimeseries() ([]string, *app_errors.AppError) {
+	tsCollection := make([]string, 0)
+	err := db.t.Walk("", func(k string, _ interface{}) error {
+		tsCollection = append(tsCollection, k)
+		return nil
+	})
+	if err != nil {
+		return nil, app_errors.New(err, http.StatusInternalServerError)
+	}
+	return tsCollection, nil
 }
 
 // func (db *TSDB) SetMetricTimeFrame(metricName, frame string) {
