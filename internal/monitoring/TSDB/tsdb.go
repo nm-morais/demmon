@@ -33,25 +33,26 @@ func GetDB() *TSDB {
 	return db
 }
 
-func (db *TSDB) AddTimeseries(tsName string, opts ...timeseries.Option) error {
-	_, err := db.GetTimeseries(tsName)
+func (db *TSDB) AddTimeseries(service, name, origin string, opts ...timeseries.Option) error {
+	_, err := db.GetTimeseries(service, name, origin)
 	if err == nil { // ts already exists
 		return ErrAlreadyExists
 	}
-	newTs, createErr := timeseries.NewTimeSeries(opts...)
+	newTs, createErr := timeseries.NewTimeSeries(service, name, origin, opts...)
 	if createErr != nil {
 		if errors.Is(createErr, timeseries.ErrNilGranularities) {
 			return createErr
 		}
 		return createErr
 	}
-	fmt.Printf("Registered metric %s\n", tsName)
-	db.t.Put(tsName, newTs)
+	metricKey := fmt.Sprintf("%s/%s/%s", service, name, origin)
+	fmt.Printf("Registered metric %s\n", metricKey)
+	db.t.Put(metricKey, newTs)
 	return nil
 }
 
-func (db *TSDB) AddMetricCurrTime(metricName string, value timeseries.Value) error {
-	ts, err := db.GetTimeseries(metricName)
+func (db *TSDB) AddMetricCurrTime(service, name, origin string, value timeseries.Value) error {
+	ts, err := db.GetTimeseries(service, name, origin)
 	if err != nil {
 		return err
 	}
@@ -63,17 +64,18 @@ func (db *TSDB) AddMetricCurrTime(metricName string, value timeseries.Value) err
 	return nil
 }
 
-func (db *TSDB) DeleteTimeseries(tsName string) error {
-	_, err := db.GetTimeseries(tsName)
+func (db *TSDB) DeleteTimeseries(service, name, origin string) error {
+	_, err := db.GetTimeseries(service, name, origin)
 	if err != nil {
 		return err
 	}
-	db.t.Delete(tsName)
+	metricKey := fmt.Sprintf("%s/%s/%s", service, name, origin)
+	db.t.Delete(metricKey)
 	return nil
 }
 
-func (db *TSDB) AddMetricAtTime(name string, v timeseries.Value, t time.Time) error {
-	ts, err := db.GetTimeseries(name)
+func (db *TSDB) AddMetricAtTime(service, name, origin string, v timeseries.Value, t time.Time) error {
+	ts, err := db.GetTimeseries(service, name, origin)
 	if err != nil {
 		return err
 	}
@@ -85,8 +87,9 @@ func (db *TSDB) AddMetricAtTime(name string, v timeseries.Value, t time.Time) er
 	return nil
 }
 
-func (db *TSDB) GetTimeseries(tsName string) (timeseries.TimeSeries, error) {
-	res := db.t.Get(tsName)
+func (db *TSDB) GetTimeseries(service, name, origin string) (timeseries.TimeSeries, error) {
+	metricKey := fmt.Sprintf("%s/%s/%s", service, name, origin)
+	res := db.t.Get(metricKey)
 	if res == nil {
 		return nil, ErrNotFound
 	}

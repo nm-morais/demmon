@@ -215,7 +215,7 @@ func GetLocalIP() net.IP {
 }
 
 func setupDemmonMetrics(e *exporter.Exporter) {
-	g := default_exporters.NewFloatGauge("goroutine_count", 0)
+	g := default_exporters.NewFloatGauge("goroutine_count/cenas/ola", 0)
 	e.RegisterPlugin("/Users/nunomorais/go/src/github.com/nm-morais/demmon-common/default_plugin/plugin.go", default_plugin.PluginName)
 	e.RegisterMetric(g, default_plugin.PluginName, default_plugin.MarshalFloatValue, default_plugin.UnmarshalFloatValue, timeseries.DefaultGranularities, true, 1*time.Second)
 	err := e.Start()

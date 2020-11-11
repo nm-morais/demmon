@@ -1,6 +1,7 @@
 package monitoring
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -94,7 +95,7 @@ func (d *Demmon) handleDial(w http.ResponseWriter, req *http.Request) {
 	go d.writePump(client)
 }
 
-func (d *Demmon) handleRequest(r *body_types.Request, c *client) *body_types.Response {
+func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 	var ans interface{}
 	var err error
 
@@ -123,7 +124,6 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) *body_types.Res
 			break
 		}
 		ans = true
-
 	case routes.PushMetricBlob:
 		reqBody := []string{}
 		err = mapstructure.Decode(r.Message, &reqBody)
@@ -136,6 +136,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) *body_types.Res
 			d.logger.Error(err)
 			break
 		}
+
 	case routes.AddPlugin:
 		reqBody := &body_types.PluginFileBlock{}
 		err = mapstructure.Decode(r.Message, reqBody)
@@ -147,11 +148,27 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) *body_types.Res
 		}
 		err = d.pm.AddPluginChunk(reqBody)
 		if err != nil {
-			d.logger.Error(r.Message)
 			d.logger.Error(err)
-
 			break
 		}
+
+	case routes.GetPlugin:
+		reqBody := &body_types.GetPluginRequest{}
+		err = mapstructure.Decode(r.Message, reqBody)
+		if err != nil {
+			d.logger.Error(r.Message)
+			d.logger.Error(err)
+			err = errors.New("bad request body type")
+			break
+		}
+
+		f, err := d.pm.GetPluginCodeFileReadMode(reqBody.PluginName)
+		if err != nil {
+			break
+		}
+		defer d.sendPlugin(f, r, reqBody.PluginName, reqBody.Chunksize, c)
+		ans = body_types.NewResponse(r.ID, false, nil, r.Type, nil)
+
 	case routes.QueryMetric:
 		panic("not yet implemented")
 	case routes.IsMetricActive:
@@ -163,8 +180,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) *body_types.Res
 	default:
 		err = errors.New("non-recognized operation")
 	}
-
-	return body_types.NewResponse(r.ID, false, err, r.Type, ans)
+	c.out <- body_types.NewResponse(r.ID, false, err, r.Type, ans)
 }
 
 func (d *Demmon) subscribeNodeEvents(c *client) (body_types.NodeUpdateSubscriptionResponse, error) {
@@ -178,6 +194,38 @@ func (d *Demmon) getInView() (body_types.View, error) {
 	return d.fm.GetInView(), nil
 }
 
+func (d *Demmon) sendPlugin(f io.Reader, req *body_types.Request, pluginName string, chunkSize int, c *client) {
+	i := 0
+	for {
+		chunk := make([]byte, chunkSize)
+		n, err := f.Read(chunk)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			fmt.Println("Got err", err)
+			return
+		}
+		contentb64 := base64.StdEncoding.EncodeToString(chunk[:n])
+		ans := body_types.PluginFileBlock{
+			Name:       pluginName,
+			FirstBlock: i == 0,
+			FinalBlock: false,
+			Content:    contentb64,
+		}
+		fmt.Println("Sending segment ", i)
+		c.out <- body_types.NewResponse(req.ID, true, nil, req.Type, ans)
+		i++
+	}
+	ans := &body_types.PluginFileBlock{
+		Name:       pluginName,
+		FinalBlock: true,
+		Content:    "",
+	}
+	c.out <- body_types.NewResponse(req.ID, true, nil, req.Type, ans)
+	fmt.Println("Sent last segment")
+}
+
 func (d *Demmon) readPump(c *client) {
 	defer func() {
 		c.conn.Close()
@@ -186,15 +234,14 @@ func (d *Demmon) readPump(c *client) {
 		req := &body_types.Request{}
 		err := c.conn.ReadJSON(req)
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseMessage, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				d.logger.Errorf("error: %v", err)
 				break
 			}
 			d.logger.Errorf("error: %v", err)
-			continue
+			return
 		}
-		resp := d.handleRequest(req, c)
-		c.out <- resp
+		d.handleRequest(req, c)
 	}
 }
 

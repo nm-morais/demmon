@@ -21,7 +21,7 @@ func EuclideanDist(coords1, coords2 Coordinates) (float64, error) {
 	if len(coords1) != len(coords2) {
 		fmt.Println("coords1", fmt.Sprintf("%+v", coords1))
 		fmt.Println("coords2", fmt.Sprintf("%+v", coords2))
-		return -1, errors.New("Different size coordinates")
+		return -1, errors.New("different size coordinates")
 	}
 	var dist float64 = 0
 	for i := 0; i < len(coords1); i++ {

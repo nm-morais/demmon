@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
+	"path"
 	"plugin"
 	"strings"
 	"sync"
@@ -55,7 +57,7 @@ func New(conf PluginManagerConfig) *PluginManager {
 }
 
 func (pm *PluginManager) CompileAndStorePlugin(pluginName string) (*plugin.Plugin, error) {
-	_ = os.RemoveAll(fmt.Sprintf("%s/%s/*", pm.conf.WorkingDir, compilationFolder))
+	clearDir(fmt.Sprintf("%s/%s/", pm.conf.WorkingDir, compilationFolder))
 	_, ok := pm.GetPlugin(pluginName)
 	if ok {
 		return nil, ErrAlreadyExists
@@ -128,6 +130,17 @@ func (pm *PluginManager) CompileAndStorePlugin(pluginName string) (*plugin.Plugi
 	return plugin, nil
 }
 
+func clearDir(dir string) error {
+	fileInfos, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, fileInfo := range fileInfos {
+		os.RemoveAll(path.Join([]string{dir, fileInfo.Name()}...))
+	}
+	return nil
+}
+
 func (pm *PluginManager) GetPlugin(pluginName string) (*plugin.Plugin, bool) {
 	if p, ok := pm.loadedPlugins.Load(pluginName); ok {
 		return p.(*plugin.Plugin), ok
@@ -164,7 +177,7 @@ func (pm *PluginManager) AddPluginChunk(p *body_types.PluginFileBlock) error {
 		}
 	}
 	codeFilePath := fmt.Sprintf("%s/%s.go", pm.conf.WorkingDir, p.Name)
-	f, err := pm.getOrCreatePluginCodeFile(codeFilePath, p.FirstBlock)
+	f, err := pm.getOrCreatePluginCodeFileAppendMode(codeFilePath, p.FirstBlock)
 	if err != nil {
 		return err
 	}
@@ -182,7 +195,7 @@ func (pm *PluginManager) AddPluginChunk(p *body_types.PluginFileBlock) error {
 	return nil
 }
 
-func (pm *PluginManager) getOrCreatePluginCodeFile(codeFilePath string, create bool) (*os.File, error) {
+func (pm *PluginManager) getOrCreatePluginCodeFileAppendMode(codeFilePath string, create bool) (*os.File, error) {
 	if create {
 		_ = os.Remove(codeFilePath)
 		dst, err := os.Create(codeFilePath)
@@ -197,27 +210,11 @@ func (pm *PluginManager) getOrCreatePluginCodeFile(codeFilePath string, create b
 	return file, nil
 }
 
-func copyFile(src, dst string) error {
-	sourceFileStat, err := os.Stat(src)
+func (pm *PluginManager) GetPluginCodeFileReadMode(pluginName string) (io.Reader, error) {
+	codeFilePath := fmt.Sprintf("%s/%s.go", pm.conf.WorkingDir, pluginName)
+	file, err := os.Open(codeFilePath)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	if !sourceFileStat.Mode().IsRegular() {
-		return fmt.Errorf("%s is not a regular file", src)
-	}
-
-	source, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer source.Close()
-
-	destination, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer destination.Close()
-	_, err = io.Copy(destination, source)
-	return err
+	return file, nil
 }

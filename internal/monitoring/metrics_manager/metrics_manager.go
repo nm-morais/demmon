@@ -18,22 +18,28 @@ import (
 var encoding base64.Encoding
 
 type MetricsManager struct {
-	registerLock                   *sync.Mutex
-	registeredAggregationFunctions map[string]timeseries.AggregationFunc
-	registeredMarshalFuncs         map[string]timeseries.MarshalFunc
-	registeredUnmarshalFuncs       map[string]timeseries.UnmarshalFunc
-	db                             *tsdb.TSDB
-	pm                             *plugin_manager.PluginManager
+	registerLock *sync.Mutex
+
+	registeredGlobalAggregationFunctions map[string]timeseries.TransformFunc
+	registeredTransformFunctions         map[string]timeseries.TransformFunc
+
+	registeredMarshalFuncs   map[string]timeseries.MarshalFunc
+	registeredUnmarshalFuncs map[string]timeseries.UnmarshalFunc
+	db                       *tsdb.TSDB
+	pm                       *plugin_manager.PluginManager
 }
 
 func New(db *tsdb.TSDB, pm *plugin_manager.PluginManager) *MetricsManager {
 	mm := &MetricsManager{
-		registerLock:                   &sync.Mutex{},
-		registeredAggregationFunctions: make(map[string]timeseries.AggregationFunc),
-		registeredMarshalFuncs:         make(map[string]timeseries.MarshalFunc),
-		registeredUnmarshalFuncs:       make(map[string]timeseries.UnmarshalFunc),
-		pm:                             pm,
-		db:                             db,
+		registerLock: &sync.Mutex{},
+
+		registeredTransformFunctions:         make(map[string]timeseries.TransformFunc),
+		registeredGlobalAggregationFunctions: make(map[string]timeseries.TransformFunc),
+
+		registeredMarshalFuncs:   make(map[string]timeseries.MarshalFunc),
+		registeredUnmarshalFuncs: make(map[string]timeseries.UnmarshalFunc),
+		pm:                       pm,
+		db:                       db,
 	}
 	return mm
 }
@@ -46,8 +52,6 @@ func (mm *MetricsManager) RegisterMetrics(newMetrics []*body_types.MetricMetadat
 	mm.registerLock.Lock()
 	defer mm.registerLock.Unlock()
 	for _, newMetric := range newMetrics {
-		newMetricKey := formatMetricKey(newMetric.Service, newMetric.Name, newMetric.Sender)
-
 		marshalFuncUnsafe, err := mm.pm.GetPluginSymbol(newMetric.Plugin, newMetric.MarshalFuncSymbolName)
 		if err != nil {
 			return err
@@ -66,7 +70,7 @@ func (mm *MetricsManager) RegisterMetrics(newMetrics []*body_types.MetricMetadat
 			return errors.New("unmarshal function symbol is not of the correct type (timeseries.UnmarshalFunc)")
 		}
 
-		err = mm.db.AddTimeseries(newMetricKey, timeseries.WithGranularities(newMetric.Granularities...))
+		err = mm.db.AddTimeseries(newMetric.Service, newMetric.Name, newMetric.Origin, timeseries.WithGranularities(newMetric.Granularities...))
 		if err != nil {
 			return err
 		}
@@ -85,12 +89,13 @@ func (mm *MetricsManager) AddMetricBlob(blob []string) error {
 		metricKey := lineSplit[0]
 
 		metricKeySplit := strings.Split(metricKey, "/")
-		if len(metricKeySplit) != 3 {
+		if len(metricKeySplit) < 3 {
 			return fmt.Errorf("invalid metric identifier %s", metricKey)
 		}
 		service := metricKeySplit[0]
-		metricName := metricKeySplit[1]
-
+		metricName := strings.Join(metricKeySplit[1:len(metricKeySplit)-1], "/")
+		origin := metricKeySplit[len(metricKeySplit)-1]
+		// fmt.Printf("Got metric service=%s metricName=%s origin=%s\n", service, metricName, origin)
 		metricValStr := lineSplit[1]
 		tsStr := lineSplit[2]
 		valueBytes, err := encoding.DecodeString(metricValStr)
@@ -113,8 +118,7 @@ func (mm *MetricsManager) AddMetricBlob(blob []string) error {
 		if err != nil {
 			return fmt.Errorf("unmarshal error: %s", metricKey)
 		}
-
-		addErr := mm.db.AddMetricAtTime(metricKey, v, ts)
+		addErr := mm.db.AddMetricAtTime(service, metricName, origin, v, ts)
 		if addErr != nil {
 			return addErr
 		}
