@@ -1,15 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"math/rand"
 	"net"
+	"runtime"
 	"time"
 
-	"github.com/nm-morais/demmon-common/default_plugin"
-	"github.com/nm-morais/demmon-common/exporters/default_exporters"
-	"github.com/nm-morais/demmon-common/timeseries"
 	exporter "github.com/nm-morais/demmon-exporter"
 	"github.com/nm-morais/demmon/internal/membership/membership_protocol"
 	"github.com/nm-morais/demmon/internal/monitoring"
@@ -132,7 +131,7 @@ func main() {
 	logFolder = fmt.Sprintf("%s/%s:%d", logFolder, GetLocalIP(), uint16(protosPortVar))
 
 	babelConf := pkg.Config{
-		LogStdout:        !silent,
+		Silent:           silent,
 		Cpuprofile:       cpuprofile,
 		Memprofile:       memprofile,
 		LogFolder:        logFolder,
@@ -141,10 +140,8 @@ func main() {
 	}
 
 	exporterConfs := exporter.Conf{
-		SenderId:                   babelConf.Peer.String(),
-		ServiceName:                "Demmon",
+		Silent:                     !silent,
 		LogFolder:                  logFolder,
-		ExportFrequency:            3 * time.Second,
 		ImporterHost:               "localhost",
 		ImporterPort:               8090,
 		LogFile:                    "exporter.log",
@@ -152,11 +149,11 @@ func main() {
 		DialBackoffTime:            2 * time.Second,
 		DialTimeout:                1 * time.Second,
 		RequestTimeout:             1 * time.Second,
-		MaxRegisterMetricsRetries:  5,
 		RegisterMetricsBackoffTime: 3 * time.Second,
 	}
 
 	dConf := monitoring.DemmonConf{
+		Silent:     false,
 		LogFolder:  logFolder,
 		LogFile:    "demmon_frontend.log",
 		ListenPort: 8090,
@@ -182,10 +179,6 @@ func main() {
 
 func start(babelConf pkg.Config, nwConf pkg.NodeWatcherConf, eConf exporter.Conf, dConf monitoring.DemmonConf, membershipConf membership_protocol.DemmonTreeConfig) error {
 	babel := pkg.NewProtoManager(babelConf)
-	e, err := exporter.New(eConf, babel)
-	if err != nil {
-		return err
-	}
 	nw := pkg.NewNodeWatcher(nwConf, babel)
 	babel.RegisterNodeWatcher(nw)
 	babel.RegisterListenAddr(babelConf.Peer.ToTCPAddr())
@@ -194,7 +187,7 @@ func start(babelConf pkg.Config, nwConf pkg.NodeWatcherConf, eConf exporter.Conf
 	monitor := monitoring.New(dConf, babel)
 	go monitor.Listen()
 	go babel.Start()
-	go setupDemmonMetrics(e)
+	go setupDemmonMetrics(eConf)
 	return nil
 }
 
@@ -214,12 +207,19 @@ func GetLocalIP() net.IP {
 	panic("no available loopback interfaces")
 }
 
-func setupDemmonMetrics(e *exporter.Exporter) {
-	g := default_exporters.NewFloatGauge("goroutine_count/cenas/ola", 0)
-	e.RegisterPlugin("/Users/nunomorais/go/src/github.com/nm-morais/demmon-common/default_plugin/plugin.go", default_plugin.PluginName)
-	e.RegisterMetric(g, default_plugin.PluginName, default_plugin.MarshalFloatValue, default_plugin.UnmarshalFloatValue, timeseries.DefaultGranularities, true, 1*time.Second)
-	err := e.Start()
+func setupDemmonMetrics(eConf exporter.Conf) {
+	e, err := exporter.New(eConf, GetLocalIP().String(), "demmon", nil)
 	if err != nil {
 		panic(err)
+	}
+
+	g := e.NewGauge("nr_goroutines")
+
+	exportTicker := time.NewTicker(5 * time.Second)
+	go e.ExportLoop(context.TODO(), exportTicker.C)
+
+	setTicker := time.NewTicker(1 * time.Second)
+	for range setTicker.C {
+		g.Set(float64(runtime.NumGoroutine()))
 	}
 }

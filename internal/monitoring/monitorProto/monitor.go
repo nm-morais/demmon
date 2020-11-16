@@ -1,7 +1,7 @@
 package monitoring
 
 import (
-	tsdb "github.com/nm-morais/demmon/internal/monitoring/TSDB"
+	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
 	"github.com/nm-morais/go-babel/pkg/errors"
 	"github.com/nm-morais/go-babel/pkg/logs"
 	"github.com/nm-morais/go-babel/pkg/message"

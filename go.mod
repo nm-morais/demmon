@@ -9,7 +9,6 @@ require (
 	github.com/nm-morais/demmon-common v1.0.0
 	github.com/nm-morais/demmon-exporter v1.0.2
 	github.com/nm-morais/go-babel v1.0.0
-	github.com/nm-morais/trie v1.0.1
 	github.com/sirupsen/logrus v1.7.0
 )
 
