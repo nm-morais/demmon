@@ -1,4 +1,189 @@
-package engine
+package metrics_engine
+
+import (
+	_ "github.com/robertkrimen/otto/underscore"
+
+	"errors"
+	"fmt"
+	"os"
+	"sort"
+	"time"
+
+	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
+	"github.com/robertkrimen/otto"
+	"github.com/sirupsen/logrus"
+)
+
+type MetricsEngine struct {
+	logger *logrus.Logger
+	db     *tsdb.TSDB
+}
+
+func NewMetricsEngine(db *tsdb.TSDB) *MetricsEngine {
+	return &MetricsEngine{
+		logger: logrus.New(),
+		db:     db,
+	}
+}
+
+var errTimeout = errors.New("timeout")
+
+func (e *MetricsEngine) RunWithTimeout(expression string, timeoutDuration time.Duration) (otto.Value, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start)
+		if caught := recover(); caught != nil {
+			if caught == errTimeout {
+				fmt.Fprintf(os.Stderr, "Some code took to long! Stopping after: %v\n", duration)
+				return
+			}
+			panic(caught) // Something else happened, repanic!
+		}
+	}()
+
+	vm := otto.New()
+	e.setVmFunctions(vm)
+	setDebuggerHandler(vm)
+	vm.Interrupt = make(chan func(), 1) // The buffer prevents blocking
+	go func() {
+		time.Sleep(timeoutDuration) // Stop after two seconds
+		vm.Interrupt <- func() {
+			panic(errTimeout)
+		}
+	}()
+	val, err := vm.Run(expression)
+	return val, err
+}
+
+func (e *MetricsEngine) setVmFunctions(vm *otto.Otto) {
+	vm.Set("select", func(call otto.FunctionCall) otto.Value {
+		return e.selectTs(vm, call)
+	})
+	vm.Set("addPoint", func(call otto.FunctionCall) otto.Value {
+		return e.addPoint(vm, call)
+	})
+	vm.Set("max", func(call otto.FunctionCall) otto.Value {
+		return e.max(vm, call)
+	})
+}
+
+func (e *MetricsEngine) selectTs(vm *otto.Otto, call otto.FunctionCall) otto.Value {
+	name, err := call.Argument(0).ToString()
+	if err != nil {
+		throw(vm, "Invalid arg: Name is not a string")
+	}
+
+	tagFilters := call.Argument(1).Object()
+	if err != nil {
+		throw(vm, "Invalid arg: tag filters is not defined")
+	}
+
+	tags := map[string]string{}
+	tagKeys := tagFilters.Keys()
+	for _, tagKey := range tagKeys {
+		tagVal, err := tagFilters.Get(tagKey)
+		if err != nil {
+			throw(vm, "Invalid arg: tag filters is not a map[string]string")
+		}
+		tags[tagKey] = tagVal.String()
+	}
+
+	b, ok := e.db.GetBucket(name)
+	if !ok {
+		throw(vm, fmt.Sprintf("No measurement found with name %s", name))
+	}
+
+	queryResult := b.GetTimeseriesRegex(tags)
+	res, err := vm.ToValue(queryResult)
+	if err != nil {
+		throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
+	}
+	return res
+}
+
+func (e *MetricsEngine) addPoint(vm *otto.Otto, call otto.FunctionCall) otto.Value {
+	name, err := call.Argument(0).ToString()
+	if err != nil {
+		throw(vm, "Invalid arg: Name is not a string")
+	}
+
+	tagsObj := call.Argument(1).Object()
+	if err != nil {
+		throw(vm, "Invalid arg: tag filters is not defined")
+	}
+
+	tags := map[string]string{}
+	tagKeys := tagsObj.Keys()
+	for _, tagKey := range tagKeys {
+		tagVal, err := tagsObj.Get(tagKey)
+		if err != nil {
+			throw(vm, "Invalid arg: tags is not a map[string]string")
+		}
+		tags[tagKey] = tagVal.String()
+	}
+
+	fieldsObj := call.Argument(1).Object()
+	if err != nil {
+		throw(vm, "Invalid arg: fields are not defined")
+	}
+	fields := map[string]interface{}{}
+	fieldKeys := fieldsObj.Keys()
+	for _, fieldKey := range fieldKeys {
+		fieldVal, err := fieldsObj.Get(fieldKey)
+		if err != nil {
+			throw(vm, "Invalid arg: fields is not a map[string]string")
+		}
+		fields[fieldKey] = fieldVal.String()
+	}
+	ts := e.db.GetOrCreateTimeseries(name, tags)
+	pv := &tsdb.PointValue{
+		TS:     time.Now(),
+		Fields: fields,
+	}
+	ts.AddPoint(pv)
+	return otto.Value{}
+}
+
+func (e *MetricsEngine) max(vm *otto.Otto, call otto.FunctionCall) otto.Value {
+	args := call.Argument(0)
+	args.Object()
+	tsArrGeneric, err := args.Export()
+	if err != nil {
+		throw(vm, err.Error())
+	}
+	for _, tsGeneric := range tsArrGeneric.([]tsdb.TimeSeries) {
+		ts := tsGeneric.(tsdb.TimeSeries)
+		fmt.Println(ts.Last())
+		// throw(vm, tsArr)
+	}
+
+	return otto.Value{}
+}
+
+func setDebuggerHandler(vm *otto.Otto) {
+	// This is where the magic happens!
+	vm.SetDebuggerHandler(func(o *otto.Otto) {
+		// The `Context` function is another hidden gem - I'll talk about that in
+		// another post.
+		c := o.Context()
+
+		// Here, we go through all the symbols in scope, adding their names to a
+		// list.
+		var a []string
+		for k := range c.Symbols {
+			a = append(a, k)
+		}
+
+		sort.Strings(a)
+
+		// Print out the symbols in scope.
+		fmt.Printf("symbols in scope: %v\n", a)
+	})
+}
+
+func throw(vm *otto.Otto, str string) {
+	panic(vm.MakeCustomError("Runtime Error", str))
+}
 
 // var aggregationFunctions = map[string]govaluate.ExpressionFunction{
 // 	"max": func(args ...interface{}) (interface{}, error) {

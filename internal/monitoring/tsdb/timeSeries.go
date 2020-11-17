@@ -2,7 +2,6 @@ package tsdb
 
 import (
 	"errors"
-	"sync"
 	"time"
 )
 
@@ -92,23 +91,8 @@ var (
 	ErrRangeNotCovered = errors.New("timeseries: range is not convered")
 )
 
-// Clock specifies the needed time related functions used by the time series.
-// To use a custom clock implement the interface and pass it to the time series constructor.
-// The default clock uses time.Now()
-type Clock interface {
-	Now() time.Time
-}
-
-// defaultClock is used in case no clock is provided to the constructor.
-type defaultClock struct{}
-
-func (c *defaultClock) Now() time.Time {
-	return time.Now()
-}
-
 type timeseries struct {
-	tags map[string]string
-	*sync.Mutex
+	tags    map[string]string
 	clock   Clock
 	level   level
 	pending *PointValue
@@ -118,15 +102,11 @@ type timeseries struct {
 // NewTimeSeries creates a new time series with the provided options.
 // If no options are provided default values are used.
 func NewTimeSeries(tags map[string]string, g Granularity, clock Clock) TimeSeries {
-	if clock == nil {
-		clock = &defaultClock{}
-	}
-
 	// ctx := context.TODO()
 	// mts, _ := utime.NewSeriesTime(ctx, "meeting time", "1D", time.Now().UTC(), false, utime.NewSeriesTimeOptions{Size: &[]int{8}[0]})
 	// df.AddSeries(mts, nil)
 
-	return &timeseries{tags: tags, clock: clock, pending: &PointValue{TS: time.Time{}}, level: createLevel(clock, g), Mutex: &sync.Mutex{}}
+	return &timeseries{tags: tags, clock: clock, pending: &PointValue{TS: time.Time{}}, level: createLevel(clock, g)}
 }
 
 func checkGranularity(granularity Granularity) error {

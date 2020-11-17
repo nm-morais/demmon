@@ -1,4 +1,115 @@
-package engine
+package metrics_engine
+
+import (
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/benbjohnson/clock"
+	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
+)
+
+var db *tsdb.TSDB = tsdb.GetDB()
+
+func TestSelectQuery(t *testing.T) {
+	clock := clock.NewMock()
+
+	tags := map[string]string{
+		"tag1": "ola",
+	}
+
+	db.GetOrCreateTimeseriesWithClock("test", tags, clock)
+
+	// db.AddMetric("cenas", make(map[string]string),)
+
+	// err := db.AddMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
+	// if err != nil {
+	// 	t.Error(err)
+	// 	t.FailNow()
+	// }
+	val := map[string]interface{}{}
+	val["val"] = 10
+	err := db.AddMetric("test", tags, val, clock.Now())
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	tags = map[string]string{
+		"tag1": "ola2",
+	}
+	err = db.AddMetric("test", tags, val, clock.Now())
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	clock.Add(1)
+	me := NewMetricsEngine(db)
+	script := `
+	timeseries = select("test", {"tag1":"ola.*"})
+	for (i = 0; i < timeseries.length; i++) {
+		console.log(Object.getOwnPropertyNames(timeseries[i]))
+		points = timeseries[i].All()
+		for (i = 0; i < points.length; i++) {
+			console.log(points[i].Fields["val"])
+		}
+	} 
+	`
+
+	v, err := me.RunWithTimeout(script, 1*time.Second)
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+	fmt.Print(v)
+	t.FailNow()
+}
+
+func TestSelectAndMaxQuery(t *testing.T) {
+	clock := clock.NewMock()
+
+	tags := map[string]string{
+		"tag1": "ola",
+	}
+
+	db.GetOrCreateTimeseriesWithClock("test", tags, clock)
+
+	// db.AddMetric("cenas", make(map[string]string),)
+
+	// err := db.AddMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
+	// if err != nil {
+	// 	t.Error(err)
+	// 	t.FailNow()
+	// }
+	val := map[string]interface{}{}
+	val["val"] = 10
+	err := db.AddMetric("test", tags, val, clock.Now())
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	tags = map[string]string{
+		"tag1": "ola2",
+	}
+
+	clock.Add(1)
+	me := NewMetricsEngine(db)
+	script := `
+	timeseries = select("test", {"tag1":"ola"})
+	res = max(timeseries)
+	console.log(res)
+	`
+
+	v, err := me.RunWithTimeout(script, 1*time.Second)
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+	fmt.Print(v)
+	t.FailNow()
+}
 
 // func TestEvaluateNumericExpression(t *testing.T) {
 // 	tsdb := tsdb.GetDB()

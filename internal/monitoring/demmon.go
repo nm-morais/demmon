@@ -127,7 +127,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		}
 		for _, m := range reqBody {
 			d.db.AddMetric(m.Name, m.Tags, m.Fields, time.Unix(0, m.TS))
-			samples := d.db.GetOrCreateBucket(m.Name).GetOrCreateTimeseries(m.Tags).All()
+			samples := d.db.GetOrCreateBucket(m.Name, tsdb.DefaultGranularity).GetOrCreateTimeseries(m.Tags).All()
 			d.logger.Info("Samples in timeseries:")
 			for _, s := range samples {
 				d.logger.Infof("%s : %+v", s.TS, s.Fields)

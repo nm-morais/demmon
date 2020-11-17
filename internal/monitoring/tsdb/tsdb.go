@@ -31,15 +31,36 @@ func GetDB() *TSDB {
 	return db
 }
 
-func (db *TSDB) GetOrCreateBucket(name string) *Bucket {
-	newBucket, _ := NewBucket(name, DefaultGranularity)
+func (db *TSDB) GetOrCreateBucket(name string, granularity Granularity) *Bucket {
+	newBucket, _ := NewBucket(name, granularity)
 	bucket, _ := db.buckets.LoadOrStore(name, newBucket)
 	return bucket.(*Bucket)
 }
 
+func (db *TSDB) GetBucket(name string) (*Bucket, bool) {
+	bucket, ok := db.buckets.Load(name)
+	if !ok {
+		return nil, false
+	}
+	return bucket.(*Bucket), ok
+}
+
 func (db *TSDB) GetOrCreateTimeseries(name string, tags map[string]string) TimeSeries {
-	b := db.GetOrCreateBucket(name)
+	b := db.GetOrCreateBucket(name, DefaultGranularity)
 	return b.GetOrCreateTimeseries(tags)
+}
+
+func (db *TSDB) GetTimeseries(name string, tags map[string]string) (TimeSeries, bool) {
+	b, ok := db.GetBucket(name)
+	if !ok {
+		return nil, false
+	}
+	return b.GetTimeseries(tags)
+}
+
+func (db *TSDB) GetOrCreateTimeseriesWithClock(name string, tags map[string]string, clock Clock) TimeSeries {
+	b := db.GetOrCreateBucket(name, DefaultGranularity)
+	return b.GetOrCreateTimeseriesWithClock(tags, clock)
 }
 
 func (db *TSDB) AddMetric(bucketName string, tags map[string]string, fields map[string]interface{}, timestamp time.Time) error {
