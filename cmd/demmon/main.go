@@ -215,7 +215,14 @@ func setupDemmonMetrics() {
 		RequestTimeout: 1 * time.Second,
 	}
 	cl := client.New(clientConf)
-	cl.ConnectTimeout(3 * time.Second)
+	for i := 0; i < 3; i++ {
+		err := cl.ConnectTimeout(3 * time.Second)
+		if err != nil {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		break
+	}
 	_, err := cl.InstallContinuousQuery(
 		`
 		var goroutines_max = Max(Select("nr_goroutines","*"),"*").Last()
@@ -271,23 +278,23 @@ func setupDemmonMetrics() {
 		// )
 		// fmt.Println("nr_goroutines\n", res, err)
 
-		res, err := cl.Query(
-			`Select("nr_goroutines_max","*")`,
-			1*time.Second,
-		)
-		fmt.Printf("\nnr_goroutines_max %+v, %+v\n\n\n", res, err)
+		// res, err := cl.Query(
+		// 	`Select("nr_goroutines_max","*")`,
+		// 	1*time.Second,
+		// )
+		// fmt.Printf("\nnr_goroutines_max %+v, %+v\n\n\n", res, err)
 
-		res, err = cl.Query(
-			`Select("nr_goroutines_avg","*")`,
-			1*time.Second,
-		)
-		fmt.Printf("\nnr_goroutines_avg %+v, %+v\n\n\n", res, err)
+		// res, err = cl.Query(
+		// 	`Select("nr_goroutines_avg","*")`,
+		// 	1*time.Second,
+		// )
+		// fmt.Printf("\nnr_goroutines_avg %+v, %+v\n\n\n", res, err)
 
-		res, err = cl.Query(
-			`Select("nr_goroutines_min","*")`,
-			1*time.Second,
-		)
-		fmt.Printf("\nnr_goroutines_min %+v, %+v\n\n\n", res, err)
+		// res, err = cl.Query(
+		// 	`Select("nr_goroutines_min","*")`,
+		// 	1*time.Second,
+		// )
+		// fmt.Printf("\nnr_goroutines_min %+v, %+v\n\n\n", res, err)
 
 		activeQueries, err := cl.GetContinuousQueries()
 		fmt.Printf("\ncontinuous queries: %+v, %+v\n\n\n", activeQueries, err)

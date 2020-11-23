@@ -1,7 +1,7 @@
-FROM golang:alpine AS builder
+FROM golang:latest AS builder
 
-RUN apk update && apk add --no-cache git
-RUN apk add --no-cache make gcc gawk bison linux-headers libc-dev
+# RUN apk update && apk add --no-cache git
+# RUN apk add --no-cache make gcc gawk bison linux-headers libc-dev
 #demmon
 WORKDIR $GOPATH/src/github.com/nm-morais/demmon
 COPY . .
@@ -9,6 +9,7 @@ COPY . .
 #deps
 COPY --from=nmmorais/go-babel:latest /src/github.com/nm-morais/go-babel ../go-babel/
 COPY --from=nmmorais/demmon-common:latest /src/github.com/nm-morais/demmon-common ../demmon-common/
+COPY --from=nmmorais/demmon-client:latest /src/github.com/nm-morais/demmon-client ../demmon-client/
 COPY --from=nmmorais/demmon-exporter:latest /src/github.com/nm-morais/demmon-exporter ../demmon-exporter/
 RUN go get -d -v ./...
 
@@ -16,9 +17,9 @@ RUN go get -d -v ./...
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /go/bin/demmon cmd/demmon/*
 
 # EXECUTABLE IMG
-FROM alpine:edge as demmon
+FROM debian as demmon
 
-RUN apk add iproute2-tc
+# RUN apk add iproute2-tc
 
 COPY scripts/setupTc.sh /setupTc.sh
 COPY build/docker-entrypoint.sh /docker-entrypoint.sh

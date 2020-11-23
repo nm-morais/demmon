@@ -6,13 +6,18 @@ if [ -z $DOCKER_IMAGE ]; then
   exit
 fi
 
-cd ..
-cd go-babel
+cd ../go-babel
 ./scripts/buildImage.sh
 cd ..
+
 cd demmon-common
 ./scripts/buildImage.sh
 cd ..
+
+cd demmon-client
+./scripts/buildImage.sh
+cd ..
+
 cd demmon-exporter
 ./scripts/buildImage.sh
 cd ..
