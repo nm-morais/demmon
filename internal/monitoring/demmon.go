@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,8 +17,10 @@ import (
 	"github.com/nm-morais/demmon-common/body_types"
 	"github.com/nm-morais/demmon-common/routes"
 	"github.com/nm-morais/demmon/internal/membership/membership_frontend"
+	"github.com/nm-morais/demmon/internal/monitoring/metrics_engine"
 	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
 	"github.com/nm-morais/go-babel/pkg/protocolManager"
+	"github.com/reugn/go-quartz/quartz"
 	"github.com/sirupsen/logrus"
 )
 
@@ -34,6 +37,35 @@ type DemmonConf struct {
 	ListenPort int
 }
 
+type continuousQueryValueType struct {
+	mu           *sync.Mutex
+	description  string
+	d            *Demmon
+	id           int
+	queryTimeout time.Duration
+	query        string
+	err          error
+	nrRetries    int
+	triedNr      int
+	lastRan      time.Time
+}
+
+// Description returns a PrintJob description.
+func (cc continuousQueryValueType) Description() string {
+	return cc.description
+}
+
+// Key returns a PrintJob unique key.
+func (cc continuousQueryValueType) Key() int {
+	return int(cc.id)
+}
+
+// Execute Called by the Scheduler when a Trigger fires that is associated with the Job.
+func (cc continuousQueryValueType) Execute() {
+	fmt.Println("Executing " + cc.Description())
+	cc.d.handleContinuousQueryTrigger(cc.id)
+}
+
 type client struct {
 	id   uint64
 	conn *websocket.Conn
@@ -41,25 +73,34 @@ type client struct {
 }
 
 type Demmon struct {
-	logger                 *logrus.Logger
-	counter                uint64
-	conf                   DemmonConf
-	db                     *tsdb.TSDB
-	nodeUpdatesSubscribers *sync.Map
-	fm                     *membership_frontend.MembershipFrontend
+	schedulerMu              *sync.Mutex
+	scheduler                quartz.Scheduler
+	continuousQueriesCounter *uint64
+	logger                   *logrus.Logger
+	counter                  *uint64
+	conf                     DemmonConf
+	db                       *tsdb.TSDB
+	nodeUpdatesSubscribers   *sync.Map
+	fm                       *membership_frontend.MembershipFrontend
+	me                       *metrics_engine.MetricsEngine
 }
 
 func New(dConf DemmonConf, babel protocolManager.ProtocolManager) *Demmon {
 	db := tsdb.GetDB()
 	fm := membership_frontend.New(babel)
 	d := &Demmon{
-		counter:                1,
-		logger:                 logrus.New(),
-		nodeUpdatesSubscribers: &sync.Map{},
-		conf:                   dConf,
-		db:                     db,
-		fm:                     fm,
+		schedulerMu:              &sync.Mutex{},
+		scheduler:                quartz.NewStdScheduler(),
+		continuousQueriesCounter: new(uint64),
+		counter:                  new(uint64),
+		logger:                   logrus.New(),
+		nodeUpdatesSubscribers:   &sync.Map{},
+		conf:                     dConf,
+		db:                       db,
+		fm:                       fm,
+		me:                       metrics_engine.NewMetricsEngine(db),
 	}
+	d.scheduler.Start()
 	setupLogger(d.logger, d.conf.LogFolder, d.conf.LogFile, d.conf.Silent)
 	return d
 }
@@ -80,7 +121,7 @@ func (d *Demmon) handleDial(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	client := &client{
-		id:   atomic.AddUint64(&d.counter, 1),
+		id:   atomic.AddUint64(d.counter, 1),
 		conn: conn,
 		out:  make(chan *body_types.Response),
 	}
@@ -118,28 +159,122 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 	// 	}
 	// 	ans = true
 	case routes.PushMetricBlob:
-		reqBody := body_types.PointCollection{}
-		err = mapstructure.Decode(r.Message, &reqBody)
+		reqBody := body_types.PointCollectionWithTagsAndName{}
+		err = decode(r.Message, &reqBody)
 		if err != nil {
 			d.logger.Error(err)
 			err = errors.New("bad request body type")
 			break
 		}
 		for _, m := range reqBody {
-			d.db.AddMetric(m.Name, m.Tags, m.Fields, time.Unix(0, m.TS))
-			samples := d.db.GetOrCreateBucket(m.Name, tsdb.DefaultGranularity).GetOrCreateTimeseries(m.Tags).All()
-			d.logger.Info("Samples in timeseries:")
-			for _, s := range samples {
-				d.logger.Infof("%s : %+v", s.TS, s.Fields)
-			}
+			d.db.AddMetric(m.Name, m.Tags, m.Point.Fields, m.Point.TS)
+			// samples := d.db.GetOrCreateBucket(m.Name, tsdb.DefaultGranularity).GetOrCreateTimeseries(m.Tags).All()
+			// d.logger.Info("Samples in timeseries:")
+			// for _, s := range samples {
+			// 	d.logger.Infof("%s : %+v", s.TS, s.Fields)
+			// }
 		}
 		// err = d.db.AddMetric().AddMetricBlob(reqBody)
 		if err != nil {
 			d.logger.Error(err)
 			break
 		}
-	case routes.QueryMetric:
-		panic("not yet implemented")
+	case routes.Query:
+		reqBody := body_types.QueryRequest{}
+		err = decode(r.Message, &reqBody)
+		if err != nil {
+			d.logger.Error(err)
+			err = errors.New("bad request body type")
+			break
+		}
+		var queryResult []tsdb.TimeSeries
+		queryResult, err = d.me.MakeQuery(reqBody.Query, reqBody.Timeout)
+		if err != nil {
+			break
+		}
+		toReturn := make([]body_types.Timeseries, len(queryResult))
+		for idx, ts := range queryResult {
+			tmpPts := ts.All()
+			tmp := body_types.Timeseries{
+				Name:   ts.Name(),
+				Tags:   ts.Tags(),
+				Points: make([]body_types.Point, len(tmpPts)),
+			}
+			for pointIdx, p := range tmpPts {
+				tmp.Points[pointIdx] = body_types.Point{
+					TS:     p.TS,
+					Fields: p.Fields,
+				}
+			}
+			toReturn[idx] = tmp
+		}
+		ans = toReturn
+	case routes.InstallContinuousQuery:
+		reqBody := body_types.InstallContinuousQueryRequest{}
+		err = decode(r.Message, &reqBody)
+		if err != nil {
+			d.logger.Error(err)
+			err = errors.New("bad request body type")
+			break
+		}
+		aux := tsdb.Granularity{Granularity: time.Duration(reqBody.FrequencySeconds) * time.Second, Count: reqBody.OutputMetricCount}
+		_, err = d.db.CreateBucket(reqBody.OutputMetricName, aux)
+		if err != nil {
+			break
+		}
+		taskId := atomic.AddUint64(d.continuousQueriesCounter, 1)
+		trigger := quartz.NewSimpleTrigger(time.Duration(reqBody.FrequencySeconds) * time.Second)
+		job := &continuousQueryValueType{
+			mu:           &sync.Mutex{},
+			description:  reqBody.Description,
+			d:            d,
+			err:          nil,
+			id:           int(taskId),
+			nrRetries:    reqBody.NrRetries,
+			query:        reqBody.Expression,
+			queryTimeout: reqBody.ExpressionTimeout,
+			triedNr:      0,
+		}
+		d.schedulerMu.Lock()
+		err = d.scheduler.ScheduleJob(job, trigger)
+		if err != nil {
+			d.schedulerMu.Unlock()
+			break
+		}
+		ans = body_types.InstallContinuousQueryReply{
+			TaskId: taskId,
+		}
+		d.schedulerMu.Unlock()
+	case routes.GetContinuousQueries:
+		resp := body_types.GetContinuousQueriesReply{}
+		d.schedulerMu.Lock()
+		jobKeys := d.scheduler.GetJobKeys()
+		d.schedulerMu.Unlock()
+		for _, jobKey := range jobKeys {
+			d.schedulerMu.Lock()
+			job, err := d.scheduler.GetScheduledJob(jobKey)
+			d.schedulerMu.Unlock()
+			if err != nil {
+				continue
+			}
+			val := job.Job.(*continuousQueryValueType)
+			val.mu.Lock()
+			defer val.mu.Unlock()
+			resp.ContinuousQueries = append(resp.ContinuousQueries, struct {
+				TaskId    int
+				NrRetries int
+				CurrTry   int
+				LastRan   time.Time
+				Error     error
+			}{
+				TaskId:    val.id,
+				Error:     val.err,
+				LastRan:   val.lastRan,
+				CurrTry:   val.triedNr,
+				NrRetries: val.nrRetries,
+			})
+		}
+		ans = resp
 	case routes.IsMetricActive:
 		panic("not yet implemented")
 	case routes.BroadcastMessage:
@@ -150,7 +285,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		err = errors.New("non-recognized operation")
 	}
 
-	d.logger.Infof("Got request %s, response: err:%+v, response:%+v", rType.String(), err, ans)
+	d.logger.Infof("Got request %s, response: err: %+v, response:%+v", rType.String(), err, ans)
 	c.out <- body_types.NewResponse(r.ID, false, err, r.Type, ans)
 }
 
@@ -195,6 +330,33 @@ func (d *Demmon) writePump(c *client) {
 			return
 		}
 	}
+}
+
+func (d *Demmon) handleContinuousQueryTrigger(taskId int) {
+	d.schedulerMu.Lock()
+	jobGeneric, err := d.scheduler.GetScheduledJob(taskId)
+	if err != nil {
+		d.schedulerMu.Unlock()
+		d.logger.Error(err)
+		return
+	}
+	d.schedulerMu.Unlock()
+	job := jobGeneric.Job.(*continuousQueryValueType)
+	d.logger.Infof("Continuous query %d trigger (%s)", taskId, job.query)
+	err = d.me.RunExpression(job.query, job.queryTimeout)
+	d.schedulerMu.Lock()
+	defer d.schedulerMu.Unlock()
+	if err != nil {
+		d.logger.Errorf("Continuous query %d failed with error: %s", taskId, err)
+		job.triedNr++
+		job.err = err
+		if job.triedNr == job.nrRetries {
+			d.scheduler.DeleteJob(job.Key())
+		}
+		return
+	}
+	job.triedNr = 0
+	job.lastRan = time.Now()
 }
 
 type formatter struct {
@@ -248,4 +410,44 @@ func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) 
 		fmt.Println("Setting demmon_frontend non-silently")
 	}
 	logger.SetOutput(out)
+}
+
+func decode(input interface{}, result interface{}) error {
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		Metadata: nil,
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+			toTimeHookFunc()),
+		Result: result,
+	})
+	if err != nil {
+		return err
+	}
+
+	if err := decoder.Decode(input); err != nil {
+		return err
+	}
+	return err
+}
+
+func toTimeHookFunc() mapstructure.DecodeHookFunc {
+	return func(
+		f reflect.Type,
+		t reflect.Type,
+		data interface{}) (interface{}, error) {
+		if t != reflect.TypeOf(time.Time{}) {
+			return data, nil
+		}
+
+		switch f.Kind() {
+		case reflect.String:
+			return time.Parse(time.RFC3339, data.(string))
+		case reflect.Float64:
+			return time.Unix(0, int64(data.(float64))*int64(time.Millisecond)), nil
+		case reflect.Int64:
+			return time.Unix(0, data.(int64)*int64(time.Millisecond)), nil
+		default:
+			return data, nil
+		}
+		// Convert it by parsing
+	}
 }

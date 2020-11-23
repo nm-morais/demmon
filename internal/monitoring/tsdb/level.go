@@ -57,7 +57,7 @@ func (l *level) last() map[string]interface{} {
 	if idx < 0 {
 		idx += l.length
 	}
-	return copyMap(l.buckets[idx])
+	return l.buckets[idx]
 }
 
 func (l *level) addAtTime(v map[string]interface{}, time time.Time) {
@@ -86,7 +86,7 @@ func (l *level) advance(target time.Time) {
 	}
 }
 
-func (l *level) interval(start, end time.Time, latest time.Time) []*PointValue {
+func (l *level) interval(start, end time.Time, latest time.Time) []PointValue {
 	if start.Before(l.earliest()) {
 		start = l.earliest()
 	}
@@ -101,7 +101,7 @@ func (l *level) interval(start, end time.Time, latest time.Time) []*PointValue {
 	currentTime := l.earliest()
 	currentTime = currentTime.Add(startSteps * l.granularity)
 
-	res := make([]*PointValue, 0)
+	res := make([]PointValue, 0)
 	for idx < l.length && currentTime.Before(end) {
 		nextTime := currentTime.Add(l.granularity)
 		if nextTime.After(latest) {
@@ -115,18 +115,10 @@ func (l *level) interval(start, end time.Time, latest time.Time) []*PointValue {
 
 		if l.buckets[(l.oldest+idx)%l.length] != nil {
 			v := l.buckets[(l.oldest+idx)%l.length]
-			res = append(res, &PointValue{TS: currentTime, Fields: copyMap(v)})
+			res = append(res, PointValue{TS: currentTime, Fields: v})
 		}
 		idx++
 		currentTime = currentTime.Add(l.granularity)
 	}
 	return res
-}
-
-func copyMap(orig map[string]interface{}) map[string]interface{} {
-	c := make(map[string]interface{}, len(orig))
-	for k, val := range orig {
-		c[k] = val
-	}
-	return c
 }

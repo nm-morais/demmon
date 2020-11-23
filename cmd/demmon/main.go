@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"time"
 
+	client "github.com/nm-morais/demmon-client/pkg"
 	exporter "github.com/nm-morais/demmon-exporter"
 	"github.com/nm-morais/demmon/internal/membership/membership_protocol"
 	"github.com/nm-morais/demmon/internal/monitoring"
@@ -140,20 +141,19 @@ func main() {
 	}
 
 	exporterConfs := exporter.Conf{
-		Silent:                     !silent,
-		LogFolder:                  logFolder,
-		ImporterHost:               "localhost",
-		ImporterPort:               8090,
-		LogFile:                    "exporter.log",
-		DialAttempts:               3,
-		DialBackoffTime:            2 * time.Second,
-		DialTimeout:                1 * time.Second,
-		RequestTimeout:             1 * time.Second,
-		RegisterMetricsBackoffTime: 3 * time.Second,
+		Silent:          silent,
+		LogFolder:       logFolder,
+		ImporterHost:    "localhost",
+		ImporterPort:    8090,
+		LogFile:         "exporter.log",
+		DialAttempts:    3,
+		DialBackoffTime: 1 * time.Second,
+		DialTimeout:     3 * time.Second,
+		RequestTimeout:  1 * time.Second,
 	}
 
 	dConf := monitoring.DemmonConf{
-		Silent:     false,
+		Silent:     silent,
 		LogFolder:  logFolder,
 		LogFile:    "demmon_frontend.log",
 		ListenPort: 8090,
@@ -187,7 +187,8 @@ func start(babelConf pkg.Config, nwConf pkg.NodeWatcherConf, eConf exporter.Conf
 	monitor := monitoring.New(dConf, babel)
 	go monitor.Listen()
 	go babel.Start()
-	go setupDemmonMetrics(eConf)
+	go setupDemmonExporter(eConf)
+	go setupDemmonMetrics()
 	return nil
 }
 
@@ -207,14 +208,99 @@ func GetLocalIP() net.IP {
 	panic("no available loopback interfaces")
 }
 
-func setupDemmonMetrics(eConf exporter.Conf) {
+func setupDemmonMetrics() {
+	clientConf := client.DemmonClientConf{
+		DemmonPort:     8090,
+		DemmonHostAddr: "localhost",
+		RequestTimeout: 1 * time.Second,
+	}
+	cl := client.New(clientConf)
+	cl.ConnectTimeout(3 * time.Second)
+	_, err := cl.InstallContinuousQuery(
+		`
+		var goroutines_max = Max(Select("nr_goroutines","*"),"*").Last()
+		AddPoint("nr_goroutines_max", {}, goroutines_max)`,
+		"the max of series nr_goroutines",
+		5,
+		1*time.Second,
+		"nr_goroutines_max",
+		60,
+		5,
+	)
+
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = cl.InstallContinuousQuery(
+		`
+		var goroutines_avg = Avg(Select("nr_goroutines","*"),"*").Last()
+		AddPoint("nr_goroutines_avg", {}, goroutines_avg)`,
+		"the max of series nr_goroutines",
+		5,
+		1*time.Second,
+		"nr_goroutines_avg",
+		60,
+		5,
+	)
+
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = cl.InstallContinuousQuery(
+		`
+		var goroutines_min = Min(Select("nr_goroutines","*"),"*").Last()
+		AddPoint("nr_goroutines_min", {}, goroutines_min)`,
+		"the min of series nr_goroutines",
+		5,
+		1*time.Second,
+		"nr_goroutines_min",
+		60,
+		5,
+	)
+
+	if err != nil {
+		panic(err)
+	}
+
+	for range time.NewTicker(5 * time.Second).C {
+		// res, err := cl.Query(
+		// 	`Select("nr_goroutines","*")`,
+		// 	1*time.Second,
+		// )
+		// fmt.Println("nr_goroutines\n", res, err)
+
+		res, err := cl.Query(
+			`Select("nr_goroutines_max","*")`,
+			1*time.Second,
+		)
+		fmt.Printf("\nnr_goroutines_max %+v, %+v\n\n\n", res, err)
+
+		res, err = cl.Query(
+			`Select("nr_goroutines_avg","*")`,
+			1*time.Second,
+		)
+		fmt.Printf("\nnr_goroutines_avg %+v, %+v\n\n\n", res, err)
+
+		res, err = cl.Query(
+			`Select("nr_goroutines_min","*")`,
+			1*time.Second,
+		)
+		fmt.Printf("\nnr_goroutines_min %+v, %+v\n\n\n", res, err)
+
+		activeQueries, err := cl.GetContinuousQueries()
+		fmt.Printf("\ncontinuous queries: %+v, %+v\n\n\n", activeQueries, err)
+	}
+}
+
+func setupDemmonExporter(eConf exporter.Conf) {
 	e, err := exporter.New(eConf, GetLocalIP().String(), "demmon", nil)
 	if err != nil {
 		panic(err)
 	}
 
 	g := e.NewGauge("nr_goroutines")
-
 	exportTicker := time.NewTicker(5 * time.Second)
 	go e.ExportLoop(context.TODO(), exportTicker.C)
 

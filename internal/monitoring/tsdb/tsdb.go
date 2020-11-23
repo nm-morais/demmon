@@ -58,16 +58,15 @@ func (db *TSDB) GetTimeseries(name string, tags map[string]string) (TimeSeries, 
 	return b.GetTimeseries(tags)
 }
 
-func (db *TSDB) GetOrCreateTimeseriesWithClock(name string, tags map[string]string, clock Clock) TimeSeries {
-	b := db.GetOrCreateBucket(name, DefaultGranularity)
+func (db *TSDB) GetOrCreateTimeseriesWithClockAndGranularity(name string, tags map[string]string, clock Clock, g Granularity) TimeSeries {
+	b := db.GetOrCreateBucket(name, g)
 	return b.GetOrCreateTimeseriesWithClock(tags, clock)
 }
 
-func (db *TSDB) AddMetric(bucketName string, tags map[string]string, fields map[string]interface{}, timestamp time.Time) error {
+func (db *TSDB) AddMetric(bucketName string, tags map[string]string, fields map[string]interface{}, timestamp time.Time) {
 	timeseries := db.GetOrCreateTimeseries(bucketName, tags)
 	// fmt.Printf("Adding point at time %+v", timestamp)
-	timeseries.AddPoint(&PointValue{TS: timestamp, Fields: fields})
-	return nil
+	timeseries.AddPoint(PointValue{TS: timestamp, Fields: fields})
 }
 
 func (db *TSDB) DeleteBucket(name string, tags map[string]string) bool {
@@ -77,6 +76,18 @@ func (db *TSDB) DeleteBucket(name string, tags map[string]string) bool {
 	}
 	b.(*Bucket).ClearBucket()
 	return true
+}
+
+func (db *TSDB) CreateBucket(name string, granularity Granularity) (*Bucket, error) {
+	newBucket, err := NewBucket(name, granularity)
+	if err != nil {
+		return nil, err
+	}
+	toReturn, loaded := db.buckets.LoadOrStore(name, newBucket)
+	if loaded {
+		return nil, errors.New("Bucket already exists")
+	}
+	return toReturn.(*Bucket), nil
 }
 
 func (db *TSDB) GetRegisteredBuckets() []string {

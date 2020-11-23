@@ -53,6 +53,16 @@ func (b *Bucket) GetTimeseries(tags map[string]string) (TimeSeries, bool) {
 	return ts.(TimeSeries), ok
 }
 
+func (b *Bucket) GetAllTimeseries() []TimeSeries {
+	toReturn := make([]TimeSeries, 0)
+	b.timeseries.Range(func(key, value interface{}) bool {
+		ts := value.(TimeSeries)
+		toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), ts.All()))
+		return true
+	})
+	return toReturn
+}
+
 func (b *Bucket) GetTimeseriesRegex(tagsToMatch map[string]string) []TimeSeries {
 	matchingTimeseries := make([]TimeSeries, 0)
 	b.timeseries.Range(func(key, value interface{}) bool {
@@ -74,7 +84,7 @@ func (b *Bucket) GetTimeseriesRegex(tagsToMatch map[string]string) []TimeSeries 
 			}
 		}
 		if allMatching {
-			matchingTimeseries = append(matchingTimeseries, ts)
+			matchingTimeseries = append(matchingTimeseries, NewStaticTimeSeries(ts.Name(), ts.Tags(), ts.All()))
 		}
 		return true
 	})
@@ -83,7 +93,7 @@ func (b *Bucket) GetTimeseriesRegex(tagsToMatch map[string]string) []TimeSeries 
 
 func (b *Bucket) GetOrCreateTimeseries(tags map[string]string) TimeSeries {
 	tsKey := convertTagsToTsKey(tags)
-	ts, _ := b.timeseries.LoadOrStore(tsKey, NewTimeSeries(tags, b.granularity, &defaultClock{}))
+	ts, _ := b.timeseries.LoadOrStore(tsKey, NewTimeSeries(b.name, tags, b.granularity, &defaultClock{}))
 	return ts.(TimeSeries)
 }
 
@@ -92,7 +102,7 @@ func (b *Bucket) GetOrCreateTimeseriesWithClock(tags map[string]string, c Clock)
 	if c == nil {
 		c = &defaultClock{}
 	}
-	ts, _ := b.timeseries.LoadOrStore(tsKey, NewTimeSeries(tags, b.granularity, c))
+	ts, _ := b.timeseries.LoadOrStore(tsKey, NewTimeSeries(b.name, tags, b.granularity, c))
 	return ts.(TimeSeries)
 }
 

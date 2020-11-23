@@ -10,6 +10,10 @@ import (
 )
 
 var db *tsdb.TSDB = tsdb.GetDB()
+var g = tsdb.Granularity{
+	Granularity: time.Second,
+	Count:       10,
+}
 
 func TestSelectQuery(t *testing.T) {
 	clock := clock.NewMock()
@@ -18,7 +22,7 @@ func TestSelectQuery(t *testing.T) {
 		"tag1": "ola",
 	}
 
-	db.GetOrCreateTimeseriesWithClock("test", tags, clock)
+	db.GetOrCreateTimeseriesWithClockAndGranularity("test", tags, clock, g)
 
 	// db.AddMetric("cenas", make(map[string]string),)
 
@@ -29,22 +33,14 @@ func TestSelectQuery(t *testing.T) {
 	// }
 	val := map[string]interface{}{}
 	val["val"] = 10
-	err := db.AddMetric("test", tags, val, clock.Now())
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
+	db.AddMetric("test", tags, val, clock.Now())
 
 	tags = map[string]string{
 		"tag1": "ola2",
 	}
-	err = db.AddMetric("test", tags, val, clock.Now())
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
+	db.AddMetric("test", tags, val, clock.Now())
 
-	clock.Add(1)
+	clock.Add(1 * time.Second)
 	me := NewMetricsEngine(db)
 	script := `
 	timeseries = select("test", {"tag1":"ola.*"})
@@ -57,7 +53,7 @@ func TestSelectQuery(t *testing.T) {
 	} 
 	`
 
-	v, err := me.RunWithTimeout(script, 1*time.Second)
+	v, err := me.runWithTimeout(script, 1*time.Second)
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
@@ -73,7 +69,7 @@ func TestSelectAndMaxQuery(t *testing.T) {
 		"tag1": "ola",
 	}
 
-	db.GetOrCreateTimeseriesWithClock("test", tags, clock)
+	db.GetOrCreateTimeseriesWithClockAndGranularity("test", tags, clock, g)
 
 	// db.AddMetric("cenas", make(map[string]string),)
 
@@ -83,31 +79,86 @@ func TestSelectAndMaxQuery(t *testing.T) {
 	// 	t.FailNow()
 	// }
 	val := map[string]interface{}{}
-	val["val"] = 10
-	err := db.AddMetric("test", tags, val, clock.Now())
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	tags = map[string]string{
-		"tag1": "ola2",
-	}
-
-	clock.Add(1)
+	val["val"] = 10.0
+	db.AddMetric("test", tags, val, clock.Now())
+	clock.Add(1 * time.Second)
 	me := NewMetricsEngine(db)
 	script := `
-	timeseries = select("test", {"tag1":"ola"})
-	res = max(timeseries)
-	console.log(res)
+	tsArr = select("test", {"tag1":"ola"})
+	tsArr.map(function(ts) {
+			console.log("adding point: ","test-max", JSON.stringify(ts.Tags()), JSON.stringify(max(ts, "val")))
+			addPoint("test-max", ts.Tags(), max(ts, "val"))
+		})
 	`
 
-	v, err := me.RunWithTimeout(script, 1*time.Second)
+	v, err := me.runWithTimeout(script, 1*time.Second)
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
 	}
-	fmt.Print(v)
+	fmt.Print(v.Export())
+	t.FailNow()
+}
+
+func TestSelectAndAvgQuery(t *testing.T) {
+	clock := clock.NewMock()
+
+	tags := map[string]string{
+		"tag1": "ola",
+	}
+	db.GetOrCreateTimeseriesWithClockAndGranularity("test", tags, clock, g)
+	tags2 := map[string]string{
+		"tag2": "ola",
+	}
+	db.GetOrCreateTimeseriesWithClockAndGranularity("test", tags2, clock, g)
+
+	// db.AddMetric("cenas", make(map[string]string),)
+
+	// err := db.AddMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
+	// if err != nil {
+	// 	t.Error(err)
+	// 	t.FailNow()
+	// }
+
+	val := map[string]interface{}{}
+	val["val"] = 10.0
+	db.AddMetric("test", tags, val, clock.Now())
+
+	val = map[string]interface{}{}
+	val["val_2"] = 10.0
+	db.AddMetric("test", tags2, val, clock.Now())
+
+	clock.Add(1 * time.Second)
+	val = map[string]interface{}{}
+	val["val"] = 20.0
+	db.AddMetric("test", tags, val, clock.Now())
+
+	val = map[string]interface{}{}
+	val["val_2"] = 10.0
+	db.AddMetric("test", tags2, val, clock.Now())
+
+	clock.Add(1 * time.Second)
+	val = map[string]interface{}{}
+	val["val"] = 45.0
+	db.AddMetric("test", tags, val, clock.Now())
+
+	val = map[string]interface{}{}
+	val["val_2"] = 10.0
+	db.AddMetric("test", tags2, val, clock.Now())
+	clock.Add(1 * time.Second)
+	me := NewMetricsEngine(db)
+	script := `
+	tsArr = select("test", "*")
+	console.log(JSON.stringify(tsArr[0].All()))
+	tsAvg = avg(tsArr, ".*")
+	console.log(JSON.stringify(tsAvg.All()))`
+
+	v, err := me.runWithTimeout(script, 1*time.Second)
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+	fmt.Print(v.Export())
 	t.FailNow()
 }
 
