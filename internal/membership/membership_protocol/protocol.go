@@ -96,12 +96,12 @@ type DemmonTree struct {
 	lastLevelProgress         time.Time
 	joinLevel                 uint16
 
-	children                 map[string]map[string]*PeerWithIdChain
-	parents                  map[string]*PeerWithIdChain
-	currLevelResponseTimeuts map[string]int
-	currLevelPeers           []map[string]peer.Peer
-	currLevelPeersDone       []map[string]*MeasuredPeer
-	retries                  map[string]int
+	children                  map[string]map[string]*PeerWithIdChain
+	parents                   map[string]*PeerWithIdChain
+	currLevelResponseTimeouts map[string]int
+	currLevelPeers            []map[string]peer.Peer
+	currLevelPeersDone        []map[string]*MeasuredPeer
+	retries                   map[string]int
 
 	absorbTimerId int
 	// switchTimerId  int
@@ -123,13 +123,13 @@ func New(config DemmonTreeConfig, babel protocolManager.ProtocolManager, nw node
 		config:      config,
 
 		// join state
-		joinLevel:                0,
-		currLevelResponseTimeuts: make(map[string]int),
-		retries:                  make(map[string]int),
-		parents:                  make(map[string]*PeerWithIdChain),
-		currLevelPeers:           make([]map[string]peer.Peer, 0),
-		currLevelPeersDone:       make([]map[string]*MeasuredPeer, 0),
-		children:                 make(map[string]map[string]*PeerWithIdChain),
+		joinLevel:                 0,
+		currLevelResponseTimeouts: make(map[string]int),
+		retries:                   make(map[string]int),
+		parents:                   make(map[string]*PeerWithIdChain),
+		currLevelPeers:            make([]map[string]peer.Peer, 0),
+		currLevelPeersDone:        make([]map[string]*MeasuredPeer, 0),
+		children:                  make(map[string]map[string]*PeerWithIdChain),
 
 		// node state
 		myPendingParentInRecovery: nil,
@@ -222,8 +222,8 @@ func (d *DemmonTree) Init() {
 	d.babel.RegisterMessageHandler(d.ID(), updateChildMessage{}, d.handleUpdateChildMessage)
 	d.babel.RegisterMessageHandler(d.ID(), absorbMessage{}, d.handleAbsorbMessage)
 	d.babel.RegisterMessageHandler(d.ID(), disconnectAsChildMessage{}, d.handleDisconnectAsChildMsg)
-	// d.babel.RegisterMessageHandler(d.ID(), switchMessage{}, d.handleSwitchMessage)
 
+	// d.babel.RegisterMessageHandler(d.ID(), switchMessage{}, d.handleSwitchMessage)
 	// d.babel.RegisterMessageHandler(d.ID(), joinAsParentMessage{}, d.handleJoinAsParentMessage)
 	// d.babel.RegisterMessageHandler(d.ID(), biasedWalkMessage{}, d.handleBiasedWalkMessage)
 
@@ -829,7 +829,7 @@ func (d *DemmonTree) handleJoinReplyMessage(sender peer.Peer, msg message.Messag
 	}
 
 	if _, ok := d.currLevelPeers[d.joinLevel][sender.String()]; ok {
-		d.babel.CancelTimer(d.currLevelResponseTimeuts[sender.String()])
+		d.babel.CancelTimer(d.currLevelResponseTimeouts[sender.String()])
 	} else {
 		d.logger.Errorf("Got joinReply: %+v from timed out peer... %s", replyMsg, sender.String())
 		return
@@ -1513,9 +1513,9 @@ func (d *DemmonTree) progressToNextLevel(lowestLatencyPeer peer.Peer) {
 		d.currLevelPeersDone = append(d.currLevelPeersDone, make(map[string]*MeasuredPeer))
 	}
 
-	d.currLevelResponseTimeuts = make(map[string]int)
+	d.currLevelResponseTimeouts = make(map[string]int)
 	for _, p := range d.currLevelPeers[d.joinLevel] {
-		d.currLevelResponseTimeuts[p.String()] = d.babel.RegisterTimer(d.ID(), NewJoinMessageResponseTimeout(d.config.JoinMessageTimeout, p))
+		d.currLevelResponseTimeouts[p.String()] = d.babel.RegisterTimer(d.ID(), NewJoinMessageResponseTimeout(d.config.JoinMessageTimeout, p))
 		d.sendMessageAndMeasureLatency(NewJoinMessage(), p)
 	}
 }
@@ -1898,6 +1898,10 @@ func (d *DemmonTree) addParent(newParent *PeerWithIdChain, newGrandParent *PeerW
 		}
 	}
 
+	if !myNewChain.Equal(d.self.chain) {
+		d.babel.SendNotification(NewIDChangeNotification(myNewChain))
+	}
+
 	d.myGrandParent = newGrandParent
 	d.myParent = newParent
 	d.self = NewPeerWithIdChain(myNewChain, d.self.Peer, d.self.nChildren, d.self.Version()+1, d.self.Coordinates)
@@ -1907,7 +1911,7 @@ func (d *DemmonTree) addParent(newParent *PeerWithIdChain, newGrandParent *PeerW
 		d.currLevelPeersDone = nil
 		d.parents = nil
 		d.retries = nil
-		d.currLevelResponseTimeuts = nil
+		d.currLevelResponseTimeouts = nil
 	}
 
 	if connectToParent {

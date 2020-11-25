@@ -113,6 +113,14 @@ func (e *MetricsEngine) setVmFunctions(vm *otto.Otto) {
 	if err != nil {
 		panic(err)
 	}
+
+	err = vm.Set("SelectLast", func(call otto.FunctionCall) otto.Value {
+		return e.selectTs(vm, call)
+	})
+	if err != nil {
+		panic(err)
+	}
+
 	err = vm.Set("AddPoint", func(call otto.FunctionCall) otto.Value {
 		return e.addPoint(vm, call)
 	})
@@ -181,6 +189,55 @@ func (e *MetricsEngine) selectTs(vm *otto.Otto, call otto.FunctionCall) otto.Val
 		throw(vm, fmt.Sprintf("No measurement found with name %s", name))
 	}
 	queryResult = b.GetTimeseriesRegex(tags)
+	res, err := vm.ToValue(queryResult)
+	if err != nil {
+		throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
+	}
+	return res
+}
+
+func (e *MetricsEngine) selectLast(vm *otto.Otto, call otto.FunctionCall) otto.Value {
+	name, err := call.Argument(0).ToString()
+	if err != nil {
+		throw(vm, "Invalid arg: Name is not a string")
+	}
+
+	isTagFilterAll := call.Argument(1).IsString() && call.Argument(1).String() == "*"
+
+	var queryResult []tsdb.TimeSeries
+	if isTagFilterAll {
+		b, ok := e.db.GetBucket(name)
+		if !ok {
+			throw(vm, fmt.Sprintf("No measurement found with name %s", name))
+		}
+		queryResult = b.GetAllTimeseries()
+		res, err := vm.ToValue(queryResult)
+		if err != nil {
+			throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
+		}
+		return res
+	}
+
+	tagFilters := call.Argument(1).Object()
+	if err != nil {
+		throw(vm, "Invalid arg: tag filters is not defined")
+	}
+
+	tags := map[string]string{}
+	tagKeys := tagFilters.Keys()
+	for _, tagKey := range tagKeys {
+		tagVal, err := tagFilters.Get(tagKey)
+		if err != nil {
+			throw(vm, "Invalid arg: tag filters is not a map[string]string")
+		}
+		tags[tagKey] = tagVal.String()
+	}
+
+	b, ok := e.db.GetBucket(name)
+	if !ok {
+		throw(vm, fmt.Sprintf("No measurement found with name %s", name))
+	}
+	queryResult = b.GetTimeseriesRegexLastVal(tags)
 	res, err := vm.ToValue(queryResult)
 	if err != nil {
 		throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))

@@ -45,3 +45,32 @@ func NewGetNeighboursReqReply(key string, view InView) request.Reply {
 		Key:    key,
 	}
 }
+
+type GetIDReq struct {
+}
+
+const GetIDReqId = 2002
+
+func (r GetIDReq) ID() protocol.ID {
+	return GetIDReqId
+}
+
+func NewGetIDReq() request.Request {
+	return GetIDReq{}
+}
+
+const GetIDReqReplyId = 2003
+
+type GetIDReply struct {
+	CurrID PeerIDChain
+}
+
+func (r GetIDReply) ID() protocol.ID {
+	return GetIDReqReplyId
+}
+
+func NewGetIDReqReply(currId PeerIDChain) request.Reply {
+	return GetIDReply{
+		CurrID: currId,
+	}
+}

@@ -10,7 +10,7 @@ var DefaultGranularity = Granularity{time.Second * 5, 60} // 5 minutes total
 
 var (
 	ErrBucketNotFound = errors.New("bucket not found")
-	ErrAlreadyExists  = errors.New("timeseries already exists")
+	ErrAlreadyExists  = errors.New("Bucket already exists")
 )
 
 var createOnce sync.Once
@@ -31,10 +31,10 @@ func GetDB() *TSDB {
 	return db
 }
 
-func (db *TSDB) GetOrCreateBucket(name string, granularity Granularity) *Bucket {
+func (db *TSDB) GetOrCreateBucket(name string, granularity Granularity) (*Bucket, bool) {
 	newBucket, _ := NewBucket(name, granularity)
-	bucket, _ := db.buckets.LoadOrStore(name, newBucket)
-	return bucket.(*Bucket)
+	bucket, loaded := db.buckets.LoadOrStore(name, newBucket)
+	return bucket.(*Bucket), loaded
 }
 
 func (db *TSDB) GetBucket(name string) (*Bucket, bool) {
@@ -46,7 +46,7 @@ func (db *TSDB) GetBucket(name string) (*Bucket, bool) {
 }
 
 func (db *TSDB) GetOrCreateTimeseries(name string, tags map[string]string) TimeSeries {
-	b := db.GetOrCreateBucket(name, DefaultGranularity)
+	b, _ := db.GetOrCreateBucket(name, DefaultGranularity)
 	return b.GetOrCreateTimeseries(tags)
 }
 
@@ -59,7 +59,7 @@ func (db *TSDB) GetTimeseries(name string, tags map[string]string) (TimeSeries, 
 }
 
 func (db *TSDB) GetOrCreateTimeseriesWithClockAndGranularity(name string, tags map[string]string, clock Clock, g Granularity) TimeSeries {
-	b := db.GetOrCreateBucket(name, g)
+	b, _ := db.GetOrCreateBucket(name, g)
 	return b.GetOrCreateTimeseriesWithClock(tags, clock)
 }
 

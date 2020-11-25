@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"reflect"
@@ -18,6 +19,7 @@ import (
 	"github.com/nm-morais/demmon-common/routes"
 	"github.com/nm-morais/demmon/internal/membership/membership_frontend"
 	"github.com/nm-morais/demmon/internal/monitoring/metrics_engine"
+	"github.com/nm-morais/demmon/internal/monitoring/protocol/monitoring_proto"
 	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
 	"github.com/nm-morais/go-babel/pkg/protocolManager"
 	"github.com/reugn/go-quartz/quartz"
@@ -81,13 +83,12 @@ type Demmon struct {
 	conf                     DemmonConf
 	db                       *tsdb.TSDB
 	nodeUpdatesSubscribers   *sync.Map
+	monitorProto             *monitoring_proto.Monitor
 	fm                       *membership_frontend.MembershipFrontend
 	me                       *metrics_engine.MetricsEngine
 }
 
-func New(dConf DemmonConf, babel protocolManager.ProtocolManager) *Demmon {
-	db := tsdb.GetDB()
-	fm := membership_frontend.New(babel)
+func New(dConf DemmonConf, babel protocolManager.ProtocolManager, monitorProto *monitoring_proto.Monitor, me *metrics_engine.MetricsEngine, db *tsdb.TSDB, fm *membership_frontend.MembershipFrontend) *Demmon {
 	d := &Demmon{
 		schedulerMu:              &sync.Mutex{},
 		scheduler:                quartz.NewStdScheduler(),
@@ -96,9 +97,10 @@ func New(dConf DemmonConf, babel protocolManager.ProtocolManager) *Demmon {
 		logger:                   logrus.New(),
 		nodeUpdatesSubscribers:   &sync.Map{},
 		conf:                     dConf,
+		monitorProto:             monitorProto,
 		db:                       db,
 		fm:                       fm,
-		me:                       metrics_engine.NewMetricsEngine(db),
+		me:                       me,
 	}
 	d.scheduler.Start()
 	setupLogger(d.logger, d.conf.LogFolder, d.conf.LogFile, d.conf.Silent)
@@ -142,22 +144,20 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		ans, err = d.subscribeNodeEvents(c)
 	case routes.GetRegisteredMetricBuckets:
 		ans = d.db.GetRegisteredBuckets()
-	// case routes.RegisterMetrics:
-	// 	reqBody := []*body_types.MetricMetadata{}
-	// 	err = mapstructure.Decode(r.Message, &reqBody)
-	// 	if err != nil {
-	// 		err = errors.New("bad request body type")
-	// 		break
-	// 	}
-	// 	for _, m := range reqBody {
-	// 		d.logger.Infof("%+v", m)
-	// 	}
-	// 	err = d.mm.RegisterMetrics(reqBody)
-	// 	if err != nil {
-	// 		d.logger.Error(err)
-	// 		break
-	// 	}
-	// 	ans = true
+	case routes.RegisterMetricBuckets:
+		reqBody := []body_types.BucketOptions{}
+		err = mapstructure.Decode(r.Message, &reqBody)
+		if err != nil {
+			err = errors.New("bad request body type")
+			break
+		}
+		for _, m := range reqBody {
+			_, loaded := d.db.GetOrCreateBucket(m.Name, tsdb.Granularity{Granularity: m.Granularity.Granularity, Count: m.Granularity.Count})
+			if loaded {
+				err = fmt.Errorf("bucket %s already exists", m.Name)
+				break
+			}
+		}
 	case routes.PushMetricBlob:
 		reqBody := body_types.PointCollectionWithTagsAndName{}
 		err = decode(r.Message, &reqBody)
@@ -188,7 +188,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			break
 		}
 		var queryResult []tsdb.TimeSeries
-		queryResult, err = d.me.MakeQuery(reqBody.Query, reqBody.Timeout)
+		queryResult, err = d.me.MakeQuery(reqBody.Query.Expression, reqBody.Query.Timeout)
 		if err != nil {
 			break
 		}
@@ -217,13 +217,13 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			err = errors.New("bad request body type")
 			break
 		}
-		aux := tsdb.Granularity{Granularity: time.Duration(reqBody.FrequencySeconds) * time.Second, Count: reqBody.OutputMetricCount}
-		_, err = d.db.CreateBucket(reqBody.OutputMetricName, aux)
+		aux := tsdb.Granularity{Granularity: reqBody.OutputBucketOpts.Granularity.Granularity * time.Second, Count: reqBody.OutputBucketOpts.Granularity.Count}
+		_, err = d.db.CreateBucket(reqBody.OutputBucketOpts.Name, aux)
 		if err != nil {
 			break
 		}
 		taskId := atomic.AddUint64(d.continuousQueriesCounter, 1)
-		trigger := quartz.NewSimpleTrigger(time.Duration(reqBody.FrequencySeconds) * time.Second)
+		trigger := quartz.NewSimpleTrigger(reqBody.OutputBucketOpts.Granularity.Granularity)
 		job := &continuousQueryValueType{
 			mu:           &sync.Mutex{},
 			description:  reqBody.Description,
@@ -275,8 +275,26 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			})
 		}
 		ans = resp
-	case routes.IsMetricActive:
+	case routes.InstallCustomInterestSet:
 		panic("not yet implemented")
+
+	case routes.InstallNeighborhoodInterestSet:
+		reqBody := body_types.NeighborhoodInterestSet{}
+		err = decode(r.Message, &reqBody)
+		if err != nil {
+			d.logger.Error(err)
+			err = errors.New("bad request body type")
+			break
+		}
+		aux := tsdb.Granularity{Granularity: reqBody.OutputBucketOpts.Granularity.Granularity * time.Second, Count: reqBody.OutputBucketOpts.Granularity.Count}
+		_, err = d.db.CreateBucket(reqBody.OutputBucketOpts.Name, aux)
+		if err != nil {
+			break
+		}
+
+		neighSetId := rand.Uint64()
+		d.monitorProto.AddNeighborhoodInterestSetReq(neighSetId, reqBody)
+		d.logger.Info("Added new neighboring interest set")
 	case routes.BroadcastMessage:
 		panic("not yet implemented")
 	case routes.AlarmTrigger:
@@ -351,7 +369,10 @@ func (d *Demmon) handleContinuousQueryTrigger(taskId int) {
 		job.triedNr++
 		job.err = err
 		if job.triedNr == job.nrRetries {
-			d.scheduler.DeleteJob(job.Key())
+			err := d.scheduler.DeleteJob(job.Key())
+			if err != nil {
+				panic(err)
+			}
 		}
 		return
 	}

@@ -1,0 +1,12 @@
+3 nr_goroutines_min 1 1 100 AddPoint("nr_goroutines_min",{},Min(Select("nr_goroutines","*"),"*").Last())
+
+
+3 nr_goroutines_min 1 1 100 AddPoint("nr_goroutines_min",{},Min(Select("nr_goroutines","*"),"*").Last().Fields)
+3 nr_goroutines_max 1 1 100 AddPoint("nr_goroutines_max",{},Max(Select("nr_goroutines","*"),"*").Last().Fields)
+
+
+3 nr_goroutines_max 1 1 100 Max(Select("nr_goroutines","*"),"*").Last().Fields
+
+1 1 AddPoint("nr_goroutines_min",{}, Min(Select("nr_goroutines","*"),"*").Last().Fields)
+
+1 1 Select("nr_goroutines_max","*")

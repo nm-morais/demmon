@@ -11,8 +11,12 @@ import (
 
 	client "github.com/nm-morais/demmon-client/pkg"
 	exporter "github.com/nm-morais/demmon-exporter"
+	"github.com/nm-morais/demmon/internal/membership/membership_frontend"
 	"github.com/nm-morais/demmon/internal/membership/membership_protocol"
 	"github.com/nm-morais/demmon/internal/monitoring"
+	"github.com/nm-morais/demmon/internal/monitoring/metrics_engine"
+	"github.com/nm-morais/demmon/internal/monitoring/protocol/monitoring_proto"
+	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
 	"github.com/nm-morais/go-babel/pkg"
 	"github.com/nm-morais/go-babel/pkg/peer"
 )
@@ -183,8 +187,16 @@ func start(babelConf pkg.Config, nwConf pkg.NodeWatcherConf, eConf exporter.Conf
 	babel.RegisterNodeWatcher(nw)
 	babel.RegisterListenAddr(babelConf.Peer.ToTCPAddr())
 	babel.RegisterListenAddr(babelConf.Peer.ToUDPAddr())
+
+	db := tsdb.GetDB()
+	me := metrics_engine.NewMetricsEngine(db)
+	fm := membership_frontend.New(babel)
+	monitorProto := monitoring_proto.New(babel, db, me)
+	monitor := monitoring.New(dConf, babel, monitorProto, me, db, fm)
+
+	babel.RegisterProtocol(monitorProto)
 	babel.RegisterProtocol(membership_protocol.New(membershipConf, babel, nw))
-	monitor := monitoring.New(dConf, babel)
+
 	go monitor.Listen()
 	go babel.Start()
 	go setupDemmonExporter(eConf)
@@ -265,6 +277,19 @@ func setupDemmonMetrics() {
 		"nr_goroutines_min",
 		60,
 		5,
+	)
+
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = cl.InstallNeighborhoodInterestSet(
+		`SelectLast("nr_goroutines","*"),"*").Last()`,
+		1*time.Second,
+		1,
+		"nr_goroutines_neigh",
+		3*time.Second,
+		20,
 	)
 
 	if err != nil {

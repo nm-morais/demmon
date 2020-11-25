@@ -85,3 +85,19 @@ func NewNodeDownNotification(p *PeerWithIdChain, inView InView) NodeDownNotifica
 func (NodeDownNotification) ID() notification.ID {
 	return NodeDownNotificationID
 }
+
+const IDChangeNotificationID = 2005
+
+type IDChangeNotification struct {
+	NewId PeerIDChain
+}
+
+func NewIDChangeNotification(newID PeerIDChain) IDChangeNotification {
+	return IDChangeNotification{
+		NewId: newID,
+	}
+}
+
+func (IDChangeNotification) ID() notification.ID {
+	return IDChangeNotificationID
+}

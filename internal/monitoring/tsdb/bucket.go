@@ -83,10 +83,45 @@ func (b *Bucket) GetTimeseriesRegex(tagsToMatch map[string]string) []TimeSeries 
 				break
 			}
 		}
+
 		if allMatching {
 			matchingTimeseries = append(matchingTimeseries, NewStaticTimeSeries(ts.Name(), ts.Tags(), ts.All()))
 		}
 		return true
+
+	})
+	return matchingTimeseries
+}
+
+func (b *Bucket) GetTimeseriesRegexLastVal(tagsToMatch map[string]string) []TimeSeries {
+	matchingTimeseries := make([]TimeSeries, 0)
+	b.timeseries.Range(func(key, value interface{}) bool {
+		ts := value.(TimeSeries)
+		tsTags := ts.Tags()
+		allMatching := true
+		for tagKey, tagVal := range tagsToMatch {
+			timeseriesTag, hasKey := tsTags[tagKey]
+			if !hasKey {
+				break
+			}
+			matched, err := regexp.MatchString(tagVal, timeseriesTag)
+			if err != nil {
+				break
+			}
+			if !matched {
+				allMatching = false
+				break
+			}
+		}
+
+		if allMatching {
+			last := ts.Last()
+			if last != nil {
+				matchingTimeseries = append(matchingTimeseries, NewStaticTimeSeries(ts.Name(), ts.Tags(), []PointValue{*last}))
+			}
+		}
+		return true
+
 	})
 	return matchingTimeseries
 }
