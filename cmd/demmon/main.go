@@ -95,10 +95,10 @@ var (
 	}
 
 	landmarks = []*membership_protocol.PeerWithIdChain{
-		membership_protocol.NewPeerWithIdChain(membership_protocol.PeerIDChain{membership_protocol.PeerID{12}}, peer.NewPeer(net.IPv4(10, 10, 211, 91), 1200, 1300), 0, 0, make(membership_protocol.Coordinates, 4)),
-		membership_protocol.NewPeerWithIdChain(membership_protocol.PeerIDChain{membership_protocol.PeerID{17}}, peer.NewPeer(net.IPv4(10, 10, 50, 133), 1200, 1300), 0, 0, make(membership_protocol.Coordinates, 4)),
-		membership_protocol.NewPeerWithIdChain(membership_protocol.PeerIDChain{membership_protocol.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 29, 25), 1200, 1300), 0, 0, make(membership_protocol.Coordinates, 4)),
-		membership_protocol.NewPeerWithIdChain(membership_protocol.PeerIDChain{membership_protocol.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 1, 21), 1200, 1300), 0, 0, make(membership_protocol.Coordinates, 4)),
+		membership_protocol.NewPeerWithIdChain(membership_protocol.PeerIDChain{membership_protocol.PeerID{12}}, peer.NewPeer(net.IPv4(10, 10, 1, 16), 1200, 1300), 0, 0, make(membership_protocol.Coordinates, 4)),
+		// membership_protocol.NewPeerWithIdChain(membership_protocol.PeerIDChain{membership_protocol.PeerID{17}}, peer.NewPeer(net.IPv4(10, 10, 50, 133), 1200, 1300), 0, 0, make(membership_protocol.Coordinates, 4)),
+		// membership_protocol.NewPeerWithIdChain(membership_protocol.PeerIDChain{membership_protocol.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 29, 25), 1200, 1300), 0, 0, make(membership_protocol.Coordinates, 4)),
+		// membership_protocol.NewPeerWithIdChain(membership_protocol.PeerIDChain{membership_protocol.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 1, 21), 1200, 1300), 0, 0, make(membership_protocol.Coordinates, 4)),
 	}
 
 	protosPortVar     int
