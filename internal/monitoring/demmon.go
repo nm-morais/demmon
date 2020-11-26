@@ -217,7 +217,8 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			err = errors.New("bad request body type")
 			break
 		}
-		aux := tsdb.Granularity{Granularity: reqBody.OutputBucketOpts.Granularity.Granularity * time.Second, Count: reqBody.OutputBucketOpts.Granularity.Count}
+		aux := tsdb.Granularity{Granularity: reqBody.OutputBucketOpts.Granularity.Granularity, Count: reqBody.OutputBucketOpts.Granularity.Count}
+		d.logger.Infof("Installing continuous queries: %+v", reqBody)
 		_, err = d.db.CreateBucket(reqBody.OutputBucketOpts.Name, aux)
 		if err != nil {
 			break
@@ -286,7 +287,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			err = errors.New("bad request body type")
 			break
 		}
-		aux := tsdb.Granularity{Granularity: reqBody.OutputBucketOpts.Granularity.Granularity * time.Second, Count: reqBody.OutputBucketOpts.Granularity.Count}
+		aux := tsdb.Granularity{Granularity: reqBody.OutputBucketOpts.Granularity.Granularity, Count: reqBody.OutputBucketOpts.Granularity.Count}
 		_, err = d.db.CreateBucket(reqBody.OutputBucketOpts.Name, aux)
 		if err != nil {
 			break
@@ -352,18 +353,18 @@ func (d *Demmon) writePump(c *client) {
 
 func (d *Demmon) handleContinuousQueryTrigger(taskId int) {
 	d.schedulerMu.Lock()
+	defer d.schedulerMu.Unlock()
 	jobGeneric, err := d.scheduler.GetScheduledJob(taskId)
 	if err != nil {
-		d.schedulerMu.Unlock()
 		d.logger.Error(err)
 		return
 	}
-	d.schedulerMu.Unlock()
 	job := jobGeneric.Job.(*continuousQueryValueType)
+	job.mu.Lock()
+	defer job.mu.Unlock()
 	d.logger.Infof("Continuous query %d trigger (%s)", taskId, job.query)
 	err = d.me.RunExpression(job.query, job.queryTimeout)
-	d.schedulerMu.Lock()
-	defer d.schedulerMu.Unlock()
+
 	if err != nil {
 		d.logger.Errorf("Continuous query %d failed with error: %s", taskId, err)
 		job.triedNr++

@@ -92,7 +92,11 @@ func (t *timeseries) Name() string {
 }
 
 func (t *timeseries) Tags() map[string]string {
-	return t.tags
+	auxMap := make(map[string]string)
+	for tName, tVal := range t.tags {
+		auxMap[tName] = tVal
+	}
+	return auxMap
 }
 
 func (t *timeseries) All() []PointValue {

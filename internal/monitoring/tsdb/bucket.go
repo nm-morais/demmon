@@ -117,11 +117,10 @@ func (b *Bucket) GetTimeseriesRegexLastVal(tagsToMatch map[string]string) []Time
 		if allMatching {
 			last := ts.Last()
 			if last != nil {
-				matchingTimeseries = append(matchingTimeseries, NewStaticTimeSeries(ts.Name(), ts.Tags(), []PointValue{*last}))
+				matchingTimeseries = append(matchingTimeseries, NewStaticTimeSeries(ts.Name(), tsTags, []PointValue{*last}))
 			}
 		}
 		return true
-
 	})
 	return matchingTimeseries
 }

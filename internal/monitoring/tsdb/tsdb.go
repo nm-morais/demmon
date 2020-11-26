@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -65,7 +66,7 @@ func (db *TSDB) GetOrCreateTimeseriesWithClockAndGranularity(name string, tags m
 
 func (db *TSDB) AddMetric(bucketName string, tags map[string]string, fields map[string]interface{}, timestamp time.Time) {
 	timeseries := db.GetOrCreateTimeseries(bucketName, tags)
-	// fmt.Printf("Adding point at time %+v", timestamp)
+	fmt.Printf("TS: %s, Tags: %+v adding point %+v at time %+v \n", bucketName, tags, fields, timestamp)
 	timeseries.AddPoint(PointValue{TS: timestamp, Fields: fields})
 }
 

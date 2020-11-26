@@ -115,7 +115,7 @@ func (e *MetricsEngine) setVmFunctions(vm *otto.Otto) {
 	}
 
 	err = vm.Set("SelectLast", func(call otto.FunctionCall) otto.Value {
-		return e.selectTs(vm, call)
+		return e.selectLast(vm, call)
 	})
 	if err != nil {
 		panic(err)

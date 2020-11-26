@@ -240,8 +240,8 @@ func setupDemmonMetrics() {
 		var goroutines_max = Max(Select("nr_goroutines","*"),"*").Last()
 		AddPoint("nr_goroutines_max", {}, goroutines_max)`,
 		"the max of series nr_goroutines",
-		5,
 		1*time.Second,
+		5*time.Second,
 		"nr_goroutines_max",
 		60,
 		5,
@@ -256,8 +256,8 @@ func setupDemmonMetrics() {
 		var goroutines_avg = Avg(Select("nr_goroutines","*"),"*").Last()
 		AddPoint("nr_goroutines_avg", {}, goroutines_avg)`,
 		"the max of series nr_goroutines",
-		5,
 		1*time.Second,
+		5*time.Second,
 		"nr_goroutines_avg",
 		60,
 		5,
@@ -272,8 +272,8 @@ func setupDemmonMetrics() {
 		var goroutines_min = Min(Select("nr_goroutines","*"),"*").Last()
 		AddPoint("nr_goroutines_min", {}, goroutines_min)`,
 		"the min of series nr_goroutines",
-		5,
 		1*time.Second,
+		5*time.Second,
 		"nr_goroutines_min",
 		60,
 		5,
@@ -284,12 +284,13 @@ func setupDemmonMetrics() {
 	}
 
 	_, err = cl.InstallNeighborhoodInterestSet(
-		`SelectLast("nr_goroutines","*"),"*").Last()`,
+		`SelectLast("nr_goroutines","*")`,
 		1*time.Second,
 		1,
 		"nr_goroutines_neigh",
 		3*time.Second,
 		20,
+		3,
 	)
 
 	if err != nil {
@@ -315,14 +316,14 @@ func setupDemmonMetrics() {
 		// )
 		// fmt.Printf("\nnr_goroutines_avg %+v, %+v\n\n\n", res, err)
 
-		// res, err = cl.Query(
-		// 	`Select("nr_goroutines_min","*")`,
-		// 	1*time.Second,
-		// )
-		// fmt.Printf("\nnr_goroutines_min %+v, %+v\n\n\n", res, err)
+		res, err := cl.Query(
+			`Select("nr_goroutines_neigh",{"host":".*"})`,
+			1*time.Second,
+		)
+		fmt.Printf("\nnr_goroutines_neigh %+v, %+v\n", res, err)
 
-		activeQueries, err := cl.GetContinuousQueries()
-		fmt.Printf("\ncontinuous queries: %+v, %+v\n\n\n", activeQueries, err)
+		// activeQueries, err := cl.GetContinuousQueries()
+		// fmt.Printf("\ncontinuous queries: %+v, %+v\n\n\n", activeQueries, err)
 	}
 }
 
