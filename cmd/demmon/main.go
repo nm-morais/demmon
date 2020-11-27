@@ -62,7 +62,7 @@ var (
 		EmitWalkTimeout:                    8 * time.Second,
 		MaxPeersInEView:                    15,
 		MeasureNewPeersRefreshTickDuration: 7 * time.Second,
-		MeasuredPeersSize:                  5,
+		MaxMeasuredPeers:                   5,
 		NrHopsToIgnoreWalk:                 2,
 		NrPeersInWalkMessage:               20,
 		NrPeersToMeasureBiased:             2,

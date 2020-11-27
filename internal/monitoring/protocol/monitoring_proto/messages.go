@@ -109,13 +109,30 @@ const propagateInterestSetMetricsMsgID = 6002
 
 type propagateInterestSetMetricsMsg struct {
 	InterestSetId uint64
-	Metrics       []tsdb.TimeSeries
+	Metrics       []body_types.Timeseries
 }
 
-func NewPropagateInterestSetMetricsMessage(interestSetId uint64, metrics []tsdb.TimeSeries) propagateInterestSetMetricsMsg {
+func NewPropagateInterestSetMetricsMessage(interestSetId uint64, tsArr []tsdb.TimeSeries) propagateInterestSetMetricsMsg {
+	aux := make([]body_types.Timeseries, len(tsArr))
+	for idx, t := range tsArr {
+		allPts := t.All()
+		toAdd := body_types.Timeseries{
+			Name:   t.Name(),
+			Tags:   t.Tags(),
+			Points: make([]body_types.Point, len(allPts)),
+		}
+
+		for idx, p := range allPts {
+			toAdd.Points[idx] = body_types.Point{
+				TS:     p.TS,
+				Fields: p.Fields,
+			}
+		}
+		aux[idx] = toAdd
+	}
 	return propagateInterestSetMetricsMsg{
 		InterestSetId: interestSetId,
-		Metrics:       metrics,
+		Metrics:       aux,
 	}
 }
 

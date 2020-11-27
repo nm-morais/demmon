@@ -49,3 +49,25 @@ func (t *exportNeighInterestSetMetricsTimer) ID() timer.ID {
 func (t *exportNeighInterestSetMetricsTimer) Deadline() time.Time {
 	return t.deadline
 }
+
+const CheckInterestSetPeerInViewTimerID = 6002
+
+type checkInterestSetPeerInViewTimer struct {
+	deadline      time.Time
+	InterestSetId uint64
+}
+
+func NewCheckInterestSetPeerInViewTimer(duration time.Duration, interestSetId uint64) timer.Timer {
+	return &checkInterestSetPeerInViewTimer{
+		deadline:      time.Now().Add(duration),
+		InterestSetId: interestSetId,
+	}
+}
+
+func (t *checkInterestSetPeerInViewTimer) ID() timer.ID {
+	return CheckInterestSetPeerInViewTimerID
+}
+
+func (t *checkInterestSetPeerInViewTimer) Deadline() time.Time {
+	return t.deadline
+}
