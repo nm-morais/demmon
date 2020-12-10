@@ -24,7 +24,7 @@ type NodeChangeEvent struct {
 }
 
 const protoID = 5000
-const name = "Membership_Frontend"
+const name = "DemmonTree_Frontend"
 
 type MembershipFrontend struct {
 	logger    *logrus.Logger

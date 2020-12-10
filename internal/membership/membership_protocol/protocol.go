@@ -318,9 +318,7 @@ func (d *DemmonTree) handleDebugTimer(joinTimer timer.Timer) {
 	for _, neighbour := range inView {
 		toPrint = toPrint + " " + neighbour.String()
 	}
-
 	d.logger.Infof(" %s InView: %s", d.self.String(), toPrint)
-
 }
 
 func (d *DemmonTree) handleJoinTimer(joinTimer timer.Timer) {
@@ -805,6 +803,11 @@ func (d *DemmonTree) handleJoinMessage(sender peer.Peer, msg message.Message) {
 func (d *DemmonTree) handleJoinMessageResponseTimeout(timer timer.Timer) {
 	peer := timer.(*peerJoinMessageResponseTimeout).Peer
 	d.logger.Warnf("timeout from %s", peer.String())
+
+	if d.joinLevel == math.MaxUint16 {
+		return
+	}
+
 	delete(d.currLevelPeers[d.joinLevel], peer.String())
 	delete(d.currLevelPeersDone[d.joinLevel], peer.String())
 	d.nodeWatcher.Unwatch(peer, d.ID())
@@ -1243,8 +1246,8 @@ func (d *DemmonTree) handlePeerDownNotification(notification notification.Notifi
 func (d *DemmonTree) handlePeerDown(p peer.Peer) {
 	if peer.PeersEqual(p, d.myParent) {
 		d.logger.Warnf("Parent down %s", p.String())
-		d.myParent = nil
 		d.babel.SendNotification(NewNodeDownNotification(d.myParent, d.getInView()))
+		d.myParent = nil
 		d.nodeWatcher.Unwatch(p, d.ID())
 		if d.myGrandParent != nil {
 			d.logger.Warnf("Falling back to grandparent %s", d.myGrandParent.String())
@@ -1260,15 +1263,15 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer) {
 
 	if child, isChildren := d.myChildren[p.String()]; isChildren {
 		d.logger.Warnf("Child down %s", p.String())
-		d.removeChild(child, true, true)
 		d.babel.SendNotification(NewNodeDownNotification(child, d.getInView()))
+		d.removeChild(child, true, true)
 		return
 	}
 
 	if sibling, isSibling := d.mySiblings[p.String()]; isSibling {
 		d.logger.Warnf("Sibling down %s", p.String())
-		d.removeSibling(sibling, true)
 		d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView()))
+		d.removeSibling(sibling, true)
 		return
 	}
 

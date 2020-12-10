@@ -142,7 +142,12 @@ func (p *PeerWithIdChain) Chain() PeerIDChain {
 }
 
 func (p *PeerWithIdChain) StringWithFields() string {
-	return fmt.Sprintf("%s:%+v:%+v:v_%d:c(%d)", p.String(), p.Coordinates, p.chain, p.version, p.nChildren)
+	coordinatesStr := "("
+	for _, c := range p.Coordinates {
+		coordinatesStr += fmt.Sprintf("%d,", c)
+	}
+	coordinatesStr = coordinatesStr[:len(coordinatesStr)-1] + ")"
+	return fmt.Sprintf("%s:%s:%+v:v_%d:c(%d)", p.String(), coordinatesStr, p.chain, p.version, p.nChildren)
 }
 
 func (p *PeerWithIdChain) NrChildren() uint16 {

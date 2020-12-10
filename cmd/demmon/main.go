@@ -153,17 +153,24 @@ func main() {
 		DialAttempts:    3,
 		DialBackoffTime: 1 * time.Second,
 		DialTimeout:     3 * time.Second,
-		RequestTimeout:  1 * time.Second,
+		RequestTimeout:  3 * time.Second,
 	}
 
 	dConf := monitoring.DemmonConf{
 		Silent:     silent,
 		LogFolder:  logFolder,
-		LogFile:    "demmon_frontend.log",
+		LogFile:    "metrics_frontend.log",
 		ListenPort: 8090,
 		PluginDir:  fmt.Sprintf("%s/plugins", logFolder),
 	}
 
+	meConf := metrics_engine.Conf{
+		Silent:    silent,
+		LogFolder: logFolder,
+		LogFile:   "metrics_engine.log",
+	}
+
+	//
 	if randProtosPort {
 		protosPortVar = rand.Intn(maxProtosPort-minProtosPort) + minProtosPort
 	}
@@ -173,23 +180,22 @@ func main() {
 	}
 
 	fmt.Println("Self peer: ", babelConf.Peer.String())
-	err := start(babelConf, nodeWatcherConf, exporterConfs, dConf, demmonTreeConf)
+	err := start(babelConf, nodeWatcherConf, exporterConfs, dConf, demmonTreeConf, meConf)
 	if err != nil {
 		panic(err)
 	}
-
 	select {}
 }
 
-func start(babelConf pkg.Config, nwConf pkg.NodeWatcherConf, eConf exporter.Conf, dConf monitoring.DemmonConf, membershipConf membership_protocol.DemmonTreeConfig) error {
+func start(babelConf pkg.Config, nwConf pkg.NodeWatcherConf, eConf exporter.Conf, dConf monitoring.DemmonConf, membershipConf membership_protocol.DemmonTreeConfig, meConf metrics_engine.Conf) error {
 	babel := pkg.NewProtoManager(babelConf)
 	nw := pkg.NewNodeWatcher(nwConf, babel)
 	babel.RegisterNodeWatcher(nw)
 	babel.RegisterListenAddr(babelConf.Peer.ToTCPAddr())
 	babel.RegisterListenAddr(babelConf.Peer.ToUDPAddr())
 
-	db := tsdb.GetDB()
-	me := metrics_engine.NewMetricsEngine(db)
+	db := tsdb.GetDB(logFolder, "tsdb.log", false, true)
+	me := metrics_engine.NewMetricsEngine(db, meConf, true)
 	fm := membership_frontend.New(babel)
 	monitorProto := monitoring_proto.New(babel, db, me)
 	monitor := monitoring.New(dConf, babel, monitorProto, me, db, fm)
@@ -236,14 +242,12 @@ func setupDemmonMetrics() {
 		break
 	}
 	_, err := cl.InstallContinuousQuery(
-		`
-		var goroutines_max = Max(Select("nr_goroutines","*"),"*").Last()
-		AddPoint("nr_goroutines_max", {}, goroutines_max)`,
+		`Max(Select("nr_goroutines","*"),"*")`,
 		"the max of series nr_goroutines",
 		1*time.Second,
 		5*time.Second,
 		"nr_goroutines_max",
-		60,
+		12,
 		5,
 	)
 
@@ -252,14 +256,12 @@ func setupDemmonMetrics() {
 	}
 
 	_, err = cl.InstallContinuousQuery(
-		`
-		var goroutines_avg = Avg(Select("nr_goroutines","*"),"*").Last()
-		AddPoint("nr_goroutines_avg", {}, goroutines_avg)`,
-		"the max of series nr_goroutines",
+		`Avg(Select("nr_goroutines","*"),"*")`,
+		"the rolling average of series nr_goroutines",
 		1*time.Second,
 		5*time.Second,
 		"nr_goroutines_avg",
-		60,
+		12,
 		5,
 	)
 
@@ -268,14 +270,12 @@ func setupDemmonMetrics() {
 	}
 
 	_, err = cl.InstallContinuousQuery(
-		`
-		var goroutines_min = Min(Select("nr_goroutines","*"),"*").Last()
-		AddPoint("nr_goroutines_min", {}, goroutines_min)`,
+		`Min(Select("nr_goroutines","*"),"*")`,
 		"the min of series nr_goroutines",
 		1*time.Second,
 		5*time.Second,
 		"nr_goroutines_min",
-		60,
+		12,
 		5,
 	)
 
@@ -289,8 +289,25 @@ func setupDemmonMetrics() {
 		1,
 		"nr_goroutines_neigh",
 		3*time.Second,
-		20,
 		3,
+		3,
+	)
+
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = cl.InstallContinuousQuery(
+		`
+		var neighRoutines = Select("nr_goroutines_neigh","*"),"*")
+		var result = Min(neighRoutines, "*")
+		`,
+		"the min of nr_goroutines of the neighborhood",
+		1*time.Second,
+		5*time.Second,
+		"neigh_routines_min",
+		12,
+		5,
 	)
 
 	if err != nil {
@@ -317,10 +334,37 @@ func setupDemmonMetrics() {
 		// fmt.Printf("\nnr_goroutines_avg %+v, %+v\n\n\n", res, err)
 
 		res, err := cl.Query(
-			`Select("nr_goroutines_neigh",{"host":".*"})`,
+			"SelectLast('nr_goroutines_neigh',{'host':'.*'})",
 			1*time.Second,
 		)
-		fmt.Printf("\nnr_goroutines_neigh %+v, %+v\n", res, err)
+		fmt.Println("SelectLast('nr_goroutines_neigh',{'host':'.*'}) Query results :")
+		for _, ts := range res {
+			fmt.Printf("%+v, %+v\n", ts, err)
+		}
+
+		res, err = cl.Query(
+			"Select('neigh_routines_min','*')",
+			1*time.Second,
+		)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("Select('neigh_routines_min','*') Query results :")
+		for idx, ts := range res {
+			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.Name, ts.Tags, ts.Points)
+		}
+
+		res, err = cl.Query(
+			"Select('nr_goroutines','*')",
+			1*time.Second,
+		)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("Select('nr_goroutines','*') Query results :")
+		for idx, ts := range res {
+			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.Name, ts.Tags, ts.Points)
+		}
 
 		// activeQueries, err := cl.GetContinuousQueries()
 		// fmt.Printf("\ncontinuous queries: %+v, %+v\n\n\n", activeQueries, err)
@@ -333,11 +377,11 @@ func setupDemmonExporter(eConf exporter.Conf) {
 		panic(err)
 	}
 
-	g := e.NewGauge("nr_goroutines")
-	exportTicker := time.NewTicker(5 * time.Second)
-	go e.ExportLoop(context.TODO(), exportTicker.C)
-
+	exportFrequncy := 5 * time.Second
+	g := e.NewGauge("nr_goroutines", 12)
+	go e.ExportLoop(context.TODO(), exportFrequncy)
 	setTicker := time.NewTicker(1 * time.Second)
+
 	for range setTicker.C {
 		g.Set(float64(runtime.NumGoroutine()))
 	}

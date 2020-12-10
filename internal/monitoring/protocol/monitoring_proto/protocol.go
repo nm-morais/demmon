@@ -21,7 +21,7 @@ import (
 
 const (
 	MonitorProtoID = 6000
-	name           = "Monitor"
+	name           = "monitor_proto"
 )
 
 type localNeighInterestSet struct {
@@ -69,6 +69,7 @@ func (m *Monitor) MessageDelivered(message message.Message, peer peer.Peer) {
 }
 
 func (m *Monitor) MessageDeliveryErr(message message.Message, peer peer.Peer, error errors.Error) {
+	m.logger.Errorf("Message %+v failed to deliver to: %s", message, peer)
 }
 
 func (m *Monitor) ID() protocol.ID {
@@ -122,9 +123,10 @@ func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 	interestSetId := tConverted.InterestSetId
 	localInterestSet, ok := m.localNeighInterestSets[interestSetId]
 	if ok {
-		m.logger.Infof("Exporting metrics for local interest set %d: %+v", interestSetId, localInterestSet)
+		m.logger.Infof("Exporting metrics for local interest set %d: %s", interestSetId, localInterestSet.interestSet.OutputBucketOpts.Name)
 		query := localInterestSet.interestSet.Query
 		result, err := m.me.MakeQuery(query.Expression, query.Timeout)
+
 		if err != nil {
 			localInterestSet.nrRetries++
 			m.localNeighInterestSets[interestSetId] = localInterestSet
@@ -134,18 +136,25 @@ func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 				return // abort timer
 			}
 		}
+
 		for _, ts := range result {
-			tags := ts.Tags()
-			if tags == nil {
-				tags = make(map[string]string)
+			ts.SetTag("host", m.babel.SelfPeer().IP().String())
+			allPts := ts.All()
+			if len(allPts) == 0 {
+				m.logger.Error("Timeseries result is empty")
 			}
-			tags["host"] = m.babel.SelfPeer().IP().String()
-			lastPt := ts.Last()
-			m.tsdb.AddMetric(localInterestSet.interestSet.OutputBucketOpts.Name, tags, lastPt.Fields, lastPt.TS)
+			for _, pt := range allPts {
+				err := m.tsdb.AddMetric(localInterestSet.interestSet.OutputBucketOpts.Name, ts.Tags(), pt.Value(), pt.TS())
+				if err != nil {
+					m.logger.Panic(err)
+				}
+			}
 		}
+
 		if localInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity == 0 {
 			panic("granularity is 0")
 		}
+
 		m.logger.Infof("Setting timer for interest set %d to %+v from now", interestSetId, localInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity)
 		m.babel.RegisterTimer(m.ID(), NewExportNeighInterestSetMetricsTimer(localInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity, interestSetId))
 		return
@@ -153,7 +162,7 @@ func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 
 	remoteInterestSet, ok := m.remoteNeighInterestSets[interestSetId]
 	if ok {
-		m.logger.Infof("Exporting metrics for remote interest set %d: %+v", interestSetId, remoteInterestSet)
+		m.logger.Infof("Exporting metrics for remote interest set %d: %s", interestSetId, remoteInterestSet.interestSet.OutputBucketOpts.Name)
 		query := remoteInterestSet.interestSet.Query
 		result, err := m.me.MakeQuery(query.Expression, query.Timeout)
 		if err != nil {
@@ -166,19 +175,19 @@ func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 			}
 		}
 		target := remoteInterestSet.sender
+
 		if !m.isPeerInView(target) {
 			return
 		}
+
 		for _, ts := range result {
-			tags := ts.Tags()
-			if tags == nil {
-				tags = make(map[string]string)
-			}
-			tags["host"] = m.babel.SelfPeer().IP().String()
+			ts.SetTag("host", m.babel.SelfPeer().IP().String())
 		}
+
 		if remoteInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity == 0 {
 			panic("granularity is 0")
 		}
+
 		toSendMsg := NewPropagateInterestSetMetricsMessage(interestSetId, result)
 		m.babel.SendMessage(toSendMsg, remoteInterestSet.sender, m.ID(), m.ID())
 		m.babel.RegisterTimer(m.ID(), NewExportNeighInterestSetMetricsTimer(remoteInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity, interestSetId))
@@ -254,21 +263,27 @@ func (m *Monitor) handleInstallNeighInterestSetMessage(sender peer.Peer, msg mes
 func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer, msg message.Message) {
 	msgConverted := msg.(propagateInterestSetMetricsMsg)
 	interestSetId := msgConverted.InterestSetId
-
 	localInterestSet, ok := m.localNeighInterestSets[interestSetId]
 	if ok {
-		m.logger.Infof("received propagation of metric values for local interest set %d: %+v from %s", interestSetId, localInterestSet, sender.String())
+		m.logger.Infof("received propagation of metric values for local interest set %d: %s from %s", interestSetId, localInterestSet.interestSet.OutputBucketOpts.Name, sender.String())
+		// m.logger.Infof("adding metrics: %+v", msgConverted.Metrics)
 		toAdd := msgConverted.Metrics
 		for _, ts := range toAdd {
-			lastPt := ts.Points[len(ts.Points)-1]
-			m.tsdb.AddMetric(localInterestSet.interestSet.OutputBucketOpts.Name, ts.Tags, lastPt.Fields, lastPt.TS)
+			for _, pt := range ts.Points {
+				err := m.tsdb.AddMetric(localInterestSet.interestSet.OutputBucketOpts.Name, ts.Tags, pt.Fields, pt.TS)
+				if err != nil {
+					m.logger.Error(err)
+				}
+			}
 		}
 		return
 	}
 
 	remoteInterestSet, ok := m.remoteNeighInterestSets[interestSetId]
 	if ok {
-		m.logger.Infof("received propagation of metric values for neigh interest set %d: %+v from %s", interestSetId, remoteInterestSet, sender.String())
+		m.logger.Infof("received propagation of metric values for neigh interest set %d: %s from %s", interestSetId, remoteInterestSet.interestSet.OutputBucketOpts.Name, sender.String())
+		m.logger.Infof("values: %+v", msgConverted.Metrics)
+
 		if !m.isPeerInView(remoteInterestSet.sender) {
 			panic("received interest set propagation message but target is not in view")
 		}
@@ -288,7 +303,7 @@ func (m *Monitor) handleAddNeighInterestSetRequest(req request.Request) request.
 		nrRetries:   0,
 		interestSet: interestSet,
 	}
-	frequency := addNeighInterestSetReq.InterestSet.OutputBucketOpts.Granularity.Granularity
+	frequency := interestSet.OutputBucketOpts.Granularity.Granularity
 	toSend := map[uint64]body_types.NeighborhoodInterestSet{
 		interestSetId: interestSet,
 	}
@@ -313,8 +328,10 @@ func (m *Monitor) handlePeerIdChange(n notification.Notification) {
 
 func (m *Monitor) handleNodeUp(n notification.Notification) {
 	nodeUpNotification := n.(membership_protocol.NodeUpNotification)
-	m.logger.Infof("Node up: %s", nodeUpNotification.PeerUp.String())
 	nodeUp := nodeUpNotification.PeerUp
+	m.currView = nodeUpNotification.InView
+	m.logger.Infof("Node up: %s", nodeUpNotification.PeerUp.String())
+	m.logger.Infof("Curr View: %+v", m.currView)
 	_, isChildren, _ := m.getPeerRelationshipType(nodeUp)
 
 	neighIntSetstoSend := make(map[uint64]body_types.NeighborhoodInterestSet)
@@ -338,43 +355,44 @@ func (m *Monitor) handleNodeUp(n notification.Notification) {
 	m.logger.Infof("Sending installNeighRequestMessage with sets: %+v", neighIntSetstoSend)
 	toSend := NewInstallNeighInterestSetMessage(neighIntSetstoSend)
 	m.babel.SendMessage(toSend, nodeUp, m.ID(), m.ID())
-	m.currView = nodeUpNotification.InView
 	for intSetId, intSet := range m.remoteNeighInterestSets {
 		if peer.PeersEqual(intSet.sender, nodeUp) {
 			m.babel.RegisterTimer(m.ID(), NewExportNeighInterestSetMetricsTimer(1, intSetId))
-			m.logger.Infof("setting export timer for neigh interest set %d: %+v from %s", intSetId, intSet, intSet.sender.String())
+			m.logger.Infof("setting export timer for neigh interest set %d: %s from %s", intSetId, intSet.interestSet.OutputBucketOpts.Name, intSet.sender.String())
 		}
 	}
 }
 
 func (m *Monitor) handleNodeDown(n notification.Notification) {
 	nodeDownNotification := n.(membership_protocol.NodeDownNotification)
-	m.logger.Infof("Node down: %s", nodeDownNotification.PeerDown.String())
 	nodeDown := nodeDownNotification.PeerDown
 	m.currView = nodeDownNotification.InView
-	isSibling, isChildren, isParent := m.getPeerRelationshipType(nodeDown)
+	m.logger.Infof("Node down: %s", nodeDownNotification.PeerDown.String())
+	m.logger.Infof("Curr View: %+v", m.currView)
 
+	// isSibling, isChildren, isParent := m.getPeerRelationshipType(nodeDown)
 	for intSetId, intSet := range m.remoteNeighInterestSets {
 		if peer.PeersEqual(intSet.sender, nodeDown) {
+			// m.tsdb.DeleteBucket(intSet.interestSet.OutputBucketOpts.Name, map[string]string{"host": m.babel.SelfPeer().IP().String()})
 			delete(m.remoteNeighInterestSets, intSetId)
 			break
 		}
 	}
 
-	if isSibling {
-		m.currView = nodeDownNotification.InView
-		return
-	}
+	// if isSibling {
+	// 	m.currView = nodeDownNotification.InView
+	// 	return
+	// }
 
-	if isChildren {
-		m.currView = nodeDownNotification.InView
-		return
-	}
+	// if isChildren {
+	// 	m.currView = nodeDownNotification.InView
+	// 	return
+	// }
 
-	if isParent {
-		m.currView = nodeDownNotification.InView
-		return
-	}
+	// if isParent {
+	// 	m.currView = nodeDownNotification.InView
+	// 	return
+	// }
 }
 
 // UTILS

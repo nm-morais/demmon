@@ -3,7 +3,7 @@
 set -e
 
 if [ $3 -eq 0 ]; then
-    rm -rf /code/logs/*
+    rm -rf /code/*
 fi
 
 echo "Bootstraping TC"

@@ -5,112 +5,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/benbjohnson/clock"
 	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
 )
 
-var db *tsdb.TSDB = tsdb.GetDB()
-var g = tsdb.Granularity{
-	Granularity: time.Second,
-	Count:       10,
+var db *tsdb.TSDB = tsdb.GetDB("", "", false, false)
+
+type mockClock struct {
+	t time.Time
+}
+
+func (m *mockClock) Time() time.Time     { return m.t }
+func (m *mockClock) Add(d time.Duration) { m.t = m.t.Add(d) }
+
+var mockClockInstance = &mockClock{
+	t: time.Time{},
 }
 
 func TestSelectQuery(t *testing.T) {
-	clock := clock.NewMock()
-
-	tags := map[string]string{
-		"tag1": "ola",
-	}
-
-	db.GetOrCreateTimeseriesWithClockAndGranularity("test", tags, clock, g)
-
-	// db.AddMetric("cenas", make(map[string]string),)
-
-	// err := db.AddMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
-	// if err != nil {
-	// 	t.Error(err)
-	// 	t.FailNow()
-	// }
-	val := map[string]interface{}{}
-	val["val"] = 10
-	db.AddMetric("test", tags, val, clock.Now())
-
-	tags = map[string]string{
-		"tag1": "ola2",
-	}
-	db.AddMetric("test", tags, val, clock.Now())
-
-	clock.Add(1 * time.Second)
-	me := NewMetricsEngine(db)
-	script := `
-	timeseries = select("test", {"tag1":"ola.*"})
-	for (i = 0; i < timeseries.length; i++) {
-		console.log(Object.getOwnPropertyNames(timeseries[i]))
-		points = timeseries[i].All()
-		for (i = 0; i < points.length; i++) {
-			console.log(points[i].Fields["val"])
-		}
-	} 
-	`
-
-	v, err := me.runWithTimeout(script, 1*time.Second)
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-	fmt.Print(v)
-	t.FailNow()
-}
-
-func TestSelectAndMaxQuery(t *testing.T) {
-	clock := clock.NewMock()
-
-	tags := map[string]string{
-		"tag1": "ola",
-	}
-
-	db.GetOrCreateTimeseriesWithClockAndGranularity("test", tags, clock, g)
-
-	// db.AddMetric("cenas", make(map[string]string),)
-
-	// err := db.AddMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
-	// if err != nil {
-	// 	t.Error(err)
-	// 	t.FailNow()
-	// }
-	val := map[string]interface{}{}
-	val["val"] = 10.0
-	db.AddMetric("test", tags, val, clock.Now())
-	clock.Add(1 * time.Second)
-	me := NewMetricsEngine(db)
-	script := `
-	tsArr = select("test", {"tag1":"ola"})
-	tsArr.map(function(ts) {
-			console.log("adding point: ","test-max", JSON.stringify(ts.Tags()), JSON.stringify(max(ts, "val")))
-			addPoint("test-max", ts.Tags(), max(ts, "val"))
-		})
-	`
-
-	v, err := me.runWithTimeout(script, 1*time.Second)
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-	fmt.Print(v.Export())
-	t.FailNow()
-}
-
-func TestSelectAndAvgQuery(t *testing.T) {
-	clock := clock.NewMock()
-
-	tags := map[string]string{
-		"tag1": "ola",
-	}
-	db.GetOrCreateTimeseriesWithClockAndGranularity("test", tags, clock, g)
-	tags2 := map[string]string{
-		"tag2": "ola",
-	}
-	db.GetOrCreateTimeseriesWithClockAndGranularity("test", tags2, clock, g)
 
 	// db.AddMetric("cenas", make(map[string]string),)
 
@@ -120,47 +31,160 @@ func TestSelectAndAvgQuery(t *testing.T) {
 	// 	t.FailNow()
 	// }
 
-	val := map[string]interface{}{}
-	val["val"] = 10.0
-	db.AddMetric("test", tags, val, clock.Now())
+	clock := mockClockInstance
 
-	val = map[string]interface{}{}
-	val["val_2"] = 10.0
-	db.AddMetric("test", tags2, val, clock.Now())
+	tags := map[string]string{
+		"tag1": "ola",
+	}
+	db.GetOrCreateTimeseriesWithClockAndGranularity("test", tags, mockClockInstance, 1*time.Second, 10)
+
+	val := map[string]interface{}{
+		"val":  10,
+		"val2": 20,
+	}
+	err := db.AddMetric("test", tags, val, clock.Time())
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
 
 	clock.Add(1 * time.Second)
-	val = map[string]interface{}{}
-	val["val"] = 20.0
-	db.AddMetric("test", tags, val, clock.Now())
-
-	val = map[string]interface{}{}
-	val["val_2"] = 10.0
-	db.AddMetric("test", tags2, val, clock.Now())
+	err = db.AddMetric("test", tags, val, clock.Time())
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
 
 	clock.Add(1 * time.Second)
-	val = map[string]interface{}{}
-	val["val"] = 45.0
-	db.AddMetric("test", tags, val, clock.Now())
+	err = db.AddMetric("test", tags, val, clock.Time())
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
 
-	val = map[string]interface{}{}
-	val["val_2"] = 10.0
-	db.AddMetric("test", tags2, val, clock.Now())
-	clock.Add(1 * time.Second)
-	me := NewMetricsEngine(db)
-	script := `
-	tsArr = select("test", "*")
-	console.log(JSON.stringify(tsArr[0].All()))
-	tsAvg = avg(tsArr, ".*")
-	console.log(JSON.stringify(tsAvg.All()))`
+	me := NewMetricsEngine(db, Conf{}, false)
+	script := `Select("test", "*")`
+	// `timeseries = Select("test", {"tag1":"ola.*"})
+	// 			for (i = 0; i < timeseries.length; i++) {
+	// 				console.log(Object.getOwnPropertyNames(timeseries[i]))
+	// 				points = timeseries[i].All()
+	// 				for (i = 0; i < points.length; i++) {
+	// 					console.log(points[i].Fields["val"])
+	// 				}
+	// 			}`
 
-	v, err := me.runWithTimeout(script, 1*time.Second)
+	v, err := me.MakeQuery(script, 3*time.Second)
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
+		return
 	}
-	fmt.Print(v.Export())
+
+	for _, ts := range v {
+		fmt.Println(ts.All())
+	}
 	t.FailNow()
 }
+
+// func TestSelectAndMaxQuery(t *testing.T) {
+// 	clock := clock.NewMock()
+
+// 	tags := map[string]string{
+// 		"tag1": "ola",
+// 	}
+
+// 	db.GetOrCreateTimeseriesWithClockAndGranularity("test", tags, clock, g)
+
+// 	// db.AddMetric("cenas", make(map[string]string),)
+
+// 	// err := db.AddMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
+// 	// if err != nil {
+// 	// 	t.Error(err)
+// 	// 	t.FailNow()
+// 	// }
+// 	val := map[string]interface{}{}
+// 	val["val"] = 10.0
+// 	db.AddMetric("test", tags, val, clock.Now())
+// 	clock.Add(1 * time.Second)
+// 	me := NewMetricsEngine(db)
+// 	script := `
+// 	tsArr = select("test", {"tag1":"ola"})
+// 	tsArr.map(function(ts) {
+// 			console.log("adding point: ","test-max", JSON.stringify(ts.Tags()), JSON.stringify(max(ts, "val")))
+// 			addPoint("test-max", ts.Tags(), max(ts, "val"))
+// 		})
+// 	`
+
+// 	v, err := me.runWithTimeout(script, 1*time.Second)
+// 	if err != nil {
+// 		t.Error(err)
+// 		t.FailNow()
+// 	}
+// 	fmt.Print(v.Export())
+// 	t.FailNow()
+// }
+
+// func TestSelectAndAvgQuery(t *testing.T) {
+// 	clock := clock.NewMock()
+
+// 	tags := map[string]string{
+// 		"tag1": "ola",
+// 	}
+// 	db.GetOrCreateTimeseriesWithClockAndGranularity("test", tags, clock, g)
+// 	tags2 := map[string]string{
+// 		"tag2": "ola",
+// 	}
+// 	db.GetOrCreateTimeseriesWithClockAndGranularity("test", tags2, clock, g)
+
+// 	// db.AddMetric("cenas", make(map[string]string),)
+
+// 	// err := db.AddMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
+// 	// if err != nil {
+// 	// 	t.Error(err)
+// 	// 	t.FailNow()
+// 	// }
+
+// 	val := map[string]interface{}{}
+// 	val["val"] = 10.0
+// 	db.AddMetric("test", tags, val, clock.Now())
+
+// 	val = map[string]interface{}{}
+// 	val["val_2"] = 10.0
+// 	db.AddMetric("test", tags2, val, clock.Now())
+
+// 	clock.Add(1 * time.Second)
+// 	val = map[string]interface{}{}
+// 	val["val"] = 20.0
+// 	db.AddMetric("test", tags, val, clock.Now())
+
+// 	val = map[string]interface{}{}
+// 	val["val_2"] = 10.0
+// 	db.AddMetric("test", tags2, val, clock.Now())
+
+// 	clock.Add(1 * time.Second)
+// 	val = map[string]interface{}{}
+// 	val["val"] = 45.0
+// 	db.AddMetric("test", tags, val, clock.Now())
+
+// 	val = map[string]interface{}{}
+// 	val["val_2"] = 10.0
+// 	db.AddMetric("test", tags2, val, clock.Now())
+// 	clock.Add(1 * time.Second)
+// 	me := NewMetricsEngine(db)
+// 	script := `
+// 	tsArr = select("test", "*")
+// 	console.log(JSON.stringify(tsArr[0].All()))
+// 	tsAvg = avg(tsArr, ".*")
+// 	console.log(JSON.stringify(tsAvg.All()))`
+
+// 	v, err := me.runWithTimeout(script, 1*time.Second)
+// 	if err != nil {
+// 		t.Error(err)
+// 		t.FailNow()
+// 	}
+// 	fmt.Print(v.Export())
+// 	t.FailNow()
+// }
 
 // func TestEvaluateNumericExpression(t *testing.T) {
 // 	tsdb := tsdb.GetDB()

@@ -40,32 +40,36 @@ type DemmonConf struct {
 }
 
 type continuousQueryValueType struct {
-	mu           *sync.Mutex
-	description  string
-	d            *Demmon
-	id           int
-	queryTimeout time.Duration
-	query        string
-	err          error
-	nrRetries    int
-	triedNr      int
-	lastRan      time.Time
+	mu               *sync.Mutex
+	description      string
+	id               int
+	queryTimeout     time.Duration
+	query            string
+	err              error
+	nrRetries        int
+	triedNr          int
+	lastRan          time.Time
+	outputBucketOpts body_types.BucketOptions
+}
+
+type continuousQueryJobType struct {
+	id int
+	d  *Demmon
 }
 
 // Description returns a PrintJob description.
-func (cc continuousQueryValueType) Description() string {
-	return cc.description
+func (job continuousQueryJobType) Description() string {
+	return ""
 }
 
 // Key returns a PrintJob unique key.
-func (cc continuousQueryValueType) Key() int {
-	return int(cc.id)
+func (job continuousQueryJobType) Key() int {
+	return int(job.id)
 }
 
 // Execute Called by the Scheduler when a Trigger fires that is associated with the Job.
-func (cc continuousQueryValueType) Execute() {
-	fmt.Println("Executing " + cc.Description())
-	cc.d.handleContinuousQueryTrigger(cc.id)
+func (job continuousQueryJobType) Execute() {
+	job.d.handleContinuousQueryTrigger(job.id)
 }
 
 type client struct {
@@ -77,6 +81,7 @@ type client struct {
 type Demmon struct {
 	schedulerMu              *sync.Mutex
 	scheduler                quartz.Scheduler
+	continuousQueries        *sync.Map
 	continuousQueriesCounter *uint64
 	logger                   *logrus.Logger
 	counter                  *uint64
@@ -90,6 +95,7 @@ type Demmon struct {
 
 func New(dConf DemmonConf, babel protocolManager.ProtocolManager, monitorProto *monitoring_proto.Monitor, me *metrics_engine.MetricsEngine, db *tsdb.TSDB, fm *membership_frontend.MembershipFrontend) *Demmon {
 	d := &Demmon{
+		continuousQueries:        &sync.Map{},
 		schedulerMu:              &sync.Mutex{},
 		scheduler:                quartz.NewStdScheduler(),
 		continuousQueriesCounter: new(uint64),
@@ -112,7 +118,7 @@ func (d *Demmon) Listen() {
 	r.HandleFunc(routes.Dial, d.handleDial)
 	err := http.ListenAndServe(fmt.Sprintf(":%d", d.conf.ListenPort), r)
 	if err != nil {
-		panic(err)
+		d.logger.Panic(err)
 	}
 }
 
@@ -132,8 +138,7 @@ func (d *Demmon) handleDial(w http.ResponseWriter, req *http.Request) {
 }
 
 func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
-
-	d.logger.Info(r.Message)
+	d.logger.Infof("Got request %s with body; %+v", r.Type.String(), r.Message)
 	var ans interface{}
 	var err error
 	rType := routes.RequestType(r.Type)
@@ -144,20 +149,21 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		ans, err = d.subscribeNodeEvents(c)
 	case routes.GetRegisteredMetricBuckets:
 		ans = d.db.GetRegisteredBuckets()
-	case routes.RegisterMetricBuckets:
-		reqBody := []body_types.BucketOptions{}
+	case routes.InstallBucket:
+		reqBody := body_types.BucketOptions{}
 		err = mapstructure.Decode(r.Message, &reqBody)
 		if err != nil {
 			err = errors.New("bad request body type")
 			break
 		}
-		for _, m := range reqBody {
-			_, loaded := d.db.GetOrCreateBucket(m.Name, tsdb.Granularity{Granularity: m.Granularity.Granularity, Count: m.Granularity.Count})
-			if loaded {
-				err = fmt.Errorf("bucket %s already exists", m.Name)
-				break
-			}
+		// for _, m := range reqBody {
+		_, loaded := d.db.GetOrCreateBucket(reqBody.Name, reqBody.Granularity.Granularity, reqBody.Granularity.Count)
+		if loaded {
+			err = fmt.Errorf("bucket %s already exists", reqBody.Name)
+			break
 		}
+		d.logger.Infof("Installed bucket: %+v", reqBody)
+		// }
 	case routes.PushMetricBlob:
 		reqBody := body_types.PointCollectionWithTagsAndName{}
 		err = decode(r.Message, &reqBody)
@@ -167,17 +173,13 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			break
 		}
 		for _, m := range reqBody {
-			d.db.AddMetric(m.Name, m.Tags, m.Point.Fields, m.Point.TS)
-			// samples := d.db.GetOrCreateBucket(m.Name, tsdb.DefaultGranularity).GetOrCreateTimeseries(m.Tags).All()
-			// d.logger.Info("Samples in timeseries:")
-			// for _, s := range samples {
-			// 	d.logger.Infof("%s : %+v", s.TS, s.Fields)
-			// }
-		}
-		// err = d.db.AddMetric().AddMetricBlob(reqBody)
-		if err != nil {
-			d.logger.Error(err)
-			break
+			d.logger.Info("Adding metric")
+			err = d.db.AddMetric(m.Name, m.Tags, m.Point.Fields, m.Point.TS)
+			if err != nil {
+				d.logger.Errorf("Got error adding metric blob: %s", err.Error())
+				break
+			}
+			d.logger.Info("Done adding metric...")
 		}
 	case routes.Query:
 		reqBody := body_types.QueryRequest{}
@@ -187,26 +189,28 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			err = errors.New("bad request body type")
 			break
 		}
+
 		var queryResult []tsdb.TimeSeries
 		queryResult, err = d.me.MakeQuery(reqBody.Query.Expression, reqBody.Query.Timeout)
 		if err != nil {
 			break
 		}
-		toReturn := make([]body_types.Timeseries, len(queryResult))
-		for idx, ts := range queryResult {
-			tmpPts := ts.All()
-			tmp := body_types.Timeseries{
+
+		toReturn := make([]body_types.Timeseries, 0, len(queryResult))
+		for _, ts := range queryResult {
+			allPts := ts.All()
+			toReturnPts := make([]body_types.Point, 0, len(allPts))
+			for _, p := range allPts {
+				toReturnPts = append(toReturnPts, body_types.Point{
+					TS:     p.TS(),
+					Fields: p.Value(),
+				})
+			}
+			toReturn = append(toReturn, body_types.Timeseries{
 				Name:   ts.Name(),
 				Tags:   ts.Tags(),
-				Points: make([]body_types.Point, len(tmpPts)),
-			}
-			for pointIdx, p := range tmpPts {
-				tmp.Points[pointIdx] = body_types.Point{
-					TS:     p.TS,
-					Fields: p.Fields,
-				}
-			}
-			toReturn[idx] = tmp
+				Points: toReturnPts,
+			})
 		}
 		ans = toReturn
 	case routes.InstallContinuousQuery:
@@ -217,26 +221,33 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			err = errors.New("bad request body type")
 			break
 		}
-		aux := tsdb.Granularity{Granularity: reqBody.OutputBucketOpts.Granularity.Granularity, Count: reqBody.OutputBucketOpts.Granularity.Count}
-		d.logger.Infof("Installing continuous queries: %+v", reqBody)
-		_, err = d.db.CreateBucket(reqBody.OutputBucketOpts.Name, aux)
+		_, err = d.db.CreateBucket(reqBody.OutputBucketOpts.Name, reqBody.OutputBucketOpts.Granularity.Granularity, reqBody.OutputBucketOpts.Granularity.Count)
 		if err != nil {
-			break
+			if err.Error() == "Bucket already exists" {
+				break
+			}
+			panic(err)
 		}
+		d.logger.Infof("installed bucket: %+v", reqBody.OutputBucketOpts)
 		taskId := atomic.AddUint64(d.continuousQueriesCounter, 1)
 		trigger := quartz.NewSimpleTrigger(reqBody.OutputBucketOpts.Granularity.Granularity)
-		job := &continuousQueryValueType{
-			mu:           &sync.Mutex{},
-			description:  reqBody.Description,
-			d:            d,
-			err:          nil,
-			id:           int(taskId),
-			nrRetries:    reqBody.NrRetries,
-			query:        reqBody.Expression,
-			queryTimeout: reqBody.ExpressionTimeout,
-			triedNr:      0,
+		cc := &continuousQueryValueType{
+			mu:               &sync.Mutex{},
+			description:      reqBody.Description,
+			err:              nil,
+			id:               int(taskId),
+			nrRetries:        reqBody.NrRetries,
+			query:            reqBody.Expression,
+			queryTimeout:     reqBody.ExpressionTimeout,
+			triedNr:          0,
+			outputBucketOpts: reqBody.OutputBucketOpts,
 		}
+		d.continuousQueries.Store(cc.id, cc)
 		d.schedulerMu.Lock()
+		job := &continuousQueryJobType{
+			id: int(taskId),
+			d:  d,
+		}
 		err = d.scheduler.ScheduleJob(job, trigger)
 		if err != nil {
 			d.schedulerMu.Unlock()
@@ -246,21 +257,13 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			TaskId: taskId,
 		}
 		d.schedulerMu.Unlock()
+		d.logger.Infof("installed continuous query: %+v", reqBody)
+
 	case routes.GetContinuousQueries:
 		resp := body_types.GetContinuousQueriesReply{}
-		d.schedulerMu.Lock()
-		jobKeys := d.scheduler.GetJobKeys()
-		d.schedulerMu.Unlock()
-		for _, jobKey := range jobKeys {
-			d.schedulerMu.Lock()
-			job, err := d.scheduler.GetScheduledJob(jobKey)
-			d.schedulerMu.Unlock()
-			if err != nil {
-				continue
-			}
-			val := job.Job.(*continuousQueryValueType)
-			val.mu.Lock()
-			defer val.mu.Unlock()
+		d.continuousQueries.Range(func(key, value interface{}) bool {
+			job := value.(*continuousQueryValueType)
+			job.mu.Lock()
 			resp.ContinuousQueries = append(resp.ContinuousQueries, struct {
 				TaskId    int
 				NrRetries int
@@ -268,16 +271,18 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 				LastRan   time.Time
 				Error     error
 			}{
-				TaskId:    val.id,
-				Error:     val.err,
-				LastRan:   val.lastRan,
-				CurrTry:   val.triedNr,
-				NrRetries: val.nrRetries,
+				TaskId:    job.id,
+				Error:     job.err,
+				LastRan:   job.lastRan,
+				CurrTry:   job.triedNr,
+				NrRetries: job.nrRetries,
 			})
-		}
+			job.mu.Unlock()
+			return true
+		})
 		ans = resp
 	case routes.InstallCustomInterestSet:
-		panic("not yet implemented")
+		d.logger.Panic("not yet implemented")
 
 	case routes.InstallNeighborhoodInterestSet:
 		reqBody := body_types.NeighborhoodInterestSet{}
@@ -287,25 +292,29 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			err = errors.New("bad request body type")
 			break
 		}
-		aux := tsdb.Granularity{Granularity: reqBody.OutputBucketOpts.Granularity.Granularity, Count: reqBody.OutputBucketOpts.Granularity.Count}
-		_, err = d.db.CreateBucket(reqBody.OutputBucketOpts.Name, aux)
+		d.logger.Infof("Creating bucket: %s", reqBody.OutputBucketOpts.Name)
+		_, err = d.db.CreateBucket(reqBody.OutputBucketOpts.Name, reqBody.OutputBucketOpts.Granularity.Granularity, reqBody.OutputBucketOpts.Granularity.Count)
 		if err != nil {
+			d.logger.Errorf("Got error installing neighborhood interest set: %s", err.Error())
 			break
 		}
-
 		neighSetId := rand.Uint64()
 		d.monitorProto.AddNeighborhoodInterestSetReq(neighSetId, reqBody)
-		d.logger.Info("Added new neighboring interest set")
+		d.logger.Infof("Added new neighborhood interest set: %s", reqBody.OutputBucketOpts.Name)
 	case routes.BroadcastMessage:
-		panic("not yet implemented")
+		d.logger.Panic("not yet implemented")
 	case routes.AlarmTrigger:
-		panic("not yet implemented")
+		d.logger.Panic("not yet implemented")
 	default:
 		err = errors.New("non-recognized operation")
 	}
+	// d.logger.Infof("Got request %s, response: err: %+v, response:%+v", rType.String(), err, ans)
 
-	d.logger.Infof("Got request %s, response: err: %+v, response:%+v", rType.String(), err, ans)
-	c.out <- body_types.NewResponse(r.ID, false, err, r.Type, ans)
+	select {
+	case c.out <- body_types.NewResponse(r.ID, false, err, r.Type, ans):
+	case <-time.After(2 * time.Second):
+		d.logger.Panic("TIMEOUT: Could not deliver response")
+	}
 }
 
 func (d *Demmon) subscribeNodeEvents(c *client) (body_types.NodeUpdateSubscriptionResponse, error) {
@@ -352,31 +361,51 @@ func (d *Demmon) writePump(c *client) {
 }
 
 func (d *Demmon) handleContinuousQueryTrigger(taskId int) {
-	d.schedulerMu.Lock()
-	defer d.schedulerMu.Unlock()
-	jobGeneric, err := d.scheduler.GetScheduledJob(taskId)
-	if err != nil {
-		d.logger.Error(err)
+	jobGeneric, ok := d.continuousQueries.Load(taskId)
+	if !ok {
+		d.logger.Warn("Continuous query returning because it is not present in map")
+		d.schedulerMu.Lock()
+		defer d.schedulerMu.Unlock()
+		err := d.scheduler.DeleteJob(taskId)
+		if err != nil {
+			d.logger.Errorf("Failed to delete continuous query: %s", err.Error())
+		}
 		return
 	}
-	job := jobGeneric.Job.(*continuousQueryValueType)
+	job := jobGeneric.(*continuousQueryValueType)
 	job.mu.Lock()
 	defer job.mu.Unlock()
-	d.logger.Infof("Continuous query %d trigger (%s)", taskId, job.query)
-	err = d.me.RunExpression(job.query, job.queryTimeout)
-
+	d.logger.Infof("Continuous query %d trigger (%s)", taskId, job.description)
+	res, err := d.me.MakeQuery(job.query, job.queryTimeout)
 	if err != nil {
 		d.logger.Errorf("Continuous query %d failed with error: %s", taskId, err)
 		job.triedNr++
 		job.err = err
 		if job.triedNr == job.nrRetries {
-			err := d.scheduler.DeleteJob(job.Key())
+			d.schedulerMu.Lock()
+			defer d.schedulerMu.Unlock()
+			err := d.scheduler.DeleteJob(job.id)
+			if err != nil {
+				d.logger.Errorf("Failed to delete continuous query: %s", err.Error())
+			}
+			return
+		}
+		return
+	}
+
+	for _, ts := range res {
+		allPts := ts.All()
+		if len(allPts) == 0 {
+			d.logger.Error("Timeseries result is empty")
+		}
+		for _, pt := range allPts {
+			err := d.db.AddMetric(job.outputBucketOpts.Name, ts.Tags(), pt.Value(), pt.TS())
 			if err != nil {
 				panic(err)
 			}
 		}
-		return
 	}
+
 	job.triedNr = 0
 	job.lastRan = time.Now()
 }
@@ -393,7 +422,7 @@ func (f *formatter) Format(e *logrus.Entry) ([]byte, error) {
 
 func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) {
 	logger.SetFormatter(&formatter{
-		owner: "demmon_frontend",
+		owner: "Demmon_Frontend",
 		lf: &logrus.TextFormatter{
 			DisableColors:   true,
 			ForceColors:     false,
@@ -429,7 +458,7 @@ func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) 
 	var out io.Writer = file
 	if !silent {
 		out = io.MultiWriter(os.Stdout, file)
-		fmt.Println("Setting demmon_frontend non-silently")
+		fmt.Println("Setting metrics_frontend non-silently")
 	}
 	logger.SetOutput(out)
 }

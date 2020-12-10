@@ -3,11 +3,16 @@ package tsdb
 import (
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"sync"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
-var DefaultGranularity = Granularity{time.Second * 5, 60} // 5 minutes total
+var DefaultFrequency = 3 * time.Second
+var DefaultCount = 20
 
 var (
 	ErrBucketNotFound = errors.New("bucket not found")
@@ -18,22 +23,27 @@ var createOnce sync.Once
 var db *TSDB
 
 type TSDB struct {
+	logger  *logrus.Logger
 	buckets *sync.Map
 }
 
-func GetDB() *TSDB {
+func GetDB(logFile, logFolder string, silent bool, setupLogToFile bool) *TSDB {
 	if db == nil {
 		createOnce.Do(func() {
 			db = &TSDB{
+				logger:  &logrus.Logger{},
 				buckets: &sync.Map{},
+			}
+			if setupLogToFile {
+				setupLogger(db.logger, logFolder, logFile, silent)
 			}
 		})
 	}
 	return db
 }
 
-func (db *TSDB) GetOrCreateBucket(name string, granularity Granularity) (*Bucket, bool) {
-	newBucket, _ := NewBucket(name, granularity)
+func (db *TSDB) GetOrCreateBucket(name string, frequency time.Duration, count int) (*Bucket, bool) {
+	newBucket := NewBucket(name, frequency, count)
 	bucket, loaded := db.buckets.LoadOrStore(name, newBucket)
 	return bucket.(*Bucket), loaded
 }
@@ -46,9 +56,13 @@ func (db *TSDB) GetBucket(name string) (*Bucket, bool) {
 	return bucket.(*Bucket), ok
 }
 
-func (db *TSDB) GetOrCreateTimeseries(name string, tags map[string]string) TimeSeries {
-	b, _ := db.GetOrCreateBucket(name, DefaultGranularity)
-	return b.GetOrCreateTimeseries(tags)
+func (db *TSDB) GetOrCreateTimeseries(name string, tags map[string]string, frequency time.Duration, count int) (TimeSeries, error) {
+	b, ok := db.GetBucket(name)
+	if !ok {
+		return nil, ErrBucketNotFound
+	}
+
+	return b.GetOrCreateTimeseries(tags), nil
 }
 
 func (db *TSDB) GetTimeseries(name string, tags map[string]string) (TimeSeries, bool) {
@@ -59,15 +73,20 @@ func (db *TSDB) GetTimeseries(name string, tags map[string]string) (TimeSeries, 
 	return b.GetTimeseries(tags)
 }
 
-func (db *TSDB) GetOrCreateTimeseriesWithClockAndGranularity(name string, tags map[string]string, clock Clock, g Granularity) TimeSeries {
-	b, _ := db.GetOrCreateBucket(name, g)
+func (db *TSDB) GetOrCreateTimeseriesWithClockAndGranularity(name string, tags map[string]string, clock Clock, frequency time.Duration, count int) TimeSeries {
+	b, _ := db.GetOrCreateBucket(name, frequency, count)
 	return b.GetOrCreateTimeseriesWithClock(tags, clock)
 }
 
-func (db *TSDB) AddMetric(bucketName string, tags map[string]string, fields map[string]interface{}, timestamp time.Time) {
-	timeseries := db.GetOrCreateTimeseries(bucketName, tags)
-	fmt.Printf("TS: %s, Tags: %+v adding point %+v at time %+v \n", bucketName, tags, fields, timestamp)
-	timeseries.AddPoint(PointValue{TS: timestamp, Fields: fields})
+func (db *TSDB) AddMetric(bucketName string, tags map[string]string, fields map[string]interface{}, timestamp time.Time) error {
+	b, hasBucket := db.GetBucket(bucketName)
+	if !hasBucket {
+		return fmt.Errorf("Bucket %s not present", bucketName)
+	}
+	timeseries := b.GetOrCreateTimeseries(tags)
+	pv := NewObservable(fields, timestamp)
+	timeseries.AddPoint(pv)
+	return nil
 }
 
 func (db *TSDB) DeleteBucket(name string, tags map[string]string) bool {
@@ -79,11 +98,8 @@ func (db *TSDB) DeleteBucket(name string, tags map[string]string) bool {
 	return true
 }
 
-func (db *TSDB) CreateBucket(name string, granularity Granularity) (*Bucket, error) {
-	newBucket, err := NewBucket(name, granularity)
-	if err != nil {
-		return nil, err
-	}
+func (db *TSDB) CreateBucket(name string, frequency time.Duration, count int) (*Bucket, error) {
+	newBucket := NewBucket(name, frequency, count)
 	toReturn, loaded := db.buckets.LoadOrStore(name, newBucket)
 	if loaded {
 		return nil, errors.New("Bucket already exists")
@@ -98,6 +114,57 @@ func (db *TSDB) GetRegisteredBuckets() []string {
 		return true
 	})
 	return toReturn
+}
+
+type formatter struct {
+	owner string
+	lf    logrus.Formatter
+}
+
+func (f *formatter) Format(e *logrus.Entry) ([]byte, error) {
+	e.Message = fmt.Sprintf("[%s] %s", f.owner, e.Message)
+	return f.lf.Format(e)
+}
+
+func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) {
+	logger.SetFormatter(&formatter{
+		owner: "timeseries_database",
+		lf: &logrus.TextFormatter{
+			DisableColors:   true,
+			ForceColors:     false,
+			FullTimestamp:   true,
+			TimestampFormat: time.StampMilli,
+		},
+	})
+
+	if logFolder == "" {
+		logger.Panicf("Invalid logFolder '%s'", logFolder)
+	}
+	if logFile == "" {
+		logger.Panicf("Invalid logFile '%s'", logFile)
+	}
+
+	filePath := fmt.Sprintf("%s/%s", logFolder, logFile)
+	err := os.MkdirAll(logFolder, 0777)
+	if err != nil {
+		logger.Panic(err)
+	}
+	file, err := os.Create(filePath)
+	if os.IsExist(err) {
+		var err = os.Remove(filePath)
+		if err != nil {
+			logger.Panic(err)
+		}
+		file, err = os.Create(filePath)
+		if err != nil {
+			logger.Panic(err)
+		}
+	}
+	var out io.Writer = file
+	if !silent {
+		out = io.MultiWriter(os.Stdout, file)
+	}
+	logger.SetOutput(out)
 }
 
 // func (db *TSDB) AddMetricAtTime(service, name, origin string, v timeseries.Value, t time.Time) error {

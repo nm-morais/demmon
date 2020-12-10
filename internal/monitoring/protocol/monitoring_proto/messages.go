@@ -124,8 +124,8 @@ func NewPropagateInterestSetMetricsMessage(interestSetId uint64, tsArr []tsdb.Ti
 
 		for idx, p := range allPts {
 			toAdd.Points[idx] = body_types.Point{
-				TS:     p.TS,
-				Fields: p.Fields,
+				TS:     p.TS(),
+				Fields: p.Value(),
 			}
 		}
 		aux[idx] = toAdd

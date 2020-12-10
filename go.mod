@@ -3,7 +3,6 @@ module github.com/nm-morais/demmon
 go 1.15
 
 require (
-	github.com/benbjohnson/clock v1.0.3
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
 	github.com/mitchellh/mapstructure v1.3.3
