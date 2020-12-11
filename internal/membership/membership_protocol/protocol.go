@@ -683,7 +683,6 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 
 			peersAlreadyKicked[bestCandidateToKick.String()] = true
 			peersAbsorbedPerAbsorber[bestCandidateToAbsorb.String()]++
-
 			d.logger.Infof("Sending absorb message with peerToAbsorb: %s, peerAbsorber: %s", bestCandidateToKick.StringWithFields(), bestCandidateToAbsorb.StringWithFields())
 			toSend := NewAbsorbMessage(bestCandidateToKick, bestCandidateToAbsorb)
 			d.sendMessage(toSend, bestCandidateToKick)

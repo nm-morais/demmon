@@ -36,13 +36,17 @@ func TestSelectQuery(t *testing.T) {
 	tags := map[string]string{
 		"tag1": "ola",
 	}
-	db.GetOrCreateTimeseriesWithClock("test", tags, mockClockInstance)
+	_, err := db.GetOrCreateTimeseriesWithClock("test", tags, mockClockInstance)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
 
 	val := map[string]interface{}{
 		"val":  10,
 		"val2": 20,
 	}
-	err := db.AddMetric("test", tags, val, clock.Time())
+	err = db.AddMetric("test", tags, val, clock.Time())
 	if err != nil {
 		t.Error(err.Error())
 		t.FailNow()

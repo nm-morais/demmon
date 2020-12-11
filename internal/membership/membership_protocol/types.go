@@ -3,6 +3,7 @@ package membership_protocol
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -57,11 +58,7 @@ func (coords Coordinates) SerializeToBinary() []byte {
 type PeerID [IdSegmentLen]byte
 
 func (c PeerID) String() string {
-	toReturn := ""
-	for _, segment := range c {
-		toReturn += string(segment)
-	}
-	return toReturn
+	return hex.EncodeToString(c[:])
 }
 
 type PeerIDChain []PeerID
@@ -147,7 +144,7 @@ func (p *PeerWithIdChain) StringWithFields() string {
 		coordinatesStr += fmt.Sprintf("%d,", c)
 	}
 	coordinatesStr = coordinatesStr[:len(coordinatesStr)-1] + ")"
-	return fmt.Sprintf("%s:%s:%+v:v_%d:c(%d)", p.String(), coordinatesStr, p.chain, p.version, p.nChildren)
+	return fmt.Sprintf("%s:%s:%s:v_%d:c(%d)", p.String(), coordinatesStr, p.chain.String(), p.version, p.nChildren)
 }
 
 func (p *PeerWithIdChain) NrChildren() uint16 {

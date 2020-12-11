@@ -1,7 +1,6 @@
 package tsdb
 
 import (
-	"fmt"
 	"sync"
 	"time"
 )
@@ -24,30 +23,22 @@ func (t *staticTimeseries) Name() string {
 }
 
 func (t *staticTimeseries) Tags() map[string]string {
-	fmt.Println("LOCKING MUTEX Tags()")
 	t.mu.Lock()
-	fmt.Println("LOCKED MUTEX Tags()")
-
+	defer t.mu.Unlock()
 	tagsCopy := map[string]string{}
 	for tagKey, tagVal := range t.tags {
 		tagsCopy[tagKey] = tagVal
 	}
-	t.mu.Unlock()
-	fmt.Println("UNLOCKED MUTEX Tags()")
 	return tagsCopy
 }
 
 func (t *staticTimeseries) SetTag(key, val string) {
-	fmt.Println("LOCKING MUTEX SetTag()")
 	t.mu.Lock()
-	fmt.Println("LOCKED MUTEX SetTag()")
+	defer t.mu.Unlock()
 	if t.tags == nil {
 		t.tags = make(map[string]string)
 	}
-
 	t.tags[key] = val
-	t.mu.Unlock()
-	fmt.Println("UNLOCKED MUTEX SetTag()")
 }
 
 func (t *staticTimeseries) All() []Observable {

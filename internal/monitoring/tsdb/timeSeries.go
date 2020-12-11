@@ -488,19 +488,19 @@ func (ts *timeSeries) resetObservation(observation Observable) Observable {
 	return observation
 }
 
-func minTime(a, b time.Time) time.Time {
-	if a.Before(b) {
-		return a
-	}
-	return b
-}
+// func minTime(a, b time.Time) time.Time {
+// 	if a.Before(b) {
+// 		return a
+// 	}
+// 	return b
+// }
 
-func maxTime(a, b time.Time) time.Time {
-	if a.After(b) {
-		return a
-	}
-	return b
-}
+// func maxTime(a, b time.Time) time.Time {
+// 	if a.After(b) {
+// 		return a
+// 	}
+// 	return b
+// }
 
 // var (
 // 	ErrNilGranularities = errors.New("timeseries: range is nil")
