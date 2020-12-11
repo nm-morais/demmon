@@ -173,6 +173,7 @@ func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 				m.logger.Errorf("Aborting export timer for remote interest set %d", interestSetId)
 				return // abort timer
 			}
+			m.babel.RegisterTimer(m.ID(), NewExportNeighInterestSetMetricsTimer(remoteInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity, interestSetId))
 		}
 		target := remoteInterestSet.sender
 

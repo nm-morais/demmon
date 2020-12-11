@@ -255,11 +255,11 @@ func (ts *timeSeries) Name() string {
 func (ts *timeSeries) Tags() map[string]string {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	toReturn := make(map[string]interface{}, len(ts.tags))
+	toReturn := make(map[string]string, len(ts.tags))
 	for k, v := range ts.tags {
 		toReturn[k] = v
 	}
-	return ts.tags
+	return toReturn
 }
 
 func (ts *timeSeries) Last() Observable {

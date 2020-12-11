@@ -299,8 +299,8 @@ func setupDemmonMetrics() {
 
 	_, err = cl.InstallContinuousQuery(
 		`
-		var neighRoutines = Select("nr_goroutines_neigh","*"),"*")
-		var result = Min(neighRoutines, "*")
+		neighRoutines = Select("nr_goroutines_neigh","*")
+		result = Min(neighRoutines, "*")
 		`,
 		"the min of nr_goroutines of the neighborhood",
 		1*time.Second,

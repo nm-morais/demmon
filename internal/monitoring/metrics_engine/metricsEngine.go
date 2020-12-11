@@ -81,14 +81,15 @@ func (e *MetricsEngine) runWithTimeout(expression string, timeoutDuration time.D
 						ans: nil,
 						err: errExpressionTimeout,
 					}
-					fmt.Fprintf(os.Stderr, "expression execution took longer then allowed (%v)", duration)
+					e.logger.Infof("expression execution took longer then allowed (%v)", duration)
 					return
+				} else {
+					e.logger.Panic(fmt.Sprintf("got error running expression: stacktrace: %s", string(debug.Stack())))
 				}
 				returnChan <- returnType{
 					ans: nil,
 					err: fmt.Errorf("%+s", caught),
 				}
-				e.logger.Error(fmt.Sprintf("stacktrace from panic: %s", string(debug.Stack())))
 			}
 		}()
 		vm := otto.New()
@@ -293,15 +294,32 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call otto.FunctionCall) otto.
 		throw(vm, "Invalid arg: Name is not a string")
 	}
 
-	isTagFilterAll := call.Argument(1).IsString() && call.Argument(1).String() == "*"
+	startTimeGeneric, err := call.Argument(2).Export()
+	if err != nil {
+		throw(vm, fmt.Sprintf("err: %s ", err.Error()))
+	}
+	startTime, ok := startTimeGeneric.(time.Time)
+	if !ok {
+		throw(vm, "start time is not a date type")
+	}
 
+	endTimeGeneric, err := call.Argument(3).Export()
+	if err != nil {
+		throw(vm, fmt.Sprintf("err: %s ", err.Error()))
+	}
+	endTime, ok := endTimeGeneric.(time.Time)
+	if !ok {
+		throw(vm, "start time is not a date type")
+	}
+
+	isTagFilterAll := call.Argument(1).IsString() && call.Argument(1).String() == "*"
 	var queryResult []tsdb.TimeSeries
 	if isTagFilterAll {
 		b, ok := e.db.GetBucket(name)
 		if !ok {
 			throw(vm, fmt.Sprintf("No measurement found with name %s", name))
 		}
-		queryResult = b.GetAllTimeseries()
+		queryResult = b.GetAllTimeseriesRange(startTime, endTime)
 		res, err := vm.ToValue(queryResult)
 		if err != nil {
 			throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
@@ -322,24 +340,6 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call otto.FunctionCall) otto.
 			throw(vm, "Invalid arg: tag filters is not a map[string]string")
 		}
 		tags[tagKey] = tagVal.String()
-	}
-
-	startTimeGeneric, err := call.Argument(2).Export()
-	if err != nil {
-		throw(vm, fmt.Sprintf("err: %s ", err.Error()))
-	}
-	startTime, ok := startTimeGeneric.(time.Time)
-	if !ok {
-		throw(vm, "start time is not a date type")
-	}
-
-	endTimeGeneric, err := call.Argument(3).Export()
-	if err != nil {
-		throw(vm, fmt.Sprintf("err: %s ", err.Error()))
-	}
-	endTime, ok := endTimeGeneric.(time.Time)
-	if !ok {
-		throw(vm, "start time is not a date type")
 	}
 
 	b, ok := e.db.GetBucket(name)

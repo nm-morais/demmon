@@ -157,9 +157,8 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			break
 		}
 		// for _, m := range reqBody {
-		_, loaded := d.db.GetOrCreateBucket(reqBody.Name, reqBody.Granularity.Granularity, reqBody.Granularity.Count)
-		if loaded {
-			err = fmt.Errorf("bucket %s already exists", reqBody.Name)
+		_, err := d.db.CreateBucket(reqBody.Name, reqBody.Granularity.Granularity, reqBody.Granularity.Count)
+		if err != nil {
 			break
 		}
 		d.logger.Infof("Installed bucket: %+v", reqBody)
@@ -397,6 +396,7 @@ func (d *Demmon) handleContinuousQueryTrigger(taskId int) {
 		allPts := ts.All()
 		if len(allPts) == 0 {
 			d.logger.Error("Timeseries result is empty")
+			continue
 		}
 		for _, pt := range allPts {
 			err := d.db.AddMetric(job.outputBucketOpts.Name, ts.Tags(), pt.Value(), pt.TS())

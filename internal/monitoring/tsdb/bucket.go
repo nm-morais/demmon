@@ -6,6 +6,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 type Bucket struct {
@@ -13,10 +15,12 @@ type Bucket struct {
 	granularity time.Duration
 	count       int
 	timeseries  *sync.Map
+	logger      *logrus.Logger
 }
 
-func NewBucket(name string, g time.Duration, count int) *Bucket {
+func NewBucket(name string, g time.Duration, count int, logger *logrus.Logger) *Bucket {
 	return &Bucket{
+		logger:      logger,
 		name:        name,
 		timeseries:  &sync.Map{},
 		granularity: g,
@@ -42,8 +46,14 @@ func (b *Bucket) GetTimeseries(tags map[string]string) (TimeSeries, bool) {
 
 func (b *Bucket) GetAllTimeseries() []TimeSeries {
 	toReturn := make([]TimeSeries, 0)
+	b.logger.Infof("Getting all timeseries for bucket %s", b.name)
 	b.timeseries.Range(func(key, value interface{}) bool {
 		ts := value.(TimeSeries)
+		allPts := ts.All()
+		if len(allPts) == 0 {
+			b.logger.Errorf("Timeseries %s, %+v has no points", ts.Name(), ts.Tags())
+			return true
+		}
 		toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), ts.All()))
 		// toReturn = append(toReturn, ts)
 		return true
@@ -56,9 +66,25 @@ func (b *Bucket) GetAllTimeseriesLast() []TimeSeries {
 	b.timeseries.Range(func(key, value interface{}) bool {
 		ts := value.(TimeSeries)
 		lastPt := ts.Last()
-		if lastPt != nil {
-			toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), []Observable{}))
+		if lastPt == nil {
+			b.logger.Errorf("Timeseries %s, %+v has no last point", ts.Name(), ts.Tags())
+			return true
 		}
+		toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), []Observable{lastPt}))
+		return true
+	})
+	return toReturn
+}
+
+func (b *Bucket) GetAllTimeseriesRange(start, end time.Time) []TimeSeries {
+	toReturn := make([]TimeSeries, 0)
+	b.timeseries.Range(func(key, value interface{}) bool {
+		ts := value.(TimeSeries)
+		points, err := ts.Range(start, end)
+		if err != nil {
+			panic(err)
+		}
+		toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), points))
 		return true
 	})
 	return toReturn
@@ -85,7 +111,7 @@ func (b *Bucket) getTimeseriesRegex(tagsToMatch map[string]string) []TimeSeries 
 			}
 		}
 		if allMatching {
-			matchingTimeseries = append(matchingTimeseries, NewStaticTimeSeries(ts.Name(), tsTags, ts.All()))
+			matchingTimeseries = append(matchingTimeseries, ts)
 		}
 		return true
 	})
@@ -144,16 +170,14 @@ func (b *Bucket) GetOrCreateTimeseries(tags map[string]string) TimeSeries {
 }
 
 func (b *Bucket) GetOrCreateTimeseriesWithClock(tags map[string]string, c Clock) TimeSeries {
-
 	tsKey := convertTagsToTsKey(tags)
-	fmt.Printf("Creating timeseries with: name: %s, tags: %s, count:%d\n", b.name, tags, b.count)
+	b.logger.Infof("Creating timeseries with: name: %s, tags: %s, count:%d\n", b.name, tags, b.count)
 
 	newTs := NewTimeSeriesWithClock(b.name, tags, b.granularity, b.count, c)
-	fmt.Printf("Creating timeseries:%+v\n", newTs)
+	b.logger.Infof("Creating timeseries:%+v\n", newTs)
 
 	ts, _ := b.timeseries.LoadOrStore(tsKey, newTs)
-	fmt.Printf("Created timeseries: %s\n", ts)
-
+	b.logger.Infof("Created timeseries: %s\n", ts)
 	return ts.(TimeSeries)
 }
 

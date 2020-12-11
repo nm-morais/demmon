@@ -42,12 +42,6 @@ func GetDB(logFile, logFolder string, silent bool, setupLogToFile bool) *TSDB {
 	return db
 }
 
-func (db *TSDB) GetOrCreateBucket(name string, frequency time.Duration, count int) (*Bucket, bool) {
-	newBucket := NewBucket(name, frequency, count)
-	bucket, loaded := db.buckets.LoadOrStore(name, newBucket)
-	return bucket.(*Bucket), loaded
-}
-
 func (db *TSDB) GetBucket(name string) (*Bucket, bool) {
 	bucket, ok := db.buckets.Load(name)
 	if !ok {
@@ -73,9 +67,12 @@ func (db *TSDB) GetTimeseries(name string, tags map[string]string) (TimeSeries, 
 	return b.GetTimeseries(tags)
 }
 
-func (db *TSDB) GetOrCreateTimeseriesWithClockAndGranularity(name string, tags map[string]string, clock Clock, frequency time.Duration, count int) TimeSeries {
-	b, _ := db.GetOrCreateBucket(name, frequency, count)
-	return b.GetOrCreateTimeseriesWithClock(tags, clock)
+func (db *TSDB) GetOrCreateTimeseriesWithClock(name string, tags map[string]string, clock Clock) (TimeSeries, error) {
+	b, ok := db.GetBucket(name)
+	if !ok {
+		return nil, ErrBucketNotFound
+	}
+	return b.GetOrCreateTimeseriesWithClock(tags, clock), nil
 }
 
 func (db *TSDB) AddMetric(bucketName string, tags map[string]string, fields map[string]interface{}, timestamp time.Time) error {
@@ -99,7 +96,7 @@ func (db *TSDB) DeleteBucket(name string, tags map[string]string) bool {
 }
 
 func (db *TSDB) CreateBucket(name string, frequency time.Duration, count int) (*Bucket, error) {
-	newBucket := NewBucket(name, frequency, count)
+	newBucket := NewBucket(name, frequency, count, db.logger)
 	toReturn, loaded := db.buckets.LoadOrStore(name, newBucket)
 	if loaded {
 		return nil, errors.New("Bucket already exists")

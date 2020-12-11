@@ -36,7 +36,7 @@ func TestSelectQuery(t *testing.T) {
 	tags := map[string]string{
 		"tag1": "ola",
 	}
-	db.GetOrCreateTimeseriesWithClockAndGranularity("test", tags, mockClockInstance, 1*time.Second, 10)
+	db.GetOrCreateTimeseriesWithClock("test", tags, mockClockInstance)
 
 	val := map[string]interface{}{
 		"val":  10,
