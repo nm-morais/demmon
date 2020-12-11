@@ -1,7 +1,8 @@
 
 errors="false"
+warnings="false"
 
-while getopts ":he" opt; do
+while getopts ":hew" opt; do
   case ${opt} in
     h ) 
         echo "Available flags:"
@@ -11,6 +12,10 @@ while getopts ":he" opt; do
     e )
         errors="true"
       ;;
+    w )
+        warnings="true"
+      ;;
+      
     \? ) echo "Usage: cmd [-h] [-e]"
         exit 1
       ;;
@@ -42,4 +47,12 @@ do
         echo "$logs" | grep "error"
         echo " "
     fi
+
+    if [ "$warnings" = "true" ]; then
+        echo " "
+        echo "=========WARNINGS========="
+        echo "$logs" | grep "warning"
+        echo " "
+    fi
+
 done

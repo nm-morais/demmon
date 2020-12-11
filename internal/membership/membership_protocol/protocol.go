@@ -802,7 +802,7 @@ func (d *DemmonTree) handleJoinMessage(sender peer.Peer, msg message.Message) {
 
 func (d *DemmonTree) handleJoinMessageResponseTimeout(timer timer.Timer) {
 	peer := timer.(*peerJoinMessageResponseTimeout).Peer
-	d.logger.Warnf("timeout from %s", peer.String())
+	d.logger.Warnf("timeout from join message from %s", peer.String())
 
 	if d.joinLevel == math.MaxUint16 {
 		return
@@ -1027,7 +1027,7 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 			d.logger.Errorf("Received UpdateParentMessage from not my parent (parent:%s sender:%s)", d.myParent.StringWithFields(), upMsg.Parent.StringWithFields())
 			return
 		} else {
-			d.logger.Errorf("Received UpdateParentMessage from not my parent (parent:%+v sender:%s)", d.myParent, upMsg.Parent.StringWithFields())
+			d.logger.Errorf("Received UpdateParentMessage from not my parent (parent:%s sender:%s)", d.myParent.StringWithFields(), upMsg.Parent.StringWithFields())
 			return
 		}
 	}
@@ -1052,17 +1052,14 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 	d.myParent = upMsg.Parent
 	myNewChain := append(upMsg.Parent.Chain(), upMsg.ProposedId)
 	if !myNewChain.Equal(d.self.Chain()) {
-		d.logger.Warnf("My chain changed: (%+v -> %+v)", d.self.Chain(), myNewChain)
-		d.logger.Warnf("My level changed: (%d -> %d)", d.self.Chain().Level(), upMsg.Parent.Chain().Level()+1) // IMPORTANT FOR VISUALIZER
-
+		d.logger.Infof("My chain changed: (%+v -> %+v)", d.self.Chain(), myNewChain)
+		d.logger.Infof("My level changed: (%d -> %d)", d.self.Chain().Level(), upMsg.Parent.Chain().Level()+1) // IMPORTANT FOR VISUALIZER
 		d.self = NewPeerWithIdChain(myNewChain, d.self.Peer, d.self.nChildren, d.self.Version()+1, d.self.Coordinates)
-
 		for childStr, child := range d.myChildren {
 			childId := child.Chain()[len(child.Chain())-1]
 			d.myChildren[childStr] = NewPeerWithIdChain(append(myNewChain, childId), child.Peer, child.nChildren, child.Version()+1, child.Coordinates)
 		}
 	}
-	d.logger.Warnf("My level changed: (%d -> %d)", d.self.Chain().Level(), upMsg.Parent.Chain().Level()+1) // IMPORTANT FOR VISUALIZER
 	d.mergeSiblingsWith(upMsg.Siblings)
 }
 
