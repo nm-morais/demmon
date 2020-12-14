@@ -142,9 +142,7 @@ func randomString(n int) string {
 	s := make([]rune, n)
 
 	for i := range s {
-
 		s[i] = letters[rand.Intn(len(letters))]
-
 	}
 	return string(s)
 }

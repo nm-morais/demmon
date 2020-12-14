@@ -59,19 +59,6 @@ type DemmonTreeConfig = struct {
 	NrPeersToKickPerParent                 uint16
 	LimitFirstLevelGroupSize               bool
 	EnableSwitch                           bool
-
-	// join protocol configs
-
-	// maintenance configs
-
-	// Peer sampling service
-
-	// how much time  to wait before sending new Walk
-
-	// self-improvement service
-
-	// switch
-
 }
 
 type DemmonTree struct {
@@ -104,15 +91,6 @@ type DemmonTree struct {
 	myPendingParentInAbsorb      *PeerWithIDChain
 	joinLevel                    uint16
 	landmark                     bool
-
-	// node state
-
-	// join state
-
-	// switchTimerId  int
-
-	// improvement service state
-
 }
 
 func New(config DemmonTreeConfig, babel protocolManager.ProtocolManager, nw nodeWatcher.NodeWatcher) protocol.Protocol {
@@ -1397,8 +1375,8 @@ func (d *DemmonTree) OutConnDown(p peer.Peer) {
 	d.handlePeerDown(p)
 }
 
-func (d *DemmonTree) handlePeerDownNotification(notification notification.Notification) {
-	p := notification.(SuspectNotification).peerDown
+func (d *DemmonTree) handlePeerDownNotification(n notification.Notification) {
+	p := n.(SuspectNotification).peerDown
 	d.logger.Errorf("peer down %s (PHI >= %f)", p.String(), d.config.PhiLevelForNodeDown)
 	d.handlePeerDown(p.Peer)
 }
@@ -1406,8 +1384,9 @@ func (d *DemmonTree) handlePeerDownNotification(notification notification.Notifi
 func (d *DemmonTree) handlePeerDown(p peer.Peer) {
 	if peer.PeersEqual(p, d.myParent) {
 		d.logger.Warnf("Parent down %s", p.String())
-		d.babel.SendNotification(NewNodeDownNotification(d.myParent, d.getInView()))
+		aux := d.myParent
 		d.myParent = nil
+		d.babel.SendNotification(NewNodeDownNotification(aux, d.getInView()))
 		d.nodeWatcher.Unwatch(p, d.ID())
 		if d.myGrandParent != nil {
 			d.logger.Warnf("Falling back to grandparent %s", d.myGrandParent.String())
@@ -1423,14 +1402,12 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer) {
 
 	if child, isChildren := d.myChildren[p.String()]; isChildren {
 		d.logger.Warnf("Child down %s", p.String())
-		d.babel.SendNotification(NewNodeDownNotification(child, d.getInView()))
 		d.removeChild(child, true, true)
 		return
 	}
 
 	if sibling, isSibling := d.mySiblings[p.String()]; isSibling {
 		d.logger.Warnf("Sibling down %s", p.String())
-		d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView()))
 		d.removeSibling(sibling, true)
 		return
 	}
@@ -1439,7 +1416,7 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer) {
 	d.nodeWatcher.Unwatch(p, d.ID())
 }
 
-func (d *DemmonTree) MessageDelivered(message message.Message, peer peer.Peer) {
+func (d *DemmonTree) MessageDelivered(msg message.Message, p peer.Peer) {
 	// d.logger.Infof("Message %+v delivered to: %s", message, peer.String())
 }
 
@@ -1914,13 +1891,13 @@ func (d *DemmonTree) mergeSampleWithEview(
 	if !selfInSample && d.self != nil && len(d.self.Chain()) > 0 && !d.self.IsDescendentOf(sender.Chain()) {
 		sampleToSendMap := getRandSample(
 			nrPeersToAdd-1,
-			append(neighboursWithoutSenderDescendantsAndNotInSample, d.peerMapToArr(d.eView)...)...
+			append(neighboursWithoutSenderDescendantsAndNotInSample, d.peerMapToArr(d.eView)...)...,
 		)
 		sampleToSend = append(d.peerMapToArr(sampleToSendMap), append(sample, d.self)...)
 	} else {
 		sampleToSendMap := getRandSample(
 			nrPeersToAdd,
-			append(neighboursWithoutSenderDescendantsAndNotInSample, d.peerMapToArr(d.eView)...)...
+			append(neighboursWithoutSenderDescendantsAndNotInSample, d.peerMapToArr(d.eView)...)...,
 		)
 		sampleToSend = append(d.peerMapToArr(sampleToSendMap), sample...)
 	}
@@ -2109,14 +2086,17 @@ func (d *DemmonTree) addParent(
 
 	if d.myParent != nil && !peer.PeersEqual(d.myParent, newParent) {
 		if disconnectFromParent {
+			tmp := d.myParent
+			d.myParent = nil
 			if sendDisconnectMsg {
 				toSend := NewDisconnectAsChildMessage()
-				d.babel.SendNotification(NewNodeDownNotification(d.myParent, d.getInView()))
-				d.sendMessageAndDisconnect(toSend, d.myParent)
+
+				d.babel.SendNotification(NewNodeDownNotification(tmp, d.getInView()))
+				d.sendMessageAndDisconnect(toSend, tmp)
 			} else {
-				d.babel.Disconnect(d.ID(), d.myParent)
+				d.babel.Disconnect(d.ID(), tmp)
 			}
-			d.nodeWatcher.Unwatch(d.myParent, d.ID())
+			d.nodeWatcher.Unwatch(tmp, d.ID())
 		}
 	}
 
@@ -2211,9 +2191,10 @@ func (d *DemmonTree) addChild(newChild *PeerWithIDChain, connect bool, childrenL
 	return proposedID
 }
 
-func (d *DemmonTree) removeChild(toRemove peer.Peer, disconnect bool, unwatch bool) {
-	child, ok := d.myChildren[toRemove.String()]
-	if ok {
+func (d *DemmonTree) removeChild(toRemove peer.Peer, disconnect, unwatch bool) {
+
+	if child, ok := d.myPendingChildren[toRemove.String()]; ok {
+		delete(d.myPendingChildren, toRemove.String())
 		if disconnect {
 			d.babel.SendNotification(NewNodeDownNotification(child, d.getInView()))
 			d.babel.Disconnect(d.ID(), toRemove)
@@ -2221,6 +2202,11 @@ func (d *DemmonTree) removeChild(toRemove peer.Peer, disconnect bool, unwatch bo
 		if unwatch {
 			d.nodeWatcher.Unwatch(toRemove, d.ID())
 		}
+		return
+	}
+
+	child, ok := d.myChildren[toRemove.String()]
+	if ok {
 		delete(d.myChildrenLatencies, toRemove.String())
 		delete(d.myChildren, toRemove.String())
 		d.self = NewPeerWithIDChain(
@@ -2230,8 +2216,15 @@ func (d *DemmonTree) removeChild(toRemove peer.Peer, disconnect bool, unwatch bo
 			d.self.Version()+1,
 			d.self.Coordinates,
 		)
+		if disconnect {
+			d.babel.SendNotification(NewNodeDownNotification(child, d.getInView()))
+			d.babel.Disconnect(d.ID(), toRemove)
+		}
+		if unwatch {
+			d.nodeWatcher.Unwatch(toRemove, d.ID())
+		}
 	} else {
-		d.logger.Panic("Removing child not in myChildren")
+		d.logger.Panic("Removing child not in myChildren or myPendingChildren")
 	}
 }
 
@@ -2249,18 +2242,27 @@ func (d *DemmonTree) addSibling(newSibling *PeerWithIDChain, connect bool) {
 }
 
 func (d *DemmonTree) removeSibling(toRemove peer.Peer, disconnect bool) {
-	if _, ok := d.myPendingChildren[toRemove.String()]; !ok {
-		if sibling, ok := d.mySiblings[toRemove.String()]; ok {
-			delete(d.mySiblings, toRemove.String())
-			if disconnect {
-				d.nodeWatcher.Unwatch(toRemove, d.ID())
-				d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView()))
-				d.babel.Disconnect(d.ID(), toRemove)
-			}
-		} else {
-			d.logger.Panic("Removing sibling not in mySiblings")
+	if sibling, ok := d.myPendingSiblings[toRemove.String()]; ok {
+		delete(d.myPendingSiblings, toRemove.String())
+		if disconnect {
+			d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView()))
+			d.babel.Disconnect(d.ID(), toRemove)
+			d.nodeWatcher.Unwatch(toRemove, d.ID())
 		}
+		return
 	}
+
+	if sibling, ok := d.mySiblings[toRemove.String()]; ok {
+		delete(d.mySiblings, toRemove.String())
+		if disconnect {
+			d.nodeWatcher.Unwatch(sibling, d.ID())
+			d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView()))
+			d.babel.Disconnect(d.ID(), toRemove)
+		}
+		return
+	}
+
+	d.logger.Panic("Removing sibling not in mySiblings or myPendingSiblings")
 }
 
 func (d *DemmonTree) resetImproveTimer() {

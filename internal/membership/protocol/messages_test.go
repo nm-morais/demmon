@@ -94,10 +94,12 @@ func TestUpdateParentMsgSerializer(t *testing.T) {
 	if !bytes.Equal(msgConverted.ProposedID[:], childrenID[:]) {
 		t.Log("chains not match")
 		t.FailNow()
+
 		return
 	}
 
 	i := 0
+
 	for _, sibling := range msgConverted.Siblings {
 		if !peer.PeersEqual(siblings[i], sibling) {
 			t.Log(sibling)
@@ -110,7 +112,9 @@ func TestUpdateParentMsgSerializer(t *testing.T) {
 		t.Log("grandparents not equal")
 		return
 	}
+
 	t.Logf("before: %+v", toSerialize)
+
 	t.Logf("after: %+v", msgConverted)
 
 	t.Logf("before: %+v", toSerialize.GrandParent.StringWithFields())
@@ -137,6 +141,7 @@ func TestAbsorbMessageSerializer(t *testing.T) {
 	deserialized := deserializer.Deserialize(msgBytes)
 	msgConverted := deserialized.(AbsorbMessage)
 	fmt.Println(msgConverted)
+
 	if !peer.PeersEqual(msgConverted.PeerAbsorber, toSerialize.PeerAbsorber) {
 		t.Logf("%+v", msgConverted.PeerAbsorber.String())
 		t.Logf("%+v", toSerialize.PeerAbsorber.String())

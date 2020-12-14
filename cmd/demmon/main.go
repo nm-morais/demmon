@@ -377,6 +377,21 @@ func setupDemmonMetrics() {
 		}
 
 		res, err = cl.Query(
+			"Select('nr_goroutines_neigh','*')",
+			1*time.Second,
+		)
+
+		if err != nil {
+			panic(err)
+		}
+
+		for _, ts := range res {
+			fmt.Printf("%+v, %+v\n", ts, err)
+		}
+
+		fmt.Println("Select('nr_goroutines_neigh','*') Query results :")
+
+		res, err = cl.Query(
 			"Select('neigh_routines_min','*')",
 			1*time.Second,
 		)
@@ -390,20 +405,20 @@ func setupDemmonMetrics() {
 			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.Name, ts.Tags, ts.Points)
 		}
 
-		res, err = cl.Query(
-			"Select('nr_goroutines','*')",
-			1*time.Second,
-		)
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println("Select('nr_goroutines','*') Query results :")
-
-		for idx, ts := range res {
-			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.Name, ts.Tags, ts.Points)
-		}
 	}
+	// res, err = cl.Query(
+	// 	"Select('nr_goroutines','*')",
+	// 	1*time.Second,
+	// )
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// fmt.Println("Select('nr_goroutines','*') Query results :")
+
+	// for idx, ts := range res {
+	// 	fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.Name, ts.Tags, ts.Points)
+	// }
 }
 
 func setupDemmonExporter(eConf *exporter.Conf) {

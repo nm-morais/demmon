@@ -1,10 +1,12 @@
 package monitoring
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	"math"
+	"math/big"
 	"net/http"
 	"os"
 	"reflect"
@@ -352,8 +354,8 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			break
 		}
 
-		neighSetID := rand.Uint64()
-		d.monitorProto.AddNeighborhoodInterestSetReq(neighSetID, reqBody)
+		neighSetID := getRandInt(math.MaxInt64)
+		d.monitorProto.AddNeighborhoodInterestSetReq(uint64(neighSetID), reqBody)
 		d.logger.Infof("Added new neighborhood interest set: %s", reqBody.OutputBucketOpts.Name)
 	case routes.BroadcastMessage:
 		d.logger.Panic("not yet implemented")
@@ -578,4 +580,13 @@ func toTimeHookFunc() mapstructure.DecodeHookFunc {
 		}
 		// Convert it by parsing
 	}
+}
+
+func getRandInt(max int) int {
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
+	if err != nil {
+		panic(err)
+	}
+
+	return int(n.Int64())
 }

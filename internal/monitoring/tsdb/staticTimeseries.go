@@ -1,6 +1,8 @@
 package tsdb
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -80,6 +82,29 @@ func (t *staticTimeseries) Last() Observable {
 	}
 
 	return nil
+}
+
+// Add records an observation at the current time.
+func (t *staticTimeseries) String() string {
+
+	var sb = strings.Builder{}
+
+	sb.WriteString(fmt.Sprintf("Name: %s", t.Name()))
+	sb.WriteString(" | Tags: ")
+	sb.WriteString("[")
+	for tagKey, tagVal := range t.tags {
+		sb.WriteString(fmt.Sprintf("%s:%s, ", tagKey, tagVal))
+	}
+
+	sb.WriteString("]")
+	sb.WriteString(" | Fields: ")
+	for _, field := range t.All() {
+		if field != nil {
+			sb.WriteString(field.String())
+		}
+	}
+
+	return sb.String()
 }
 
 func (t *staticTimeseries) MarshalJSON() ([]byte, error) {

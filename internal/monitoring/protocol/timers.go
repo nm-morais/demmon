@@ -9,14 +9,12 @@ import (
 const RebroadcastInterestSetTimerID = 6000
 
 type rebroadcastInterestSetTimer struct {
-	deadline      time.Time
-	InterestSetID uint64
+	deadline time.Time
 }
 
-func NewRebroadcastInterestSetTimer(duration time.Duration, interestSetID uint64) timer.Timer {
+func NewRebroadcastInterestSetsTimer(duration time.Duration) timer.Timer {
 	return &rebroadcastInterestSetTimer{
-		deadline:      time.Now().Add(duration),
-		InterestSetID: interestSetID,
+		deadline: time.Now().Add(duration),
 	}
 }
 
@@ -50,24 +48,44 @@ func (t *exportNeighInterestSetMetricsTimer) Deadline() time.Time {
 	return t.deadline
 }
 
-const CheckInterestSetPeerInViewTimerID = 6002
+const ExportLocalNeighInterestSetMetricsTimerID = 6002
 
-type checkInterestSetPeerInViewTimer struct {
+type exportLocalNeighInterestSetMetricsTimer struct {
 	deadline      time.Time
 	InterestSetID uint64
 }
 
-func NewCheckInterestSetPeerInViewTimer(duration time.Duration, interestSetID uint64) timer.Timer {
-	return &checkInterestSetPeerInViewTimer{
+func NewExportLocalNeighInterestSetMetricsTimer(duration time.Duration, interestSetID uint64) timer.Timer {
+	return &exportLocalNeighInterestSetMetricsTimer{
 		deadline:      time.Now().Add(duration),
 		InterestSetID: interestSetID,
 	}
 }
 
-func (t *checkInterestSetPeerInViewTimer) ID() timer.ID {
-	return CheckInterestSetPeerInViewTimerID
+func (t *exportLocalNeighInterestSetMetricsTimer) ID() timer.ID {
+	return ExportLocalNeighInterestSetMetricsTimerID
 }
 
-func (t *checkInterestSetPeerInViewTimer) Deadline() time.Time {
+func (t *exportLocalNeighInterestSetMetricsTimer) Deadline() time.Time {
+	return t.deadline
+}
+
+const CleanupInsterestSetsTimerID = 6003
+
+type cleanupInterestSetTimer struct {
+	deadline time.Time
+}
+
+func NewCleanupInterestSetsTimer(duration time.Duration) timer.Timer {
+	return &cleanupInterestSetTimer{
+		deadline: time.Now().Add(duration),
+	}
+}
+
+func (t *cleanupInterestSetTimer) ID() timer.ID {
+	return CleanupInsterestSetsTimerID
+}
+
+func (t *cleanupInterestSetTimer) Deadline() time.Time {
 	return t.deadline
 }

@@ -49,6 +49,11 @@ type Monitor struct {
 	tsdb                    *tsdb.TSDB
 }
 
+const (
+	CleanupInterestSetTimerDuration    = 5 * time.Second
+	BroadcastInterestSetsTimerDuration = 5 * time.Second
+)
+
 func New(babel protocolManager.ProtocolManager, db *tsdb.TSDB, me *engine.MetricsEngine) *Monitor {
 	return &Monitor{
 		tsdb:                    db,
@@ -111,12 +116,25 @@ func (m *Monitor) Init() { // REPLY HANDLERS
 		ExportNeighInterestSetMetricsTimerID,
 		m.handleExportNeighInterestSetMetricsTimer,
 	)
-	m.babel.RegisterTimerHandler(m.ID(), RebroadcastInterestSetTimerID, m.handleRebroadcastInterestSetTimer)
-	m.babel.RegisterTimerHandler(m.ID(), CheckInterestSetPeerInViewTimerID, m.handleCheckInterestSetPeerInViewTimer)
+	m.babel.RegisterTimerHandler(
+		m.ID(),
+		ExportLocalNeighInterestSetMetricsTimerID,
+		m.handleExportLocalNeighInterestSetMetricsTimer,
+	)
+	m.babel.RegisterTimerHandler(m.ID(), RebroadcastInterestSetTimerID, m.handleBroadcastInterestSetsTimer)
+	m.babel.RegisterTimerHandler(m.ID(), CleanupInsterestSetsTimerID, m.handleCleanupInterestSetsTimer)
 }
 
 func (m *Monitor) Start() {
+	m.babel.RegisterTimer(
+		m.ID(),
+		NewRebroadcastInterestSetsTimer(BroadcastInterestSetsTimerDuration),
+	)
 
+	m.babel.RegisterTimer(
+		m.ID(),
+		NewCleanupInterestSetsTimer(CleanupInterestSetTimerDuration),
+	)
 }
 
 // REQUEST CREATORS
@@ -127,118 +145,85 @@ func (m *Monitor) AddNeighborhoodInterestSetReq(key uint64, interestSet body_typ
 
 // TIMER HANDLERS
 
+func (m *Monitor) handleCleanupInterestSetsTimer(t timer.Timer) {
+	m.babel.RegisterTimer(m.ID(), NewCleanupInterestSetsTimer(CleanupInterestSetTimerDuration))
+	for isID, is := range m.remoteNeighInterestSets {
+		if !m.isPeerInView(is.sender) {
+			delete(m.remoteNeighInterestSets, isID)
+			m.logger.Errorf(
+				"Removing interest set %d because peer %s is not in view",
+				isID,
+				is.sender.String(),
+			)
+		}
+	}
+}
+
+func (m *Monitor) handleBroadcastInterestSetsTimer(t timer.Timer) {
+	m.babel.RegisterTimer(
+		m.ID(),
+		NewRebroadcastInterestSetsTimer(BroadcastInterestSetsTimerDuration),
+	)
+	neighIntSetstoSend := make(map[uint64]body_types.NeighborhoodInterestSet)
+
+	for isd, is := range m.localNeighInterestSets {
+		if is.interestSet.TTL > 0 {
+			neighIntSetstoSend[isd] = body_types.NeighborhoodInterestSet{
+				MaxRetries:       is.interestSet.MaxRetries,
+				Query:            is.interestSet.Query,
+				OutputBucketOpts: is.interestSet.OutputBucketOpts,
+				TTL:              is.interestSet.TTL - 1,
+			}
+		}
+	}
+	for interestSetID, remoteIntSet := range m.remoteNeighInterestSets {
+		if remoteIntSet.interestSet.TTL > 0 {
+			neighIntSetstoSend[interestSetID] = body_types.NeighborhoodInterestSet{
+				MaxRetries:       remoteIntSet.interestSet.MaxRetries,
+				Query:            remoteIntSet.interestSet.Query,
+				OutputBucketOpts: remoteIntSet.interestSet.OutputBucketOpts,
+				TTL:              remoteIntSet.interestSet.TTL - 1,
+			}
+		}
+	}
+	toSend := NewInstallNeighInterestSetMessage(neighIntSetstoSend)
+	m.broadcastToAllNeighbors(toSend)
+}
+
 func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 	tConverted := t.(*exportNeighInterestSetMetricsTimer)
 	interestSetID := tConverted.InterestSetID
-	localInterestSet, ok := m.localNeighInterestSets[interestSetID]
-	if ok {
-		m.logger.Infof(
-			"Exporting metrics for local interest set %d: %s",
-			interestSetID,
-			localInterestSet.interestSet.OutputBucketOpts.Name,
-		)
-		query := localInterestSet.interestSet.Query
-		result, err := m.me.MakeQuery(query.Expression, query.Timeout)
+	remoteInterestSet, ok := m.remoteNeighInterestSets[interestSetID]
 
-		if err != nil {
-			localInterestSet.nrRetries++
-			m.localNeighInterestSets[interestSetID] = localInterestSet
-			m.logger.Errorf(
-				"Local neigh interest set query failed to process with err %s (%d/%d)",
-				err,
-				localInterestSet.nrRetries,
-				localInterestSet.interestSet.MaxRetries,
-			)
-			if localInterestSet.nrRetries >= localInterestSet.interestSet.MaxRetries {
-				m.logger.Errorf("Aborting export timer for interest set %d", interestSetID)
-				return // abort timer
-			}
-		}
-
-		for _, ts := range result {
-			ts.SetTag("host", m.babel.SelfPeer().IP().String())
-			allPts := ts.All()
-			if len(allPts) == 0 {
-				m.logger.Error("Timeseries result is empty")
-			}
-			for _, pt := range allPts {
-				err := m.tsdb.AddMetric(
-					localInterestSet.interestSet.OutputBucketOpts.Name,
-					ts.Tags(),
-					pt.Value(),
-					pt.TS(),
-				)
-				if err != nil {
-					m.logger.Panic(err)
-				}
-			}
-		}
-
-		if localInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity == 0 {
-			panic("granularity is 0")
-		}
-
-		m.logger.Infof(
-			"Setting timer for interest set %d to %+v from now",
-			interestSetID,
-			localInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity,
-		)
-		m.babel.RegisterTimer(
-			m.ID(),
-			NewExportNeighInterestSetMetricsTimer(
-				localInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity,
-				interestSetID,
-			),
-		)
+	if !ok {
+		m.logger.Warnf("Canceling export timer for remote interest set %d", interestSetID)
 		return
 	}
 
-	remoteInterestSet, ok := m.remoteNeighInterestSets[interestSetID]
-	if ok {
-		m.logger.Infof(
-			"Exporting metrics for remote interest set %d: %s",
-			interestSetID,
-			remoteInterestSet.interestSet.OutputBucketOpts.Name,
+	m.logger.Infof(
+		"Exporting metrics for remote interest set %d: %s",
+		interestSetID,
+		remoteInterestSet.interestSet.OutputBucketOpts.Name,
+	)
+
+	query := remoteInterestSet.interestSet.Query
+	result, err := m.me.MakeQuery(query.Expression, query.Timeout)
+
+	if err != nil {
+		remoteInterestSet.nrRetries++
+		m.remoteNeighInterestSets[interestSetID] = remoteInterestSet
+		m.logger.Errorf(
+			"Remote neigh interest set query failed to process with err %s (%d/%d)",
+			err,
+			remoteInterestSet.nrRetries,
+			remoteInterestSet.interestSet.MaxRetries,
 		)
-		query := remoteInterestSet.interestSet.Query
-		result, err := m.me.MakeQuery(query.Expression, query.Timeout)
-		if err != nil {
-			remoteInterestSet.nrRetries++
-			m.remoteNeighInterestSets[interestSetID] = remoteInterestSet
-			m.logger.Errorf(
-				"Remote neigh interest set query failed to process with err %s (%d/%d)",
-				err,
-				remoteInterestSet.nrRetries,
-				remoteInterestSet.interestSet.MaxRetries,
-			)
-			if remoteInterestSet.nrRetries >= remoteInterestSet.interestSet.MaxRetries {
-				m.logger.Errorf("Aborting export timer for remote interest set %d", interestSetID)
-				return // abort timer
-			}
-			m.babel.RegisterTimer(
-				m.ID(),
-				NewExportNeighInterestSetMetricsTimer(
-					remoteInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity,
-					interestSetID,
-				),
-			)
-		}
-		target := remoteInterestSet.sender
 
-		if !m.isPeerInView(target) {
-			return
+		if remoteInterestSet.nrRetries >= remoteInterestSet.interestSet.MaxRetries {
+			m.logger.Errorf("Aborting export timer for remote interest set %d", interestSetID)
+			return // abort timer
 		}
 
-		for _, ts := range result {
-			ts.SetTag("host", m.babel.SelfPeer().IP().String())
-		}
-
-		if remoteInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity == 0 {
-			panic("granularity is 0")
-		}
-
-		toSendMsg := NewPropagateInterestSetMetricsMessage(interestSetID, result)
-		m.babel.SendMessage(toSendMsg, remoteInterestSet.sender, m.ID(), m.ID())
 		m.babel.RegisterTimer(
 			m.ID(),
 			NewExportNeighInterestSetMetricsTimer(
@@ -248,84 +233,166 @@ func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 		)
 		return
 	}
-	m.logger.Warn("ExportNeighInterestSetMetricsTimer not rescheduled")
-}
 
-func (m *Monitor) handleRebroadcastInterestSetTimer(t timer.Timer) {
-	tConverted := t.(*rebroadcastInterestSetTimer)
-	interestSetID := tConverted.InterestSetID
-	interestSet, ok := m.localNeighInterestSets[interestSetID]
-	if !ok {
+	if !m.isPeerInView(remoteInterestSet.sender) {
+		m.logger.Errorf(
+			"Returning because peer is not in view: %s",
+			remoteInterestSet.sender.String(),
+		)
 		return
 	}
-	toSend := NewInstallNeighInterestSetMessage(map[uint64]body_types.NeighborhoodInterestSet{interestSetID: interestSet.interestSet})
-	m.broadcastToAllNeighbors(toSend)
+
+	m.logger.Infof(
+		"Remote neigh interest set query result: (%+v)",
+		result,
+	)
+
+	for _, ts := range result {
+		ts.SetTag("host", m.babel.SelfPeer().IP().String())
+	}
+
+	if remoteInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity == 0 {
+		panic("granularity is 0")
+	}
+
+	toSendMsg := NewPropagateInterestSetMetricsMessage(interestSetID, result)
+	m.babel.SendMessage(toSendMsg, remoteInterestSet.sender, m.ID(), m.ID())
 	m.babel.RegisterTimer(
 		m.ID(),
-		NewRebroadcastInterestSetTimer(5*time.Second, interestSetID),
-	) // TODO export to variable
+		NewExportNeighInterestSetMetricsTimer(
+			remoteInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity,
+			interestSetID,
+		),
+	)
 }
 
-func (m *Monitor) handleCheckInterestSetPeerInViewTimer(t timer.Timer) {
-	tConverted := t.(*checkInterestSetPeerInViewTimer)
+func (m *Monitor) handleExportLocalNeighInterestSetMetricsTimer(t timer.Timer) {
+	tConverted := t.(*exportLocalNeighInterestSetMetricsTimer)
 	interestSetID := tConverted.InterestSetID
-	interestSet, ok := m.remoteNeighInterestSets[interestSetID]
+	localInterestSet, ok := m.localNeighInterestSets[interestSetID]
 	if !ok {
+		m.logger.Warnf("Canceling export timer for local interest set %d", interestSetID)
 		return
 	}
 
-	if !m.isPeerInView(interestSet.sender) {
-		delete(m.remoteNeighInterestSets, interestSetID)
+	m.logger.Infof(
+		"Exporting metrics for local interest set %d: %s",
+		interestSetID,
+		localInterestSet.interestSet.OutputBucketOpts.Name,
+	)
+	query := localInterestSet.interestSet.Query
+	result, err := m.me.MakeQuery(query.Expression, query.Timeout)
+
+	if err != nil {
+		localInterestSet.nrRetries++
+		m.localNeighInterestSets[interestSetID] = localInterestSet
 		m.logger.Errorf(
-			"Removing interest set %d because peer %s is not in view",
-			interestSetID,
-			interestSet.sender.String(),
+			"Local neigh interest set query failed to process with err %s (%d/%d)",
+			err,
+			localInterestSet.nrRetries,
+			localInterestSet.interestSet.MaxRetries,
 		)
+
+		if localInterestSet.nrRetries >= localInterestSet.interestSet.MaxRetries {
+			m.logger.Errorf("Aborting export timer for interest set %d", interestSetID)
+			return // abort timer
+		}
+
+		m.babel.RegisterTimer(
+			m.ID(),
+			NewExportLocalNeighInterestSetMetricsTimer(
+				localInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity,
+				interestSetID,
+			),
+		)
+		return
 	}
+
+	m.logger.Infof(
+		"Local interest set query result: (%+v)",
+		result,
+	)
+
+	for _, ts := range result {
+		ts.SetTag("host", m.babel.SelfPeer().IP().String())
+		allPts := ts.All()
+		if len(allPts) == 0 {
+			m.logger.Error("Timeseries result is empty")
+		}
+		for _, pt := range allPts {
+			err := m.tsdb.AddMetric(
+				localInterestSet.interestSet.OutputBucketOpts.Name,
+				ts.Tags(),
+				pt.Value(),
+				pt.TS(),
+			)
+			if err != nil {
+				m.logger.Panic(err)
+			}
+		}
+	}
+
+	if localInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity == 0 {
+		panic("granularity is 0")
+	}
+
+	m.logger.Infof(
+		"Setting timer for interest set %d to %+v from now",
+		interestSetID,
+		localInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity,
+	)
+	m.babel.RegisterTimer(
+		m.ID(),
+		NewExportLocalNeighInterestSetMetricsTimer(
+			localInterestSet.interestSet.OutputBucketOpts.Granularity.Granularity,
+			interestSetID,
+		),
+	)
+	return
 }
 
 // MESSAGE HANDLERS
 
 func (m *Monitor) handleInstallNeighInterestSetMessage(sender peer.Peer, msg message.Message) {
 	installNeighIntSetMsg := msg.(InstallNeighInterestSetMsg)
+
+	if !m.isPeerInView(sender) {
+		m.logger.Warn("received install neigh interest set from peer not in my view")
+		return
+	}
+
 	m.logger.Infof(
 		"received message to install neigh interest sets from %s (%+v)",
 		sender.String(),
 		installNeighIntSetMsg,
 	)
+
 	for interestSetID, interestSet := range installNeighIntSetMsg.InterestSets {
 		m.logger.Infof("installing neigh interest set %d: %+v", interestSetID, interestSet)
-		// TODO check if already present???
 		_, alreadyExists := m.remoteNeighInterestSets[interestSetID]
+
 		if alreadyExists {
-			m.logger.Warn("Neigh interest set already present")
+			m.logger.Info("Neigh interest set already present")
 			continue
 		}
+		_, alreadyExists = m.localNeighInterestSets[interestSetID]
 
-		if interestSet.TTL > 0 {
-			interestSet.TTL--
-			m.broadcastMessage(installNeighIntSetMsg, sender)
+		if alreadyExists {
+			m.logger.Info("Neigh interest set already present (is local)")
+			continue
 		}
-
-		if interestSet.OutputBucketOpts.Granularity.Granularity == 0 {
-			panic("Cannot install neigh interest set with granularity 0")
-		}
-
 		m.remoteNeighInterestSets[interestSetID] = remoteNeighInterestSet{
 			nrRetries:   0,
 			sender:      sender,
 			interestSet: interestSet,
 		}
-
-		if !m.isPeerInView(sender) {
-			m.logger.Warn("received install neigh interest set from peer not in my view")
-			m.babel.RegisterTimer(
-				m.ID(),
-				NewCheckInterestSetPeerInViewTimer(3*time.Second, interestSetID),
-			) // TODO export config var
-			return
-		}
-		m.babel.RegisterTimer(m.ID(), NewExportNeighInterestSetMetricsTimer(1, interestSetID))
+		m.babel.RegisterTimer(
+			m.ID(),
+			NewExportNeighInterestSetMetricsTimer(
+				interestSet.OutputBucketOpts.Granularity.Granularity,
+				interestSetID,
+			),
+		)
 	}
 }
 
@@ -340,8 +407,9 @@ func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer
 			localInterestSet.interestSet.OutputBucketOpts.Name,
 			sender.String(),
 		)
-		// m.logger.Infof("adding metrics: %+v", msgConverted.Metrics)
+		m.logger.Infof("metrics in propagation message: %+v", msgConverted.Metrics)
 		toAdd := msgConverted.Metrics
+
 		for _, ts := range toAdd {
 			for _, pt := range ts.Points {
 				err := m.tsdb.AddMetric(localInterestSet.interestSet.OutputBucketOpts.Name, ts.Tags, pt.Fields, pt.TS)
@@ -361,11 +429,12 @@ func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer
 			remoteInterestSet.interestSet.OutputBucketOpts.Name,
 			sender.String(),
 		)
-		m.logger.Infof("values: %+v", msgConverted.Metrics)
+		m.logger.Infof("metrics in propagation message: %+v", msgConverted.Metrics)
 
 		if !m.isPeerInView(remoteInterestSet.sender) {
-			panic("received interest set propagation message but target is not in view")
+			m.logger.Warnf("received interest set propagation message but target (%s) is not in view", remoteInterestSet.sender)
 		}
+
 		m.babel.SendMessage(msgConverted, remoteInterestSet.sender, m.ID(), m.ID())
 		return
 	}
@@ -382,15 +451,8 @@ func (m *Monitor) handleAddNeighInterestSetRequest(req request.Request) request.
 		interestSet: interestSet,
 	}
 	frequency := interestSet.OutputBucketOpts.Granularity.Granularity
-	toSend := map[uint64]body_types.NeighborhoodInterestSet{
-		interestSetID: interestSet,
-	}
-	m.broadcastToAllNeighbors(NewInstallNeighInterestSetMessage(toSend))
-	m.babel.RegisterTimer(m.ID(), NewExportNeighInterestSetMetricsTimer(frequency, interestSetID))
-	m.babel.RegisterTimer(
-		m.ID(),
-		NewRebroadcastInterestSetTimer(5*time.Second, interestSetID),
-	) // TODO export to variable
+	m.logger.Infof("Installing local insterest set: %+v", interestSet)
+	m.babel.RegisterTimer(m.ID(), NewExportLocalNeighInterestSetMetricsTimer(frequency, interestSetID))
 	return nil
 }
 
@@ -403,50 +465,15 @@ func (m *Monitor) handleRemoveNeighInterestSetRequest(req request.Request) reque
 // NOTIFICATION HANDLERS
 
 func (m *Monitor) handlePeerIDChange(n notification.Notification) {
-	nodeUpNotification := n.(membershipProtocol.IDChangeNotification)
-	m.currID = nodeUpNotification.NewID
+	idChangeNotification := n.(membershipProtocol.IDChangeNotification)
+	m.currID = idChangeNotification.NewID
 }
 
 func (m *Monitor) handleNodeUp(n notification.Notification) {
 	nodeUpNotification := n.(membershipProtocol.NodeUpNotification)
-	nodeUp := nodeUpNotification.PeerUp
 	m.currView = nodeUpNotification.InView
 	m.logger.Infof("Node up: %s", nodeUpNotification.PeerUp.String())
 	m.logger.Infof("Curr View: %+v", m.currView)
-	_, isChildren, _ := m.getPeerRelationshipType(nodeUp)
-
-	neighIntSetstoSend := make(map[uint64]body_types.NeighborhoodInterestSet)
-	for isd, is := range m.localNeighInterestSets {
-		if is.interestSet.TTL > 0 {
-			neighIntSetstoSend[isd] = is.interestSet
-		}
-	}
-	if isChildren { // add remote interest sets to send to children
-		for interestSetID, remoteIntSet := range m.remoteNeighInterestSets {
-			if remoteIntSet.interestSet.TTL > 0 {
-				neighIntSetstoSend[interestSetID] = body_types.NeighborhoodInterestSet{
-					MaxRetries:       remoteIntSet.interestSet.MaxRetries,
-					Query:            remoteIntSet.interestSet.Query,
-					OutputBucketOpts: remoteIntSet.interestSet.OutputBucketOpts,
-					TTL:              remoteIntSet.interestSet.TTL - 1,
-				}
-			}
-		}
-	}
-	m.logger.Infof("Sending installNeighRequestMessage with sets: %+v", neighIntSetstoSend)
-	toSend := NewInstallNeighInterestSetMessage(neighIntSetstoSend)
-	m.babel.SendMessage(toSend, nodeUp, m.ID(), m.ID())
-	for intSetID, intSet := range m.remoteNeighInterestSets {
-		if peer.PeersEqual(intSet.sender, nodeUp) {
-			m.babel.RegisterTimer(m.ID(), NewExportNeighInterestSetMetricsTimer(1, intSetID))
-			m.logger.Infof(
-				"setting export timer for neigh interest set %d: %s from %s",
-				intSetID,
-				intSet.interestSet.OutputBucketOpts.Name,
-				intSet.sender.String(),
-			)
-		}
-	}
 }
 
 func (m *Monitor) handleNodeDown(n notification.Notification) {
