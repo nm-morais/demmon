@@ -1,4 +1,4 @@
-package metrics_engine
+package engine
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
 )
 
-var db *tsdb.TSDB = tsdb.GetDB("", "", false, false)
+var db = tsdb.GetDB("", "", false, false)
 
 type mockClock struct {
 	t time.Time
@@ -22,21 +22,13 @@ var mockClockInstance = &mockClock{
 }
 
 func TestSelectQuery(t *testing.T) {
-
-	// db.AddMetric("cenas", make(map[string]string),)
-
-	// err := db.AddMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
-	// if err != nil {
-	// 	t.Error(err)
-	// 	t.FailNow()
-	// }
-
 	clock := mockClockInstance
 
 	tags := map[string]string{
 		"tag1": "ola",
 	}
 	_, err := db.GetOrCreateTimeseriesWithClock("test", tags, mockClockInstance)
+
 	if err != nil {
 		t.Error(err.Error())
 		t.FailNow()
@@ -47,6 +39,7 @@ func TestSelectQuery(t *testing.T) {
 		"val2": 20,
 	}
 	err = db.AddMetric("test", tags, val, clock.Time())
+
 	if err != nil {
 		t.Error(err.Error())
 		t.FailNow()
@@ -54,6 +47,7 @@ func TestSelectQuery(t *testing.T) {
 
 	clock.Add(1 * time.Second)
 	err = db.AddMetric("test", tags, val, clock.Time())
+
 	if err != nil {
 		t.Error(err.Error())
 		t.FailNow()
@@ -61,6 +55,7 @@ func TestSelectQuery(t *testing.T) {
 
 	clock.Add(1 * time.Second)
 	err = db.AddMetric("test", tags, val, clock.Time())
+
 	if err != nil {
 		t.Error(err.Error())
 		t.FailNow()
@@ -81,12 +76,14 @@ func TestSelectQuery(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
+
 		return
 	}
 
 	for _, ts := range v {
 		fmt.Println(ts.All())
 	}
+
 	t.FailNow()
 }
 
@@ -101,7 +98,7 @@ func TestSelectQuery(t *testing.T) {
 
 // 	// db.AddMetric("cenas", make(map[string]string),)
 
-// 	// err := db.AddMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
+//nolint:lll    // 	// err := db.AddMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
 // 	// if err != nil {
 // 	// 	t.Error(err)
 // 	// 	t.FailNow()
@@ -142,7 +139,7 @@ func TestSelectQuery(t *testing.T) {
 
 // 	// db.AddMetric("cenas", make(map[string]string),)
 
-// 	// err := db.AddMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
+//nolint:lll    // 	// err := db.AddMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
 // 	// if err != nil {
 // 	// 	t.Error(err)
 // 	// 	t.FailNow()
@@ -195,7 +192,7 @@ func TestSelectQuery(t *testing.T) {
 // 	// engine := New(tsdb)
 
 // 	clock := clock.NewMock()
-// 	err := tsdb.RegisterMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
+//nolint:lll    // 	err := tsdb.RegisterMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
 // 	if err != nil {
 // 		t.Error(err)
 // 		t.FailNow()
@@ -269,7 +266,7 @@ func TestSelectQuery(t *testing.T) {
 // func TestEvaluateNumericExpression2(t *testing.T) {
 // 	tsdb := tsdb.GetDB()
 // 	clock := clock.NewMock()
-// 	err := tsdb.RegisterMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
+//nolint:lll    // 	err := tsdb.RegisterMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
 // 	if err != nil {
 // 		t.Error(err)
 // 		t.FailNow()
@@ -312,7 +309,7 @@ func TestSelectQuery(t *testing.T) {
 // 	tsdb := tsdb.GetDB()
 // 	engine := New(tsdb)
 // 	clock := clock.NewMock()
-// 	err := tsdb.RegisterMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
+//nolint:lll    // 	err := tsdb.RegisterMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
 // 	if err != nil {
 // 		t.Error(err)
 // 		t.FailNow()
@@ -341,7 +338,7 @@ func TestSelectQuery(t *testing.T) {
 // 	tsdb := tsdb.GetDB()
 // 	engine := New(tsdb)
 // 	clock := clock.NewMock()
-// 	err := tsdb.RegisterMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
+//nolint:lll    // 	err := tsdb.RegisterMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
 // 	if err != nil {
 // 		t.Error(err)
 // 		t.FailNow()
@@ -369,7 +366,7 @@ func TestSelectQuery(t *testing.T) {
 // 	tsdb := tsdb.GetDB()
 // 	engine := New(tsdb)
 // 	clock := clock.NewMock()
-// 	err := tsdb.RegisterMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
+//nolint:lll    // 	err := tsdb.RegisterMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
 // 	if err != nil {
 // 		t.Error(err)
 // 		t.FailNow()
@@ -396,7 +393,7 @@ func TestSelectQuery(t *testing.T) {
 // 	tsdb := tsdb.GetDB()
 // 	engine := New(tsdb)
 // 	clock := clock.NewMock()
-// 	err := tsdb.RegisterMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
+//nolint:lll    // 	err := tsdb.RegisterMetric("test", timeseries.WithClock(clock), timeseries.WithGranularities(timeseries.Granularity{Granularity: time.Second, Count: 10}))
 // 	if err != nil {
 // 		t.Error(err)
 // 		t.FailNow()

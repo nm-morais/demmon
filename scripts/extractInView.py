@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 
-import random as rand
 import argparse
-import os
 import json
+import os
 
 
 def parse_args():
@@ -21,7 +20,7 @@ def parse_files(file_paths, output_folder):
     nodes = {}
     attrs = {}
     max_level = -1
-    
+
     parent_less_nodes = 0
     print()
 
@@ -44,15 +43,15 @@ def parse_files(file_paths, output_folder):
                 # print(toParse)
                 toParseTrimmed = toParse.strip()
                 split = toParseTrimmed.split(" ")
-                for i , ip in enumerate(split):
+                for i, ip in enumerate(split):
                     print(i, ip)
                     neighbour_ip = ip.split(":")[0][6:]
                     neighbours.append(neighbour_ip)
                 break
 
-        nodes[node_id]= {
-            "id" : node_id,
-            "neighbours" : neighbours
+        nodes[node_id] = {
+            "id": node_id,
+            "neighbours": neighbours
         }
     return nodes
 
@@ -70,8 +69,9 @@ def read_conf_file(file_path):
         node_positions[node_id] = [int(node_x), int(node_y)]
     return node_positions
 
+
 def main():
-    log_folder, coords_file ,output_folder = parse_args()
+    log_folder, coords_file, output_folder = parse_args()
     paths = []
     for node_folder in os.listdir(log_folder):
         node_path = "{}/{}".format(log_folder, node_folder)
@@ -82,15 +82,16 @@ def main():
     node_connections = parse_files(paths, output_folder)
     node_positions = read_conf_file(coords_file)
 
-    for node_id in node_positions :
+    for node_id in node_positions:
         node_connections[node_id]["coords"] = node_positions[node_id]
 
     # print(node_connections)
-    json_data = json.dumps(node_connections,  indent=4, sort_keys=True)
+    json_data = json.dumps(node_connections, indent=4, sort_keys=True)
     print(json_data)
     f = open("nodeConnections.json", "w")
-    print(f.write(json_data)) 
+    print(f.write(json_data))
     # print(node_positions)
+
 
 if __name__ == "__main__":
     main()

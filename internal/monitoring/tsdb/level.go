@@ -17,6 +17,7 @@ func (l *tsLevel) Clear() {
 	l.oldest = 0
 	l.newest = len(l.bucket) - 1
 	l.end = time.Time{}
+
 	for i := range l.bucket {
 		if l.bucket[i] != nil {
 			l.bucket[i] = nil

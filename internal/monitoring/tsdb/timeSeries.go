@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+var (
+	ErrStartAfterFinish = errors.New("start is after finish")
+)
+
 type observable struct {
 	ts     time.Time
 	fields map[string]interface{}
@@ -27,6 +31,7 @@ func (f *observable) Value() map[string]interface{} {
 	for k, v := range f.fields {
 		toReturn[k] = v
 	}
+
 	return toReturn
 }
 
@@ -46,12 +51,13 @@ func (f *observable) Clear() {
 }
 
 func (f *observable) CopyFrom(other Observable) {
-	// fmt.Println("CopyFrom")
 	otherFields := other.Value()
 	f.fields = make(map[string]interface{}, len(otherFields))
+
 	for k, v := range otherFields {
 		f.fields[k] = v
 	}
+
 	f.ts = other.TS()
 }
 
@@ -65,11 +71,15 @@ func (f *observable) String() string {
 	}
 
 	var sb strings.Builder
+
 	sb.WriteString("[")
+
 	for fieldKey, field := range f.fields {
 		sb.WriteString(fmt.Sprintf("%s:%+v, ", fieldKey, field))
 	}
+
 	sb.WriteString("]")
+
 	return sb.String()
 }
 
@@ -136,9 +146,17 @@ func NewTimeSeries(name string, tags map[string]string, timeSeriesResolution tim
 
 // NewTimeSeriesWithClock creates a new TimeSeries using the function provided for creating new Observable and the clock for
 // assigning timestamps.
-func NewTimeSeriesWithClock(name string, tags map[string]string, timeSeriesResolution time.Duration, tsLength int, clock Clock) TimeSeries {
+func NewTimeSeriesWithClock(
+	name string,
+	tags map[string]string,
+	timeSeriesResolution time.Duration,
+	tsLength int,
+	clock Clock,
+) TimeSeries {
 	ts := new(timeSeries)
+
 	ts.init(name, tags, timeSeriesResolution, tsLength, clock)
+
 	return ts
 }
 
@@ -155,22 +173,26 @@ func (ts *timeSeries) Clear() {
 
 // Add records an observation at the current time.
 func (ts *timeSeries) String() string {
-	// ts.mu.Lock()
-	// defer ts.mu.Unlock()
-	var sb strings.Builder = strings.Builder{}
+	var sb = strings.Builder{}
+
 	sb.WriteString(fmt.Sprintf("Name: %s", ts.name))
 	sb.WriteString(" | Tags: ")
 	sb.WriteString("[")
+
 	for tagKey, tagVal := range ts.tags {
 		sb.WriteString(fmt.Sprintf("%s:%s, ", tagKey, tagVal))
 	}
+
 	sb.WriteString("]")
+
 	sb.WriteString(" | Fields: ")
+
 	for _, field := range ts.All() {
 		if field != nil {
 			sb.WriteString(field.String())
 		}
 	}
+
 	return sb.String()
 }
 
@@ -181,13 +203,15 @@ func (ts *timeSeries) AddPoint(observation Observable) {
 	ts.mu.Unlock()
 }
 
-func (t *timeSeries) SetTag(key, val string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.tags == nil {
-		t.tags = make(map[string]string)
+func (ts *timeSeries) SetTag(key, val string) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+
+	if ts.tags == nil {
+		ts.tags = make(map[string]string)
 	}
-	t.tags[key] = val
+
+	ts.tags[key] = val
 }
 
 // ComputeRange computes a specified number of values into a slice using
@@ -195,15 +219,11 @@ func (t *timeSeries) SetTag(key, val string) {
 func (ts *timeSeries) Range(start, finish time.Time) ([]Observable, error) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
+
 	if start.After(finish) {
 		log.Printf("timeseries: start > finish, %v>%v", start, finish)
-		return nil, errors.New("Start is after finish")
+		return nil, ErrStartAfterFinish
 	}
-
-	// if num < 0 {
-	// 	log.Printf("timeseries: num < 0, %v", num)
-	// 	return nil
-	// }
 
 	l := ts.level
 	if !start.Before(l.end.Add(-l.size * time.Duration(ts.numBuckets))) {
@@ -221,20 +241,24 @@ func (ts *timeSeries) Range(start, finish time.Time) ([]Observable, error) {
 func (ts *timeSeries) All() []Observable {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
+
 	now := ts.clock.Time()
+
 	if ts.level.end.Before(now) {
 		ts.advance(now)
 	}
+
 	ts.mergePendingUpdates()
 	results := make([]Observable, 0, ts.numBuckets)
+
 	for i := 0; i < ts.numBuckets; i++ {
 		idx := (i + ts.level.oldest) % ts.numBuckets
 		if ts.level.bucket[idx] != nil {
-			// fmt.Printf("i:%d, idx:%d, value: %+v\n", i, idx, ts.level.bucket[idx])
 			srcValue := ts.level.bucket[idx]
 			results = append(results, srcValue.Clone())
 		}
 	}
+
 	return results
 }
 
@@ -249,6 +273,7 @@ func (ts *timeSeries) Count() int {
 func (ts *timeSeries) Name() string {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
+
 	return ts.name
 }
 
@@ -256,40 +281,46 @@ func (ts *timeSeries) Tags() map[string]string {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 	toReturn := make(map[string]string, len(ts.tags))
+
 	for k, v := range ts.tags {
 		toReturn[k] = v
 	}
+
 	return toReturn
 }
 
 func (ts *timeSeries) Last() Observable {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	// aux := ts.latestBuckets(1)
-	// if len(aux) > 0 {
-	// 	return aux[0]
-	// }
+
 	var result Observable
+
 	now := ts.clock.Time()
+
 	if ts.level.end.Before(now) {
 		ts.advance(now)
 	}
+
 	ts.mergePendingUpdates()
 	l := ts.level
 	index := l.newest
+
 	for i := 0; i < ts.numBuckets; i++ {
 		if l.bucket[index] != nil {
 			result = l.bucket[index].Clone()
 			if result == nil {
 				panic("Cloned result is nil")
 			}
+
 			break
 		}
+
 		if index == 0 {
 			index = ts.numBuckets
 		}
-		index -= 1
+		index--
 	}
+
 	return result
 }
 
@@ -309,11 +340,10 @@ func (ts *timeSeries) init(name string, tags map[string]string, resolution time.
 
 // AddWithTime records an observation at the specified time.
 func (ts *timeSeries) addWithTime(observation Observable, t time.Time) {
-	// fmt.Printf("Adding point %s at time %s\n", observation, t)
-	// defer fmt.Printf("Done adding point %s at time %s\n", observation, t)
 	if t.After(ts.lastAdd) {
 		ts.lastAdd = t
 	}
+
 	if t.After(ts.pendingTime) {
 		ts.advance(t)
 		ts.mergePendingUpdates()
@@ -334,11 +364,12 @@ func (ts *timeSeries) addWithTime(observation Observable, t time.Time) {
 // mergeValue inserts the observation at the specified time in the past into all levels.
 func (ts *timeSeries) mergeValue(observation Observable, t time.Time) {
 	index := (ts.numBuckets - 1) - int(ts.level.end.Sub(t)/ts.level.size)
-	if 0 <= index && index < ts.numBuckets {
+	if index > 0 && index < ts.numBuckets {
 		bucketNumber := (ts.level.oldest + index) % ts.numBuckets
 		if ts.level.bucket[bucketNumber] == nil {
 			ts.level.bucket[bucketNumber] = observation.Clone()
 		}
+
 		ts.level.bucket[bucketNumber] = observation.Clone()
 	}
 }
@@ -370,6 +401,7 @@ func (ts *timeSeries) advance(t time.Time) {
 		for _, b := range level.bucket {
 			ts.resetObservation(b)
 		}
+
 		level.end = time.Unix(0, (t.UnixNano()/level.size.Nanoseconds())*level.size.Nanoseconds())
 	}
 
@@ -389,29 +421,36 @@ func (ts *timeSeries) latestBuckets(num int) []Observable {
 		log.Print("timeseries: bad num argument: ", num)
 		return nil
 	}
+
 	results := make([]Observable, num)
 	now := ts.clock.Time()
+
 	if ts.level.end.Before(now) {
 		ts.advance(now)
 	}
+
 	ts.mergePendingUpdates()
 	l := ts.level
 	index := l.newest
+
 	for i := 0; i < num; i++ {
 		result := &observable{}
 		results[i] = result
+
 		if l.bucket[index] != nil {
 			result.CopyFrom(l.bucket[index])
 		}
+
 		if index == 0 {
 			index = ts.numBuckets
 		}
-		index -= 1
+		index--
 	}
+
 	return results
 }
 
-func (t *timeSeries) MarshalJSON() ([]byte, error) {
+func (ts *timeSeries) MarshalJSON() ([]byte, error) {
 	panic("not implemented")
 }
 
@@ -421,7 +460,6 @@ func (ts *timeSeries) extract(l *tsLevel, start, finish time.Time) []Observable 
 	ts.mergePendingUpdates()
 
 	srcInterval := l.size
-	// dstInterval := finish.Sub(start) / time.Duration(num)
 	dstStart := start
 	srcStart := l.end.Add(-srcInterval * time.Duration(ts.numBuckets))
 	srcIndex := 0
@@ -439,6 +477,7 @@ func (ts *timeSeries) extract(l *tsLevel, start, finish time.Time) []Observable 
 	//   [ start + i       * interval,
 	//     start + (i + 1) * interval )
 	results := make([]Observable, 0, ts.numBuckets-srcIndex)
+
 	for srcIndex < ts.numBuckets && srcStart.Before(finish) {
 		srcEnd := srcStart.Add(srcInterval)
 		if srcEnd.After(ts.lastAdd) {
@@ -473,8 +512,10 @@ func (ts *timeSeries) extract(l *tsLevel, start, finish time.Time) []Observable 
 			}
 		}
 		srcIndex++
+
 		srcStart = srcStart.Add(srcInterval)
 	}
+
 	return results
 }
 
@@ -485,6 +526,7 @@ func (ts *timeSeries) resetObservation(observation Observable) Observable {
 	} else {
 		observation.Clear()
 	}
+
 	return observation
 }
 
@@ -530,7 +572,11 @@ func (ts *timeSeries) resetObservation(observation Observable) Observable {
 // 	if clock == nil {
 // 		clock = &defaultClock{}
 // 	}
-// 	return &timeseries{measurementName: measurementName, tags: tags, clock: clock, pending: &PointValue{TS: time.Time{}}, level: createLevel(clock, g), g: g, mu: &sync.RWMutex{}}
+// 	return &timeseries{measurementName: measurementName,
+//	tags: tags,
+//	clock: clock,
+//	pending: &PointValue{TS: time.Time{}},
+//	level: createLevel(clock, g), g: g, mu: &sync.RWMutex{}}
 // }
 
 // func checkGranularity(granularity Granularity) error {

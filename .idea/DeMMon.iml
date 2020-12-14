@@ -3,6 +3,10 @@
   <component name="Go" enabled="true" />
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$" />
+    <content url="file://$MODULE_DIR$/../demmon-client" />
+    <content url="file://$MODULE_DIR$/../demmon-common" />
+    <content url="file://$MODULE_DIR$/../demmon-exporter" />
+    <content url="file://$MODULE_DIR$/../go-babel" />
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-from graph_tool.all import *
 import argparse
+from graph_tool.all import *
 
 
 def parse_args():
@@ -19,25 +19,25 @@ def main():
     g.list_properties()
 
     for v in g.vertices():
-        coords  = g.vp.coord[v]
+        coords = g.vp.coord[v]
         try:
-            c = coordsTaken[(coords[0],coords[1])]
+            c = coordsTaken[(coords[0], coords[1])]
         except KeyError:
-            coordsTaken[(coords[0],coords[1])] = g2.add_vertex()
+            coordsTaken[(coords[0], coords[1])] = g2.add_vertex()
 
     # print(coordsTaken)
 
     for v in g.vertices():
         # print(v)
-        coords  = g.vp.coord[v]
+        coords = g.vp.coord[v]
         try:
             # print((coords[0],coords[1]))
-            c = coordsTaken[(coords[0],coords[1])]
+            c = coordsTaken[(coords[0], coords[1])]
             for e in v.out_edges():
                 target_coords = g.vp.coord[e.target()]
                 try:
-                    t = coordsTaken[(target_coords[0],target_coords[1])]
-                    g2.add_edge(c,t)
+                    t = coordsTaken[(target_coords[0], target_coords[1])]
+                    g2.add_edge(c, t)
                 except KeyError:
                     continue
         except KeyError:
@@ -48,6 +48,7 @@ def main():
     # graph_draw(g2, output="composed-filter.svg")
     print(g)
     print(g2)
+
 
 if __name__ == "__main__":
     main()

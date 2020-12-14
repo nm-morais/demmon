@@ -11,12 +11,9 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var DefaultFrequency = 3 * time.Second
-var DefaultCount = 20
-
 var (
 	ErrBucketNotFound = errors.New("bucket not found")
-	ErrAlreadyExists  = errors.New("Bucket already exists")
+	ErrAlreadyExists  = errors.New("bucket already exists")
 )
 
 var createOnce sync.Once
@@ -27,18 +24,21 @@ type TSDB struct {
 	buckets *sync.Map
 }
 
-func GetDB(logFile, logFolder string, silent bool, setupLogToFile bool) *TSDB {
+func GetDB(logFile, logFolder string, silent, setupLogToFile bool) *TSDB {
 	if db == nil {
-		createOnce.Do(func() {
-			db = &TSDB{
-				logger:  &logrus.Logger{},
-				buckets: &sync.Map{},
-			}
-			if setupLogToFile {
-				setupLogger(db.logger, logFolder, logFile, silent)
-			}
-		})
+		createOnce.Do(
+			func() {
+				db = &TSDB{
+					logger:  &logrus.Logger{},
+					buckets: &sync.Map{},
+				}
+				if setupLogToFile {
+					setupLogger(db.logger, logFolder, logFile, silent)
+				}
+			},
+		)
 	}
+
 	return db
 }
 
@@ -47,10 +47,16 @@ func (db *TSDB) GetBucket(name string) (*Bucket, bool) {
 	if !ok {
 		return nil, false
 	}
+
 	return bucket.(*Bucket), ok
 }
 
-func (db *TSDB) GetOrCreateTimeseries(name string, tags map[string]string, frequency time.Duration, count int) (TimeSeries, error) {
+func (db *TSDB) GetOrCreateTimeseries(
+	name string,
+	tags map[string]string,
+	frequency time.Duration,
+	count int,
+) (TimeSeries, error) {
 	b, ok := db.GetBucket(name)
 	if !ok {
 		return nil, ErrBucketNotFound
@@ -64,6 +70,7 @@ func (db *TSDB) GetTimeseries(name string, tags map[string]string) (TimeSeries, 
 	if !ok {
 		return nil, false
 	}
+
 	return b.GetTimeseries(tags)
 }
 
@@ -72,44 +79,59 @@ func (db *TSDB) GetOrCreateTimeseriesWithClock(name string, tags map[string]stri
 	if !ok {
 		return nil, ErrBucketNotFound
 	}
+
 	return b.GetOrCreateTimeseriesWithClock(tags, clock), nil
 }
 
-func (db *TSDB) AddMetric(bucketName string, tags map[string]string, fields map[string]interface{}, timestamp time.Time) error {
+func (db *TSDB) AddMetric(
+	bucketName string,
+	tags map[string]string,
+	fields map[string]interface{},
+	timestamp time.Time,
+) error {
 	b, hasBucket := db.GetBucket(bucketName)
 	if !hasBucket {
-		return fmt.Errorf("Bucket %s not present", bucketName)
+		return ErrBucketNotFound
 	}
 	timeseries := b.GetOrCreateTimeseries(tags)
+
 	pv := NewObservable(fields, timestamp)
 	timeseries.AddPoint(pv)
 	return nil
 }
 
 func (db *TSDB) DeleteBucket(name string, tags map[string]string) bool {
+
 	b, ok := db.buckets.LoadAndDelete(name)
 	if !ok {
 		return false
 	}
 	b.(*Bucket).ClearBucket()
+
 	return true
 }
 
 func (db *TSDB) CreateBucket(name string, frequency time.Duration, count int) (*Bucket, error) {
 	newBucket := NewBucket(name, frequency, count, db.logger)
 	toReturn, loaded := db.buckets.LoadOrStore(name, newBucket)
+
 	if loaded {
-		return nil, errors.New("Bucket already exists")
+		return nil, ErrAlreadyExists
 	}
+
 	return toReturn.(*Bucket), nil
 }
 
 func (db *TSDB) GetRegisteredBuckets() []string {
 	toReturn := make([]string, 0)
-	db.buckets.Range(func(key, value interface{}) bool {
-		toReturn = append(toReturn, key.(string))
-		return true
-	})
+
+	db.buckets.Range(
+		func(key, value interface{}) bool {
+			toReturn = append(toReturn, key.(string))
+			return true
+		},
+	)
+
 	return toReturn
 }
 
@@ -124,43 +146,54 @@ func (f *formatter) Format(e *logrus.Entry) ([]byte, error) {
 }
 
 func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) {
-	logger.SetFormatter(&formatter{
-		owner: "timeseries_database",
-		lf: &logrus.TextFormatter{
-			DisableColors:   true,
-			ForceColors:     false,
-			FullTimestamp:   true,
-			TimestampFormat: time.StampMilli,
+	logger.SetFormatter(
+		&formatter{
+			owner: "timeseries_database",
+			lf: &logrus.TextFormatter{
+				DisableColors:   true,
+				ForceColors:     false,
+				FullTimestamp:   true,
+				TimestampFormat: time.StampMilli,
+			},
 		},
-	})
+	)
 
 	if logFolder == "" {
 		logger.Panicf("Invalid logFolder '%s'", logFolder)
 	}
+
 	if logFile == "" {
 		logger.Panicf("Invalid logFile '%s'", logFile)
 	}
 
 	filePath := fmt.Sprintf("%s/%s", logFolder, logFile)
 	err := os.MkdirAll(logFolder, 0777)
+
 	if err != nil {
 		logger.Panic(err)
 	}
+
 	file, err := os.Create(filePath)
+
 	if os.IsExist(err) {
 		var err = os.Remove(filePath)
 		if err != nil {
 			logger.Panic(err)
 		}
+
 		file, err = os.Create(filePath)
+
 		if err != nil {
 			logger.Panic(err)
 		}
 	}
+
 	var out io.Writer = file
+
 	if !silent {
 		out = io.MultiWriter(os.Stdout, file)
 	}
+
 	logger.SetOutput(out)
 }
 

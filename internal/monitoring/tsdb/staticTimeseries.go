@@ -19,6 +19,7 @@ func NewStaticTimeSeries(measurementName string, tags map[string]string, values 
 func (t *staticTimeseries) Name() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+
 	return t.measurementName
 }
 
@@ -26,46 +27,58 @@ func (t *staticTimeseries) Tags() map[string]string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	tagsCopy := map[string]string{}
+
 	for tagKey, tagVal := range t.tags {
+
 		tagsCopy[tagKey] = tagVal
 	}
+
 	return tagsCopy
 }
 
 func (t *staticTimeseries) SetTag(key, val string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+
 	if t.tags == nil {
 		t.tags = make(map[string]string)
 	}
+
 	t.tags[key] = val
 }
 
 func (t *staticTimeseries) All() []Observable {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	toReturn := []Observable{}
+
+	toReturn := make([]Observable, 0)
+
 	for i := len(t.values) - 1; i >= 0; i-- {
 		curr := t.values[i]
 		if curr == nil {
 			continue
 		}
+
 		toReturn = append(toReturn, curr)
 	}
+
 	return toReturn
 }
 
-// Recent returns the last value inserted
+// Recent returns the last value inserted.
 func (t *staticTimeseries) Last() Observable {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+
 	for i := len(t.values) - 1; i >= 0; i-- {
 		curr := t.values[i]
 		if curr == nil {
 			continue
 		}
+
 		return curr
 	}
+
 	return nil
 }
 

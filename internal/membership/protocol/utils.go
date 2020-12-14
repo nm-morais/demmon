@@ -1,24 +1,24 @@
-package membership_protocol
+package protocol
 
 import (
 	"math/rand"
 )
 
-func getRandSample(nrPeersToSelect int, peers ...*PeerWithIdChain) map[string]*PeerWithIdChain {
+func getRandSample(nrPeersToSelect int, peers ...*PeerWithIDChain) map[string]*PeerWithIDChain {
 	rand.Shuffle(len(peers), func(i, j int) { peers[i], peers[j] = peers[j], peers[i] })
 	nrPeersToReturn := nrPeersToSelect
 	if nrPeersToReturn > len(peers) {
 		nrPeersToReturn = len(peers)
 	}
-	toReturn := make(map[string]*PeerWithIdChain, nrPeersToSelect)
+	toReturn := make(map[string]*PeerWithIDChain, nrPeersToSelect)
 	for i := 0; i < len(peers) && i < nrPeersToReturn; i++ {
 		toReturn[peers[i].String()] = peers[i]
 	}
 	return toReturn
 }
 
-func getPeersExcluding(toFilter []*PeerWithIdChain, exclusions map[string]interface{}) []*PeerWithIdChain {
-	toReturn := make([]*PeerWithIdChain, 0)
+func getPeersExcluding(toFilter []*PeerWithIDChain, exclusions map[string]interface{}) []*PeerWithIDChain {
+	toReturn := make([]*PeerWithIDChain, 0)
 	for _, p := range toFilter {
 		_, excluded := exclusions[p.String()]
 		if !excluded {
@@ -28,7 +28,7 @@ func getPeersExcluding(toFilter []*PeerWithIdChain, exclusions map[string]interf
 	return toReturn
 }
 
-func getRandomExcluding(toFilter []*PeerWithIdChain, exclusions map[string]interface{}) *PeerWithIdChain {
+func getRandomExcluding(toFilter []*PeerWithIDChain, exclusions map[string]interface{}) *PeerWithIDChain {
 	filtered := getPeersExcluding(toFilter, exclusions)
 	filteredLen := len(filtered)
 	if filteredLen == 0 {
@@ -51,8 +51,8 @@ func getRandomExcluding(toFilter []*PeerWithIdChain, exclusions map[string]inter
 // 	return bestPeer
 // }
 
-func getExcludingDescendantsOf(toFilter []*PeerWithIdChain, ascendantChain PeerIDChain) []*PeerWithIdChain {
-	toReturn := make([]*PeerWithIdChain, 0)
+func getExcludingDescendantsOf(toFilter []*PeerWithIDChain, ascendantChain PeerIDChain) []*PeerWithIDChain {
+	toReturn := make([]*PeerWithIDChain, 0)
 	for _, peer := range toFilter {
 		if !peer.IsDescendentOf(ascendantChain) {
 			toReturn = append(toReturn, peer)

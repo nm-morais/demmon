@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 
-import matplotlib as mpl
-from matplotlib.pyplot import figure
-import matplotlib.pyplot as plt
-import random as rand
-import networkx as nx
 import argparse
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import networkx as nx
 import os
-import json
 
 
 def parse_args():
@@ -25,7 +22,7 @@ def parse_files(file_paths, output_folder):
     nodes = {}
     attrs = {}
     max_level = -1
-    
+
     parent_less_nodes = 0
 
     for file_path in file_paths:
@@ -42,7 +39,7 @@ def parse_files(file_paths, output_folder):
         for aux in reversed(lines):
             line = aux.strip()
 
-            if "I am landmark" in line :
+            if "I am landmark" in line:
                 landmark = True
             if "Dialed parent with success" in line and parent_ip == "" and line != "":
                 if "from not my parent" in line:
@@ -52,7 +49,7 @@ def parse_files(file_paths, output_folder):
                 # print(line.split(" "))
                 # split = line.split(" ")
                 # for i, s in enumerate(split):
-                    # print(i, s)
+                # print(i, s)
                 parent_name = str(line.split(" ")[10])
                 # print(parent_name)
                 parent_name = parent_name.split(":")[0]
@@ -80,20 +77,20 @@ def parse_files(file_paths, output_folder):
                 # for i, s in enumerate(split):
                 #     print(i, s)
                 # print(ip)
-                
+
                 # print(line)
                 latStr = split[10]
                 latStr2 = latStr[:-1]
-                
+
                 try:
                     added = latencies_added[(node_ip, ip)]
                 except KeyError:
-                    latencies.append((node_ip, ip, (int(latStr2)/ 1000000)/ 2))
+                    latencies.append((node_ip, ip, (int(latStr2) / 1000000) / 2))
                     latencies_added[(node_ip, ip)] = {}
 
         # print(latencies_added)
         # print(latencies)
-            
+
         if landmark:
             xPos = landmarks * level_width * 1.85
             landmarks += 1
@@ -115,7 +112,7 @@ def parse_files(file_paths, output_folder):
                     "landmark": landmark
                 }
                 parent_less_nodes += 100
-            else :
+            else:
                 nodes[node_ip] = {
                     "node_level": node_level,
                     "parent": parent_ip,
@@ -149,7 +146,7 @@ def parse_files(file_paths, output_folder):
         for latencyPair in nodes[node]["latencies"]:
             # G.add_edge(node, latencyPair[0], weight=latencyPair[1],
             #           parent=False, latency=True, label=latencyPair[1])
-            latencyEdges[(latencyPair[0],latencyPair[1])] = int(latencyPair[2])
+            latencyEdges[(latencyPair[0], latencyPair[1])] = int(latencyPair[2])
 
         if nodes[node]["landmark"]:
             nodeLabels[node] = node
@@ -170,7 +167,7 @@ def parse_files(file_paths, output_folder):
                     parentPos = parent["pos"]
                 except KeyError:
                     curr = 0
-                    parentPos = (parent_less_nodes,-10)
+                    parentPos = (parent_less_nodes, -10)
                     parent_less_nodes += 100
                     print("err: {} has no parent, supposed to be: {}".format(node, parent))
                     print("parent: {}".format(parent))
@@ -181,7 +178,7 @@ def parse_files(file_paths, output_folder):
                 # nodePos = [(parentPos[0] - parent_children * (200 / (lvl + 0.33)) +
                 #         curr * (200 / (lvl + 0.33))), parentPos[1] + 5]
 
-                if parent_children == 1 :
+                if parent_children == 1:
                     nodePos = [parentPos[0], parentPos[1] + 5]
                     nodes[node]["pos"] = nodePos
                     pos[node] = nodePos
@@ -189,7 +186,7 @@ def parse_files(file_paths, output_folder):
                     parent_edges.append((parentId, node))
                     continue
 
-                thisLvlWidth = float(level_width) / float(lvl * lvl) 
+                thisLvlWidth = float(level_width) / float(lvl * lvl)
                 thisLvlStep = float(thisLvlWidth) / float(parent_children - 1)
 
                 print("level_width", level_width)
@@ -197,19 +194,18 @@ def parse_files(file_paths, output_folder):
                 print("thisLvlWidth", thisLvlWidth)
                 print("thisLvlStep", thisLvlStep)
 
-
-                nodePos = [parentPos[0] - (thisLvlWidth / 2) + curr * thisLvlStep , parentPos[1] + 5]
+                nodePos = [parentPos[0] - (thisLvlWidth / 2) + curr * thisLvlStep, parentPos[1] + 5]
 
                 nodes[node]["pos"] = nodePos
                 pos[node] = nodePos
                 currChildren[parentId] = curr + 1
                 parent_edges.append((parentId, node))
 
-            else :
+            else:
                 pos[node] = nodes[node]["pos"]
 
-    #print(latencyEdges)
-    
+    # print(latencyEdges)
+
     '''
     latVals = [latencyEdges[l] for l in latencyEdgeLabels]
     print(latVals)
@@ -228,23 +224,20 @@ def parse_files(file_paths, output_folder):
     minLat = 10000000000000000
     maxLat = -1
 
-
     for latPair in latencyEdges:
         currLatVal = latencyEdges[latPair]
         minLat = min(minLat, currLatVal)
         maxLat = max(maxLat, currLatVal)
 
-
     edge_colors = [latencyEdges[l] for l in latencyEdges]
-    #print()
-
+    # print()
 
     for node in nodes:
         print("{}:{}".format(node, nodes[node]))
-        
+
     parent_colors = []
     print(latencyEdges)
-    
+
     for p in parent_edges:
         print(p)
         try:
@@ -258,11 +251,10 @@ def parse_files(file_paths, output_folder):
                 parent_colors.append(1000000000)
                 latencyEdgeLabels[(p[1], p[0])] = "missing"
 
-
-    #print(parent_colors)
-    #print(minLat, maxLat)
-    #print(edge_colors)
-    #pos = nx.spring_layout(node_list, pos=pos, iterations=10000)
+    # print(parent_colors)
+    # print(minLat, maxLat)
+    # print(edge_colors)
+    # pos = nx.spring_layout(node_list, pos=pos, iterations=10000)
 
     with open('{}/parent_edges.txt'.format(output_folder), 'w') as f:
         for node in sorted(nodes, key=lambda x: nodes[x]["node_level"], reverse=False):
@@ -270,10 +262,10 @@ def parse_files(file_paths, output_folder):
                 f.write("{} ".format(node))
         f.write("\n")
         for parent_edge in parent_edges:
-                f.write("{} {}\n".format(parent_edge[0],parent_edge[1]))
+            f.write("{} {}\n".format(parent_edge[0], parent_edge[1]))
 
     cmap = plt.cm.rainbow
-    
+
     nx.draw_networkx_nodes(G, pos, nodelist=node_list,
                            node_size=300, ax=ax, node_shape="o")
     nx.draw_networkx_labels(G, pos, nodeLabels, font_size=6, ax=ax)
@@ -281,14 +273,16 @@ def parse_files(file_paths, output_folder):
                            edge_color=parent_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, width=4, ax=ax)
     nx.draw_networkx_edges(G, pos, style='dashed', edgelist=latencyEdges, width=1,
                            alpha=0.5, edge_color=edge_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, ax=ax)
-    nx.draw_networkx_edge_labels(G, pos, latencyEdgeLabels,  label_pos=0.33 , alpha=0.5, font_size=6, ax=ax)
-    
+    nx.draw_networkx_edge_labels(G, pos, latencyEdgeLabels, label_pos=0.33, alpha=0.5, font_size=6, ax=ax)
+
     print(minLat, maxLat)
 
-    cbaxes = fig.add_axes([0.95, 0.05, 0.01, 0.65]) 
+    cbaxes = fig.add_axes([0.95, 0.05, 0.01, 0.65])
     norm = mpl.colors.Normalize(vmin=minLat, vmax=maxLat)
-    cb1 = mpl.colorbar.ColorbarBase(cbaxes, cmap=cmap,norm=norm, orientation='vertical')
+    cb1 = mpl.colorbar.ColorbarBase(cbaxes, cmap=cmap, norm=norm, orientation='vertical')
     plt.savefig("{}/topology.png".format(output_folder))
+
+
 #    plt.show()
 
 def main():
@@ -301,6 +295,7 @@ def main():
                 paths.append("{}/{}".format(node_path, node_file))
 
     parse_files(paths, output_folder)
+
 
 if __name__ == "__main__":
     main()

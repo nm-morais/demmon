@@ -1,4 +1,4 @@
-package metrics_engine
+package engine
 
 import (
 	"io"
@@ -60,52 +60,68 @@ func (e *MetricsEngine) MakeQuery(expression string, timeoutDuration time.Durati
 		return []tsdb.TimeSeries{vConverted}, nil
 	default:
 		return nil, fmt.Errorf("unsupported return type %s", reflect.TypeOf(vGeneric))
-
 	}
 }
 
 func (e *MetricsEngine) runWithTimeout(expression string, timeoutDuration time.Duration) (*otto.Value, error) {
 	start := time.Now()
+
 	type returnType struct {
 		ans *otto.Value
 		err error
 	}
+
 	returnChan := make(chan returnType)
 	defer close(returnChan)
+
 	go func() {
 		defer func() {
 			duration := time.Since(start)
+
 			if caught := recover(); caught != nil {
-				if caught == errExpressionTimeout {
+				if caught == errExpressionTimeout.Error() {
 					returnChan <- returnType{
 						ans: nil,
 						err: errExpressionTimeout,
 					}
 					e.logger.Infof("expression execution took longer then allowed (%v)", duration)
+
 					return
-				} else {
-					e.logger.Panic(fmt.Sprintf("got error running expression: stacktrace: %s", string(debug.Stack())))
 				}
+
+				e.logger.Panic(fmt.Sprintf("got error running expression: stacktrace: %s", string(debug.Stack())))
 				returnChan <- returnType{
 					ans: nil,
-					err: fmt.Errorf("%+s", caught),
+					err: fmt.Errorf("%s", caught),
 				}
 			}
 		}()
 		vm := otto.New()
-		e.setVmFunctions(vm)
+
+		e.setVMFunctions(vm)
 		setDebuggerHandler(vm)
 		vm.Interrupt = make(chan func(), 1)
+
 		go func() {
 			time.Sleep(timeoutDuration)
 			vm.Interrupt <- func() {
 				panic(errExpressionTimeout)
 			}
 		}()
+
 		val, err := vm.Run(expression)
+
+		if err != nil {
+			returnChan <- returnType{
+				ans: nil,
+				err: err,
+			}
+			return
+		}
 
 		if val.IsUndefined() {
 			resVal, err := vm.Get("result")
+
 			if err != nil {
 				e.logger.Error(err)
 			} else {
@@ -122,24 +138,30 @@ func (e *MetricsEngine) runWithTimeout(expression string, timeoutDuration time.D
 	return res.ans, res.err
 }
 
-func (e *MetricsEngine) setVmFunctions(vm *otto.Otto) {
-	err := vm.Set("Select", func(call otto.FunctionCall) otto.Value {
-		return e.selectTs(vm, call)
-	})
+func (e *MetricsEngine) setVMFunctions(vm *otto.Otto) {
+	err := vm.Set(
+		"Select", func(call otto.FunctionCall) otto.Value {
+			return e.selectTs(vm, call)
+		},
+	)
 	if err != nil {
 		panic(err)
 	}
 
-	err = vm.Set("SelectLast", func(call otto.FunctionCall) otto.Value {
-		return e.selectLast(vm, call)
-	})
+	err = vm.Set(
+		"SelectLast", func(call otto.FunctionCall) otto.Value {
+			return e.selectLast(vm, call)
+		},
+	)
 	if err != nil {
 		panic(err)
 	}
 
-	err = vm.Set("SelectRange", func(call otto.FunctionCall) otto.Value {
-		return e.selectRange(vm, call)
-	})
+	err = vm.Set(
+		"SelectRange", func(call otto.FunctionCall) otto.Value {
+			return e.selectRange(vm, call)
+		},
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -151,29 +173,37 @@ func (e *MetricsEngine) setVmFunctions(vm *otto.Otto) {
 	// 	panic(err)
 	// }
 
-	err = vm.Set("Drop", func(call otto.FunctionCall) otto.Value {
-		e.drop(vm, call)
-		return otto.UndefinedValue()
-	})
+	err = vm.Set(
+		"Drop", func(call otto.FunctionCall) otto.Value {
+			e.drop(vm, call)
+			return otto.UndefinedValue()
+		},
+	)
 	if err != nil {
 		panic(err)
 	}
 
-	err = vm.Set("Max", func(call otto.FunctionCall) otto.Value {
-		return e.max(vm, call)
-	})
+	err = vm.Set(
+		"Max", func(call otto.FunctionCall) otto.Value {
+			return e.max(vm, call)
+		},
+	)
 	if err != nil {
 		panic(err)
 	}
-	err = vm.Set("Min", func(call otto.FunctionCall) otto.Value {
-		return e.min(vm, call)
-	})
+	err = vm.Set(
+		"Min", func(call otto.FunctionCall) otto.Value {
+			return e.min(vm, call)
+		},
+	)
 	if err != nil {
 		panic(err)
 	}
-	err = vm.Set("Avg", func(call otto.FunctionCall) otto.Value {
-		return e.avg(vm, call)
-	})
+	err = vm.Set(
+		"Avg", func(call otto.FunctionCall) otto.Value {
+			return e.avg(vm, call)
+		},
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -183,6 +213,7 @@ func (e *MetricsEngine) selectTs(vm *otto.Otto, call otto.FunctionCall) otto.Val
 	name, err := call.Argument(0).ToString()
 	if err != nil {
 		throw(vm, "Invalid arg: Name is not a string")
+		return otto.Value{}
 	}
 
 	isTagFilterAll := call.Argument(1).IsString() && call.Argument(1).String() == "*"
@@ -191,6 +222,7 @@ func (e *MetricsEngine) selectTs(vm *otto.Otto, call otto.FunctionCall) otto.Val
 		b, ok := e.db.GetBucket(name)
 		if !ok {
 			throw(vm, fmt.Sprintf("No bucket found with name %s", name))
+			return otto.Value{}
 		}
 		queryResult = b.GetAllTimeseries()
 		// for _, ts := range queryResult {
@@ -199,14 +231,12 @@ func (e *MetricsEngine) selectTs(vm *otto.Otto, call otto.FunctionCall) otto.Val
 		res, err := vm.ToValue(queryResult)
 		if err != nil {
 			throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
+			return otto.Value{}
 		}
 		return res
 	}
 
 	tagFilters := call.Argument(1).Object()
-	if err != nil {
-		throw(vm, "Invalid arg: tag filters is not defined")
-	}
 
 	tags := map[string]string{}
 	tagKeys := tagFilters.Keys()
@@ -214,6 +244,7 @@ func (e *MetricsEngine) selectTs(vm *otto.Otto, call otto.FunctionCall) otto.Val
 		tagVal, err := tagFilters.Get(tagKey)
 		if err != nil {
 			throw(vm, "Invalid arg: tag filters is not a map[string]string")
+			return otto.Value{}
 		}
 		tags[tagKey] = tagVal.String()
 	}
@@ -221,15 +252,18 @@ func (e *MetricsEngine) selectTs(vm *otto.Otto, call otto.FunctionCall) otto.Val
 	b, ok := e.db.GetBucket(name)
 	if !ok {
 		throw(vm, fmt.Sprintf("No measurement found with name %s", name))
+		return otto.Value{}
 	}
 	queryResult = b.GetTimeseriesRegex(tags)
 	if len(queryResult) == 0 {
 		throw(vm, "Select query did not return any results")
+		return otto.Value{}
 	}
 	// e.logger.Infof("Select query result: %+v", queryResult)
 	res, err := vm.ToValue(queryResult)
 	if err != nil {
 		throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
+		return otto.Value{}
 	}
 	return res
 }
@@ -238,6 +272,7 @@ func (e *MetricsEngine) selectLast(vm *otto.Otto, call otto.FunctionCall) otto.V
 	name, err := call.Argument(0).ToString()
 	if err != nil {
 		throw(vm, "Invalid arg: Name is not a string")
+		return otto.Value{}
 	}
 
 	isTagFilterAll := call.Argument(1).IsString() && call.Argument(1).String() == "*"
@@ -246,19 +281,18 @@ func (e *MetricsEngine) selectLast(vm *otto.Otto, call otto.FunctionCall) otto.V
 		b, ok := e.db.GetBucket(name)
 		if !ok {
 			throw(vm, fmt.Sprintf("No measurement found with name %s", name))
+			return otto.Value{}
 		}
 		queryResult = b.GetAllTimeseriesLast()
 		res, err := vm.ToValue(queryResult)
 		if err != nil {
 			throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
+			return otto.Value{}
 		}
 		return res
 	}
 
 	tagFilters := call.Argument(1).Object()
-	if err != nil {
-		throw(vm, "Invalid arg: tag filters is not defined")
-	}
 
 	tags := map[string]string{}
 	tagKeys := tagFilters.Keys()
@@ -266,6 +300,7 @@ func (e *MetricsEngine) selectLast(vm *otto.Otto, call otto.FunctionCall) otto.V
 		tagVal, err := tagFilters.Get(tagKey)
 		if err != nil {
 			throw(vm, "Invalid arg: tag filters is not a map[string]string")
+			return otto.Value{}
 		}
 		tags[tagKey] = tagVal.String()
 	}
@@ -273,17 +308,20 @@ func (e *MetricsEngine) selectLast(vm *otto.Otto, call otto.FunctionCall) otto.V
 	b, ok := e.db.GetBucket(name)
 	if !ok {
 		throw(vm, fmt.Sprintf("No measurement found with name %s", name))
+		return otto.Value{}
 	}
 
 	queryResult = b.GetTimeseriesRegexLastVal(tags)
 	if len(queryResult) == 0 {
 		throw(vm, "Select query did not return any results")
+		return otto.Value{}
 	}
 
 	// e.logger.Infof("SelectLast query result: : %+v", queryResult)
 	res, err := vm.ToValue(queryResult)
 	if err != nil {
 		throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
+		return otto.Value{}
 	}
 	return res
 }
@@ -292,24 +330,29 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call otto.FunctionCall) otto.
 	name, err := call.Argument(0).ToString()
 	if err != nil {
 		throw(vm, "Invalid arg: Name is not a string")
+		return otto.Value{}
 	}
 
 	startTimeGeneric, err := call.Argument(2).Export()
 	if err != nil {
 		throw(vm, fmt.Sprintf("err: %s ", err.Error()))
+		return otto.Value{}
 	}
 	startTime, ok := startTimeGeneric.(time.Time)
 	if !ok {
 		throw(vm, "start time is not a date type")
+		return otto.Value{}
 	}
 
 	endTimeGeneric, err := call.Argument(3).Export()
 	if err != nil {
 		throw(vm, fmt.Sprintf("err: %s ", err.Error()))
+		return otto.Value{}
 	}
 	endTime, ok := endTimeGeneric.(time.Time)
 	if !ok {
 		throw(vm, "start time is not a date type")
+		return otto.Value{}
 	}
 
 	isTagFilterAll := call.Argument(1).IsString() && call.Argument(1).String() == "*"
@@ -318,26 +361,25 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call otto.FunctionCall) otto.
 		b, ok := e.db.GetBucket(name)
 		if !ok {
 			throw(vm, fmt.Sprintf("No measurement found with name %s", name))
+			return otto.Value{}
 		}
 		queryResult = b.GetAllTimeseriesRange(startTime, endTime)
 		res, err := vm.ToValue(queryResult)
 		if err != nil {
 			throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
+			return otto.Value{}
 		}
 		return res
 	}
 
 	tagFilters := call.Argument(1).Object()
-	if err != nil {
-		throw(vm, "Invalid arg: tag filters is not defined")
-	}
-
 	tags := map[string]string{}
 	tagKeys := tagFilters.Keys()
 	for _, tagKey := range tagKeys {
 		tagVal, err := tagFilters.Get(tagKey)
 		if err != nil {
 			throw(vm, "Invalid arg: tag filters is not a map[string]string")
+			return otto.Value{}
 		}
 		tags[tagKey] = tagVal.String()
 	}
@@ -345,15 +387,18 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call otto.FunctionCall) otto.
 	b, ok := e.db.GetBucket(name)
 	if !ok {
 		throw(vm, fmt.Sprintf("No measurement found with name %s", name))
+		return otto.Value{}
 	}
 	queryResult = b.GetTimeseriesRegexRange(tags, startTime, endTime)
 	if len(queryResult) == 0 {
 		throw(vm, "Select query did not return any results")
+		return otto.Value{}
 	}
 	// e.logger.Infof("SelectRange query result: : %+v", queryResult)
 	res, err := vm.ToValue(queryResult)
 	if err != nil {
 		throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
+		return otto.Value{}
 	}
 	return res
 }
@@ -407,12 +452,14 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call otto.FunctionCall) otto.
 func (e *MetricsEngine) max(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 	if len(call.ArgumentList) != 2 {
 		throw(vm, fmt.Sprintf("Invalid args: not enough args, got: %d", len(call.ArgumentList)))
+		return otto.Value{}
 	}
 	ts := call.Argument(0)
 	ts.Object()
 	tsArrGeneric, err := ts.Export()
 	if err != nil {
 		throw(vm, err.Error())
+		return otto.Value{}
 	}
 
 	var fieldRegex *regexp.Regexp
@@ -425,6 +472,7 @@ func (e *MetricsEngine) max(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 		fieldRegex, err = regexp.Compile(call.Argument(1).String())
 		if err != nil {
 			throw(vm, err.Error())
+			return otto.Value{}
 		}
 	}
 	switch toProcess := tsArrGeneric.(type) {
@@ -438,24 +486,44 @@ func (e *MetricsEngine) max(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 				resultingName = ts.Name()
 			}
 			if ts.Name() != resultingName {
-				throw(vm, fmt.Sprintf("Cannot average timeseries from different measurements: %s != %s", ts.Name(), resultingName))
+				throw(
+					vm,
+					fmt.Sprintf(
+						"Cannot average timeseries from different measurements: %s != %s",
+						ts.Name(),
+						resultingName,
+					),
+				)
+				return otto.Value{}
 			}
 			max(vm, ts.All(), fieldRegex, fieldMaxs, isTagFilterAll)
 			i++
 		}
 	default:
 		throw(vm, fmt.Sprintf("Unsupported input type %s", reflect.TypeOf(toProcess)))
+		return otto.Value{}
 	}
 
-	toReturn := tsdb.NewStaticTimeSeries(resultingName, make(map[string]string), []tsdb.Observable{tsdb.NewObservable(fieldMaxs, time.Now())})
+	toReturn := tsdb.NewStaticTimeSeries(
+		resultingName,
+		make(map[string]string),
+		[]tsdb.Observable{tsdb.NewObservable(fieldMaxs, time.Now())},
+	)
 	res, err := vm.ToValue(toReturn.(tsdb.TimeSeries))
 	if err != nil {
 		throw(vm, fmt.Sprintf("An error occurred transforming function output to js object: %s", err.Error()))
+		return otto.Value{}
 	}
 	return res
 }
 
-func max(vm *otto.Otto, points []tsdb.Observable, fieldRegex *regexp.Regexp, fieldMaxs map[string]interface{}, doAll bool) {
+func max(
+	vm *otto.Otto,
+	points []tsdb.Observable,
+	fieldRegex *regexp.Regexp,
+	fieldMaxs map[string]interface{},
+	doAll bool,
+) {
 	for _, point := range points {
 		for fieldKey, fieldVal := range point.Value() {
 			if doAll || fieldRegex.MatchString(fieldKey) {
@@ -465,7 +533,15 @@ func max(vm *otto.Otto, points []tsdb.Observable, fieldRegex *regexp.Regexp, fie
 				}
 				fieldValFloat, ok := fieldVal.(float64)
 				if !ok {
-					throw(vm, fmt.Sprintf("Function err: field %s is not of type float64 (%s)", fieldKey, reflect.TypeOf(fieldVal)))
+					throw(
+						vm,
+						fmt.Sprintf(
+							"Function err: field %s is not of type float64 (%s)",
+							fieldKey,
+							reflect.TypeOf(fieldVal),
+						),
+					)
+					return
 				}
 				fieldMaxs[fmt.Sprintf("max_%s", fieldKey)] = math.Max(fieldMax.(float64), fieldValFloat)
 			}
@@ -476,12 +552,14 @@ func max(vm *otto.Otto, points []tsdb.Observable, fieldRegex *regexp.Regexp, fie
 func (e *MetricsEngine) min(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 	if len(call.ArgumentList) != 2 {
 		throw(vm, fmt.Sprintf("Invalid args: not enough args, got: %d", len(call.ArgumentList)))
+		return otto.Value{}
 	}
 	ts := call.Argument(0)
 	ts.Object()
 	tsArrGeneric, err := ts.Export()
 	if err != nil {
 		throw(vm, err.Error())
+		return otto.Value{}
 	}
 
 	isTagFilterAll := call.Argument(1).IsString() && call.Argument(1).String() == "*"
@@ -494,6 +572,7 @@ func (e *MetricsEngine) min(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 		fieldRegex, err = regexp.Compile(call.Argument(1).String())
 		if err != nil {
 			throw(vm, err.Error())
+			return otto.Value{}
 		}
 	}
 
@@ -508,26 +587,46 @@ func (e *MetricsEngine) min(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 				resultingName = ts.Name()
 			}
 			if ts.Name() != resultingName {
-				throw(vm, fmt.Sprintf("Cannot average timeseries from different measurements:%s != %s", ts.Name(), resultingName))
+				throw(
+					vm,
+					fmt.Sprintf(
+						"Cannot average timeseries from different measurements:%s != %s",
+						ts.Name(),
+						resultingName,
+					),
+				)
+				return otto.Value{}
 			}
 			min(vm, ts.All(), fieldRegex, fieldMins, isTagFilterAll)
 			i++
 		}
 	default:
 		throw(vm, fmt.Sprintf("Unsupported input type %s", reflect.TypeOf(toProcess)))
+		return otto.Value{}
 	}
 
 	// toReturn := tsdb.NewTimeSeries(resultingName, make(map[string]string), tsdb.Granularity{Granularity: math.MaxInt64, Count: 2}, nil)
 	// toReturn.AddPoint(tsdb.Observable{TS: time.Now(), Fields: fieldMins})
-	toReturn := tsdb.NewStaticTimeSeries(resultingName, make(map[string]string), []tsdb.Observable{tsdb.NewObservable(fieldMins, time.Now())})
+	toReturn := tsdb.NewStaticTimeSeries(
+		resultingName,
+		make(map[string]string),
+		[]tsdb.Observable{tsdb.NewObservable(fieldMins, time.Now())},
+	)
 	res, err := vm.ToValue(toReturn.(tsdb.TimeSeries))
 	if err != nil {
 		throw(vm, fmt.Sprintf("An error occurred transforming function output to js object: %s", err.Error()))
+		return otto.Value{}
 	}
 	return res
 }
 
-func min(vm *otto.Otto, points []tsdb.Observable, fieldRegex *regexp.Regexp, fieldMaxs map[string]interface{}, doAll bool) {
+func min(
+	vm *otto.Otto,
+	points []tsdb.Observable,
+	fieldRegex *regexp.Regexp,
+	fieldMaxs map[string]interface{},
+	doAll bool,
+) {
 	for _, point := range points {
 		for fieldKey, fieldVal := range point.Value() {
 			if doAll || fieldRegex.MatchString(fieldKey) {
@@ -537,7 +636,14 @@ func min(vm *otto.Otto, points []tsdb.Observable, fieldRegex *regexp.Regexp, fie
 				}
 				fieldValFloat, ok := fieldVal.(float64)
 				if !ok {
-					throw(vm, fmt.Sprintf("Function err: field %s is not of type float64 (%s)", fieldKey, reflect.TypeOf(fieldVal)))
+					throw(
+						vm,
+						fmt.Sprintf(
+							"Function err: field %s is not of type float64 (%s)",
+							fieldKey,
+							reflect.TypeOf(fieldVal),
+						),
+					)
 				}
 				fieldMaxs[fmt.Sprintf("min_%s", fieldKey)] = math.Min(fieldMin.(float64), fieldValFloat)
 			}
@@ -553,12 +659,14 @@ type avgIntermediateCalc struct {
 func (e *MetricsEngine) avg(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 	if len(call.ArgumentList) != 2 {
 		throw(vm, fmt.Sprintf("Invalid args: not enough args, got: %d", len(call.ArgumentList)))
+		return otto.Value{}
 	}
 	ts := call.Argument(0)
 	ts.Object()
 	tsArrGeneric, err := ts.Export()
 	if err != nil {
 		throw(vm, err.Error())
+		return otto.Value{}
 	}
 	var fieldRegex *regexp.Regexp
 	isTagFilterAll := call.Argument(1).IsString() && call.Argument(1).String() == "*"
@@ -569,6 +677,7 @@ func (e *MetricsEngine) avg(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 		fieldRegex, err = regexp.Compile(call.Argument(1).String())
 		if err != nil {
 			throw(vm, err.Error())
+			return otto.Value{}
 		}
 	}
 
@@ -583,7 +692,14 @@ func (e *MetricsEngine) avg(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 				resultingName = ts.Name()
 			}
 			if ts.Name() != resultingName {
-				throw(vm, fmt.Sprintf("Cannot average timeseries from different measurements: %s != %s", ts.Name(), resultingName))
+				throw(
+					vm,
+					fmt.Sprintf(
+						"Cannot average timeseries from different measurements: %s != %s",
+						ts.Name(),
+						resultingName,
+					),
+				)
 			}
 			fieldCountersTmp := make(map[string]*avgIntermediateCalc)
 			avg(vm, ts.All(), fieldRegex, fieldCountersTmp, isTagFilterAll)
@@ -599,6 +715,7 @@ func (e *MetricsEngine) avg(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 		}
 	default:
 		throw(vm, fmt.Sprintf("Unsupported input type %s", reflect.TypeOf(toProcess)))
+		return otto.Value{}
 	}
 
 	fieldAverages := make(map[string]interface{}, len(fieldCounters))
@@ -608,15 +725,26 @@ func (e *MetricsEngine) avg(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 
 	// toReturn := tsdb.NewTimeSeries(resultingName, make(map[string]string), tsdb.Granularity{Granularity: math.MaxInt64, Count: 2}, nil)
 	// toReturn.AddPoint(tsdb.Observable{TS: time.Now(), Fields: fieldAverages})
-	toReturn := tsdb.NewStaticTimeSeries(resultingName, make(map[string]string), []tsdb.Observable{tsdb.NewObservable(fieldAverages, time.Now())})
+	toReturn := tsdb.NewStaticTimeSeries(
+		resultingName,
+		make(map[string]string),
+		[]tsdb.Observable{tsdb.NewObservable(fieldAverages, time.Now())},
+	)
 	res, err := vm.ToValue(toReturn.(tsdb.TimeSeries))
 	if err != nil {
 		throw(vm, fmt.Sprintf("An error occurred transforming function output to js object: %s", err.Error()))
+		return otto.Value{}
 	}
 	return res
 }
 
-func avg(vm *otto.Otto, points []tsdb.Observable, fieldRegex *regexp.Regexp, fieldCounters map[string]*avgIntermediateCalc, doAll bool) {
+func avg(
+	vm *otto.Otto,
+	points []tsdb.Observable,
+	fieldRegex *regexp.Regexp,
+	fieldCounters map[string]*avgIntermediateCalc,
+	doAll bool,
+) {
 	for _, point := range points {
 		for fieldKey, fieldVal := range point.Value() {
 			if doAll || fieldRegex.MatchString(fieldKey) {
@@ -629,7 +757,14 @@ func avg(vm *otto.Otto, points []tsdb.Observable, fieldRegex *regexp.Regexp, fie
 				}
 				fieldValFloat, ok := fieldVal.(float64)
 				if !ok {
-					throw(vm, fmt.Sprintf("Function err: field %s is not of type float64 (%s)", fieldKey, reflect.TypeOf(fieldVal)))
+					throw(
+						vm,
+						fmt.Sprintf(
+							"Function err: field %s is not of type float64 (%s)",
+							fieldKey,
+							reflect.TypeOf(fieldVal),
+						),
+					)
 				}
 				corresponfingFieldCounter.Counter++
 				corresponfingFieldCounter.Value += fieldValFloat
@@ -663,6 +798,7 @@ func (e *MetricsEngine) drop(vm *otto.Otto, call otto.FunctionCall) {
 		tagVal, err := tagFilters.Get(tagKey)
 		if err != nil {
 			throw(vm, "Invalid arg: tag filters is not a map[string]string")
+			return
 		}
 		tags[tagKey] = tagVal.String()
 	}
@@ -676,23 +812,25 @@ func (e *MetricsEngine) drop(vm *otto.Otto, call otto.FunctionCall) {
 
 func setDebuggerHandler(vm *otto.Otto) {
 	// This is where the magic happens!
-	vm.SetDebuggerHandler(func(o *otto.Otto) {
-		// The `Context` function is another hidden gem - I'll talk about that in
-		// another post.
-		c := o.Context()
+	vm.SetDebuggerHandler(
+		func(o *otto.Otto) {
+			// The `Context` function is another hidden gem - I'll talk about that in
+			// another post.
+			c := o.Context()
 
-		// Here, we go through all the symbols in scope, adding their names to a
-		// list.
-		var a []string
-		for k := range c.Symbols {
-			a = append(a, k)
-		}
+			// Here, we go through all the symbols in scope, adding their names to a
+			// list.
+			var a []string
+			for k := range c.Symbols {
+				a = append(a, k)
+			}
 
-		sort.Strings(a)
+			sort.Strings(a)
 
-		// Print out the symbols in scope.
-		fmt.Printf("symbols in scope: %v\n", a)
-	})
+			// Print out the symbols in scope.
+			fmt.Printf("symbols in scope: %v\n", a)
+		},
+	)
 }
 
 func throw(vm *otto.Otto, str string) {
@@ -710,15 +848,17 @@ func (f *formatter) Format(e *logrus.Entry) ([]byte, error) {
 }
 
 func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) {
-	logger.SetFormatter(&formatter{
-		owner: "metrics_engine",
-		lf: &logrus.TextFormatter{
-			DisableColors:   true,
-			ForceColors:     false,
-			FullTimestamp:   true,
-			TimestampFormat: time.StampMilli,
+	logger.SetFormatter(
+		&formatter{
+			owner: "metrics_engine",
+			lf: &logrus.TextFormatter{
+				DisableColors:   true,
+				ForceColors:     false,
+				FullTimestamp:   true,
+				TimestampFormat: time.StampMilli,
+			},
 		},
-	})
+	)
 
 	if logFolder == "" {
 		logger.Panicf("Invalid logFolder '%s'", logFolder)

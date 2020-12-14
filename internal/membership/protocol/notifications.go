@@ -1,52 +1,52 @@
-package membership_protocol
+package protocol
 
 import "github.com/nm-morais/go-babel/pkg/notification"
 
 const peerMeasuredNotificationID = 2000
 
-type peerMeasuredNotification struct {
-	peerMeasured *PeerWithIdChain
+type PeerMeasuredNotification struct {
+	peerMeasured *PeerWithIDChain
 }
 
-func NewPeerMeasuredNotification(p *PeerWithIdChain) peerMeasuredNotification {
-	return peerMeasuredNotification{
+func NewPeerMeasuredNotification(p *PeerWithIDChain) PeerMeasuredNotification {
+	return PeerMeasuredNotification{
 		peerMeasured: p,
 	}
 }
 
-func (peerMeasuredNotification) ID() notification.ID {
+func (PeerMeasuredNotification) ID() notification.ID {
 	return peerMeasuredNotificationID
 }
 
 const landmarkMeasuredNotificationID = 2001
 
-type landmarkMeasuredNotification struct {
-	landmarkMeasured *PeerWithIdChain
+type LandmarkMeasuredNotification struct {
+	landmarkMeasured *PeerWithIDChain
 }
 
-func NewLandmarkMeasuredNotification(p *PeerWithIdChain) landmarkMeasuredNotification {
-	return landmarkMeasuredNotification{
+func NewLandmarkMeasuredNotification(p *PeerWithIDChain) LandmarkMeasuredNotification {
+	return LandmarkMeasuredNotification{
 		landmarkMeasured: p,
 	}
 }
 
-func (landmarkMeasuredNotification) ID() notification.ID {
+func (LandmarkMeasuredNotification) ID() notification.ID {
 	return landmarkMeasuredNotificationID
 }
 
 const suspectNotificationID = 2002
 
-type suspectNotification struct {
-	peerDown *PeerWithIdChain
+type SuspectNotification struct {
+	peerDown *PeerWithIDChain
 }
 
-func NewSuspectNotification(p *PeerWithIdChain) suspectNotification {
-	return suspectNotification{
+func NewSuspectNotification(p *PeerWithIDChain) SuspectNotification {
+	return SuspectNotification{
 		peerDown: p,
 	}
 }
 
-func (suspectNotification) ID() notification.ID {
+func (SuspectNotification) ID() notification.ID {
 	return suspectNotificationID
 }
 
@@ -54,10 +54,10 @@ const NodeUpNotificationID = 2003
 
 type NodeUpNotification struct {
 	InView InView
-	PeerUp *PeerWithIdChain
+	PeerUp *PeerWithIDChain
 }
 
-func NewNodeUpNotification(p *PeerWithIdChain, inView InView) NodeUpNotification {
+func NewNodeUpNotification(p *PeerWithIDChain, inView InView) NodeUpNotification {
 	return NodeUpNotification{
 		InView: inView,
 		PeerUp: p,
@@ -72,10 +72,10 @@ const NodeDownNotificationID = 2004
 
 type NodeDownNotification struct {
 	InView   InView
-	PeerDown *PeerWithIdChain
+	PeerDown *PeerWithIDChain
 }
 
-func NewNodeDownNotification(p *PeerWithIdChain, inView InView) NodeDownNotification {
+func NewNodeDownNotification(p *PeerWithIDChain, inView InView) NodeDownNotification {
 	return NodeDownNotification{
 		InView:   inView,
 		PeerDown: p,
@@ -89,12 +89,12 @@ func (NodeDownNotification) ID() notification.ID {
 const IDChangeNotificationID = 2005
 
 type IDChangeNotification struct {
-	NewId PeerIDChain
+	NewID PeerIDChain
 }
 
 func NewIDChangeNotification(newID PeerIDChain) IDChangeNotification {
 	return IDChangeNotification{
-		NewId: newID,
+		NewID: newID,
 	}
 }
 

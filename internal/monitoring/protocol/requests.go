@@ -1,4 +1,4 @@
-package monitoring_proto
+package protocol
 
 import (
 	"github.com/nm-morais/demmon-common/body_types"
@@ -7,35 +7,35 @@ import (
 )
 
 type AddNeighborhoodInterestSetReq struct {
-	InterestSetId uint64
+	InterestSetID uint64
 	InterestSet   body_types.NeighborhoodInterestSet
 }
 
-const AddNeighborhoodInterestSetReqId = 2000
+const AddNeighborhoodInterestSetReqID = 2000
 
 func (r AddNeighborhoodInterestSetReq) ID() protocol.ID {
-	return AddNeighborhoodInterestSetReqId
+	return AddNeighborhoodInterestSetReqID
 }
 
 func NewAddNeighborhoodInterestSetReq(key uint64, interestSet body_types.NeighborhoodInterestSet) request.Request {
 	return AddNeighborhoodInterestSetReq{
-		InterestSetId: key,
+		InterestSetID: key,
 		InterestSet:   interestSet,
 	}
 }
 
 type RemoveNeighborhoodInterestSetReq struct {
-	InterestSetId uint64
+	InterestSetID uint64
 }
 
-const RemoveNeighborhoodInterestSetReqId = 2000
+const RemoveNeighborhoodInterestSetReqID = 2000
 
 func (r RemoveNeighborhoodInterestSetReq) ID() protocol.ID {
-	return RemoveNeighborhoodInterestSetReqId
+	return RemoveNeighborhoodInterestSetReqID
 }
 
 func NewRemoveNeighborhoodInterestSetReq(key uint64) request.Request {
 	return RemoveNeighborhoodInterestSetReq{
-		InterestSetId: key,
+		InterestSetID: key,
 	}
 }

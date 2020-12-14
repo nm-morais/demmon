@@ -1,4 +1,4 @@
-package membership_frontend
+package frontend
 
 import (
 	"math/rand"
@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/nm-morais/demmon-common/body_types"
-	"github.com/nm-morais/demmon/internal/membership/membership_protocol"
+	membershipProtocol "github.com/nm-morais/demmon/internal/membership/protocol"
 	"github.com/nm-morais/go-babel/pkg/errors"
 	"github.com/nm-morais/go-babel/pkg/logs"
 	"github.com/nm-morais/go-babel/pkg/message"
@@ -19,12 +19,13 @@ import (
 )
 
 type NodeChangeEvent struct {
-	Node *membership_protocol.PeerWithIdChain
-	View membership_protocol.InView
+	Node *membershipProtocol.PeerWithIDChain
+	View membershipProtocol.InView
 }
 
 const protoID = 5000
 const name = "DemmonTree_Frontend"
+const requestIDLength = 10
 
 type MembershipFrontend struct {
 	logger    *logrus.Logger
@@ -43,6 +44,7 @@ func New(babel protocolManager.ProtocolManager) *MembershipFrontend {
 		nodeUps:   make(chan NodeChangeEvent),
 	}
 	babel.RegisterProtocol(mf)
+
 	return mf
 }
 
@@ -59,22 +61,24 @@ func (f *MembershipFrontend) Logger() *logrus.Logger {
 }
 
 func (f *MembershipFrontend) Init() {
-	f.babel.RegisterRequestReplyHandler(f.ID(), membership_protocol.GetNeighboursReqReplyId, f.handleGetInViewReply)
-	f.babel.RegisterNotificationHandler(f.ID(), membership_protocol.NodeUpNotification{}, f.handleNodeUp)
-	f.babel.RegisterNotificationHandler(f.ID(), membership_protocol.NodeDownNotification{}, f.handleNodeDown)
+	f.babel.RegisterRequestReplyHandler(f.ID(), membershipProtocol.GetNeighboursReqReplyID, f.handleGetInViewReply)
+	f.babel.RegisterNotificationHandler(f.ID(), membershipProtocol.NodeUpNotification{}, f.handleNodeUp)
+	f.babel.RegisterNotificationHandler(f.ID(), membershipProtocol.NodeDownNotification{}, f.handleNodeDown)
 }
 
 func (f *MembershipFrontend) GetInView() body_types.View {
-	reqKey := randomString(10)
-	reqChan := make(chan membership_protocol.InView)
+	reqKey := randomString(requestIDLength)
+	reqChan := make(chan membershipProtocol.InView)
 	f.requests.Store(reqKey, reqChan)
-	f.babel.SendRequest(membership_protocol.NewGetNeighboursReq(reqKey), f.ID(), membership_protocol.ProtoID)
+	f.babel.SendRequest(membershipProtocol.NewGetNeighboursReq(reqKey), f.ID(), membershipProtocol.ProtoID)
+
 	response := <-reqChan
+
 	return convertView(response)
 }
 
 func (f *MembershipFrontend) handleNodeUp(n notification.Notification) {
-	nodeUp := n.(membership_protocol.NodeUpNotification)
+	nodeUp := n.(membershipProtocol.NodeUpNotification)
 	f.nodeUps <- NodeChangeEvent{
 		Node: nodeUp.PeerUp,
 		View: nodeUp.InView,
@@ -82,45 +86,46 @@ func (f *MembershipFrontend) handleNodeUp(n notification.Notification) {
 }
 
 func (f *MembershipFrontend) handleNodeDown(n notification.Notification) {
-	nodeDown := n.(membership_protocol.NodeDownNotification)
+	nodeDown := n.(membershipProtocol.NodeDownNotification)
 	f.nodeDowns <- NodeChangeEvent{
 		Node: nodeDown.PeerDown,
 		View: nodeDown.InView,
 	}
 }
 
-func (mf *MembershipFrontend) MembershipUpdates() (nodeUp, nodeDown chan NodeChangeEvent) {
-	return mf.nodeUps, mf.nodeDowns
+func (f *MembershipFrontend) MembershipUpdates() (nodeUp, nodeDown chan NodeChangeEvent) {
+	return f.nodeUps, f.nodeDowns
 }
 
 func (f *MembershipFrontend) Start() {
 }
 
-func (f *MembershipFrontend) MessageDelivered(message message.Message, peer peer.Peer) {
+func (f *MembershipFrontend) MessageDelivered(msg message.Message, p peer.Peer) {
 }
 
-func (f *MembershipFrontend) MessageDeliveryErr(message message.Message, peer peer.Peer, error errors.Error) {
+func (f *MembershipFrontend) MessageDeliveryErr(msg message.Message, p peer.Peer, err errors.Error) {
 }
 
 func (f *MembershipFrontend) DialFailed(p peer.Peer) {
 }
 
-func (f *MembershipFrontend) DialSuccess(sourceProto protocol.ID, peer peer.Peer) bool {
+func (f *MembershipFrontend) DialSuccess(sourceProto protocol.ID, p peer.Peer) bool {
 	return false
 }
 
-func (f *MembershipFrontend) InConnRequested(dialerProto protocol.ID, peer peer.Peer) bool {
+func (f *MembershipFrontend) InConnRequested(dialerProto protocol.ID, p peer.Peer) bool {
 	return false
 }
 
-func (f *MembershipFrontend) OutConnDown(peer peer.Peer) {
+func (f *MembershipFrontend) OutConnDown(p peer.Peer) {
 
 }
 
 func (f *MembershipFrontend) handleGetInViewReply(r request.Reply) {
-	response := r.(membership_protocol.GetNeighboutsReply)
+	response := r.(membershipProtocol.GetNeighboutsReply)
 	reqChanIn, ok := f.requests.Load(response.Key)
-	reqChan := reqChanIn.(chan membership_protocol.InView)
+	reqChan := reqChanIn.(chan membershipProtocol.InView)
+
 	if !ok {
 		return
 	}
@@ -133,19 +138,23 @@ func (f *MembershipFrontend) handleGetInViewReply(r request.Reply) {
 
 func randomString(n int) string {
 	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
 	s := make([]rune, n)
+
 	for i := range s {
+
 		s[i] = letters[rand.Intn(len(letters))]
+
 	}
 	return string(s)
 }
 
-func (mf *MembershipFrontend) GetPassiveView(w http.ResponseWriter, req *http.Request) {
+func (f *MembershipFrontend) GetPassiveView(w http.ResponseWriter, req *http.Request) {
 	// TODO
 	panic("not implemented yet")
 }
 
-func convertView(view membership_protocol.InView) body_types.View {
+func convertView(view membershipProtocol.InView) body_types.View {
 	childArr := make([]*body_types.Peer, 0, len(view.Children))
 	for _, c := range view.Children {
 		childArr = append(childArr, &body_types.Peer{ID: c.Chain().String(), IP: c.IP()})
@@ -166,10 +175,12 @@ func convertView(view membership_protocol.InView) body_types.View {
 
 	var gparent *body_types.Peer
 	if view.Grandparent != nil {
+
 		gparent = &body_types.Peer{
 			ID: view.Parent.Chain().String(),
 			IP: view.Parent.IP(),
 		}
+
 	}
 	return body_types.View{
 		Children:    childArr,

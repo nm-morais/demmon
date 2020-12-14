@@ -1,4 +1,4 @@
-package monitoring_proto
+package protocol
 
 import (
 	"time"
@@ -10,13 +10,13 @@ const RebroadcastInterestSetTimerID = 6000
 
 type rebroadcastInterestSetTimer struct {
 	deadline      time.Time
-	InterestSetId uint64
+	InterestSetID uint64
 }
 
-func NewRebroadcastInterestSetTimer(duration time.Duration, interestSetId uint64) timer.Timer {
+func NewRebroadcastInterestSetTimer(duration time.Duration, interestSetID uint64) timer.Timer {
 	return &rebroadcastInterestSetTimer{
 		deadline:      time.Now().Add(duration),
-		InterestSetId: interestSetId,
+		InterestSetID: interestSetID,
 	}
 }
 
@@ -32,13 +32,13 @@ const ExportNeighInterestSetMetricsTimerID = 6001
 
 type exportNeighInterestSetMetricsTimer struct {
 	deadline      time.Time
-	InterestSetId uint64
+	InterestSetID uint64
 }
 
-func NewExportNeighInterestSetMetricsTimer(duration time.Duration, interestSetId uint64) timer.Timer {
+func NewExportNeighInterestSetMetricsTimer(duration time.Duration, interestSetID uint64) timer.Timer {
 	return &exportNeighInterestSetMetricsTimer{
 		deadline:      time.Now().Add(duration),
-		InterestSetId: interestSetId,
+		InterestSetID: interestSetID,
 	}
 }
 
@@ -54,13 +54,13 @@ const CheckInterestSetPeerInViewTimerID = 6002
 
 type checkInterestSetPeerInViewTimer struct {
 	deadline      time.Time
-	InterestSetId uint64
+	InterestSetID uint64
 }
 
-func NewCheckInterestSetPeerInViewTimer(duration time.Duration, interestSetId uint64) timer.Timer {
+func NewCheckInterestSetPeerInViewTimer(duration time.Duration, interestSetID uint64) timer.Timer {
 	return &checkInterestSetPeerInViewTimer{
 		deadline:      time.Now().Add(duration),
-		InterestSetId: interestSetId,
+		InterestSetID: interestSetID,
 	}
 }
 

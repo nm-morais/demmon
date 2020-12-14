@@ -1,4 +1,4 @@
-package membership_protocol
+package protocol
 
 import (
 	"time"
@@ -34,10 +34,10 @@ type peerJoinMessageResponseTimeout struct {
 	Peer     peer.Peer
 }
 
-func NewJoinMessageResponseTimeout(duration time.Duration, peer peer.Peer) timer.Timer {
+func NewJoinMessageResponseTimeout(duration time.Duration, p peer.Peer) timer.Timer {
 	return &peerJoinMessageResponseTimeout{
 		deadline: time.Now().Add(duration),
-		Peer:     peer,
+		Peer:     p,
 	}
 }
 
@@ -188,10 +188,10 @@ const landmarkRedialTimerID = 2008
 
 type landmarkRedialTimer struct {
 	deadline         time.Time
-	LandmarkToRedial *PeerWithIdChain
+	LandmarkToRedial *PeerWithIDChain
 }
 
-func NewLandmarkRedialTimer(duration time.Duration, landmark *PeerWithIdChain) timer.Timer {
+func NewLandmarkRedialTimer(duration time.Duration, landmark *PeerWithIDChain) timer.Timer {
 	return &landmarkRedialTimer{
 		deadline:         time.Now().Add(duration),
 		LandmarkToRedial: landmark,

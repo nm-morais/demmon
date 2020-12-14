@@ -1,4 +1,4 @@
-package membership_protocol
+package protocol
 
 import (
 	"github.com/nm-morais/go-babel/pkg/protocol"
@@ -6,20 +6,20 @@ import (
 )
 
 type InView struct {
-	Grandparent *PeerWithIdChain
-	Parent      *PeerWithIdChain
-	Children    []*PeerWithIdChain
-	Siblings    []*PeerWithIdChain
+	Grandparent *PeerWithIDChain
+	Parent      *PeerWithIDChain
+	Children    []*PeerWithIDChain
+	Siblings    []*PeerWithIDChain
 }
 
 type GetNeighboursReq struct {
 	Key string
 }
 
-const GetNeighboursReqId = 2000
+const GetNeighboursReqID = 2000
 
 func (r GetNeighboursReq) ID() protocol.ID {
-	return GetNeighboursReqId
+	return GetNeighboursReqID
 }
 
 func NewGetNeighboursReq(key string) request.Request {
@@ -28,7 +28,7 @@ func NewGetNeighboursReq(key string) request.Request {
 	}
 }
 
-const GetNeighboursReqReplyId = 2001
+const GetNeighboursReqReplyID = 2001
 
 type GetNeighboutsReply struct {
 	InView InView
@@ -36,7 +36,7 @@ type GetNeighboutsReply struct {
 }
 
 func (r GetNeighboutsReply) ID() protocol.ID {
-	return GetNeighboursReqReplyId
+	return GetNeighboursReqReplyID
 }
 
 func NewGetNeighboursReqReply(key string, view InView) request.Reply {
@@ -49,28 +49,28 @@ func NewGetNeighboursReqReply(key string, view InView) request.Reply {
 type GetIDReq struct {
 }
 
-const GetIDReqId = 2002
+const GetIDReqID = 2002
 
 func (r GetIDReq) ID() protocol.ID {
-	return GetIDReqId
+	return GetIDReqID
 }
 
 func NewGetIDReq() request.Request {
 	return GetIDReq{}
 }
 
-const GetIDReqReplyId = 2003
+const GetIDReqReplyID = 2003
 
 type GetIDReply struct {
 	CurrID PeerIDChain
 }
 
 func (r GetIDReply) ID() protocol.ID {
-	return GetIDReqReplyId
+	return GetIDReqReplyID
 }
 
-func NewGetIDReqReply(currId PeerIDChain) request.Reply {
+func NewGetIDReqReply(currID PeerIDChain) request.Reply {
 	return GetIDReply{
-		CurrID: currId,
+		CurrID: currID,
 	}
 }

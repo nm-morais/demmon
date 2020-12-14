@@ -2,20 +2,21 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"flag"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"net"
 	"runtime"
 	"time"
 
 	client "github.com/nm-morais/demmon-client/pkg"
 	exporter "github.com/nm-morais/demmon-exporter"
-	"github.com/nm-morais/demmon/internal/membership/membership_frontend"
-	"github.com/nm-morais/demmon/internal/membership/membership_protocol"
+	membershipFrontend "github.com/nm-morais/demmon/internal/membership/frontend"
+	membershipProtocol "github.com/nm-morais/demmon/internal/membership/protocol"
 	"github.com/nm-morais/demmon/internal/monitoring"
-	"github.com/nm-morais/demmon/internal/monitoring/metrics_engine"
-	"github.com/nm-morais/demmon/internal/monitoring/protocol/monitoring_proto"
+	"github.com/nm-morais/demmon/internal/monitoring/engine"
+	monitoringProto "github.com/nm-morais/demmon/internal/monitoring/protocol"
 	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
 	"github.com/nm-morais/go-babel/pkg"
 	"github.com/nm-morais/go-babel/pkg/peer"
@@ -30,12 +31,21 @@ const (
 )
 
 var (
-	demmonTreeConf = membership_protocol.DemmonTreeConfig{
+	protosPortVar     int
+	analyticsPortVar  int
+	randProtosPort    bool
+	randAnalyticsPort bool
+	cpuprofile        bool
+	memprofile        bool
+	silent            bool
+	logFolder         string
+
+	demmonTreeConf = &membershipProtocol.DemmonTreeConfig{
 		LandmarkRedialTimer:           1 * time.Second,
 		JoinMessageTimeout:            4 * time.Second,
 		MaxTimeToProgressToNextLevel:  4 * time.Second,
 		MaxRetriesJoinMsg:             3,
-		Landmarks:                     landmarks,
+		Landmarks:                     nil,
 		MinGrpSize:                    2,
 		MaxGrpSize:                    9,
 		NrPeersToKickPerParent:        3,
@@ -73,7 +83,7 @@ var (
 		MinLatencyImprovementPerPeerForSwitch: 10 * time.Millisecond,
 	}
 
-	nodeWatcherConf = pkg.NodeWatcherConf{
+	nodeWatcherConf = &pkg.NodeWatcherConf{
 		PrintLatencyToInterval:    5 * time.Second,
 		MaxRedials:                2,
 		HbTickDuration:            1000 * time.Millisecond,
@@ -93,41 +103,50 @@ var (
 		MinStdDeviation:        500 * time.Millisecond,
 		PhiThreshold:           8.0,
 	}
-
-	landmarks = []*membership_protocol.PeerWithIdChain{
-		membership_protocol.NewPeerWithIdChain(membership_protocol.PeerIDChain{membership_protocol.PeerID{12}}, peer.NewPeer(net.IPv4(10, 10, 1, 16), 1200, 1300), 0, 0, make(membership_protocol.Coordinates, 4)),
-		// membership_protocol.NewPeerWithIdChain(membership_protocol.PeerIDChain{membership_protocol.PeerID{17}}, peer.NewPeer(net.IPv4(10, 10, 50, 133), 1200, 1300), 0, 0, make(membership_protocol.Coordinates, 4)),
-		// membership_protocol.NewPeerWithIdChain(membership_protocol.PeerIDChain{membership_protocol.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 29, 25), 1200, 1300), 0, 0, make(membership_protocol.Coordinates, 4)),
-		// membership_protocol.NewPeerWithIdChain(membership_protocol.PeerIDChain{membership_protocol.PeerID{23}}, peer.NewPeer(net.IPv4(10, 10, 1, 21), 1200, 1300), 0, 0, make(membership_protocol.Coordinates, 4)),
-	}
-
-	protosPortVar     int
-	analyticsPortVar  int
-	randProtosPort    bool
-	randAnalyticsPort bool
-	cpuprofile        bool
-	memprofile        bool
-	silent            bool
-	logFolder         string
 )
 
 func main() {
+	const (
+		baseProtoPort     uint16 = 1200
+		baseAnalyticsPort uint16 = 1300
+	)
 
-	rand.Seed(time.Now().Unix() + rand.Int63())
+	ParseFlags()
 
-	flag.IntVar(&protosPortVar, "protos", 1200, "protos")
-	flag.BoolVar(&silent, "s", false, "s")
-
-	flag.StringVar(&logFolder, "l", "", "log file")
-
-	flag.BoolVar(&randProtosPort, "rprotos", false, "port")
-	flag.IntVar(&analyticsPortVar, "analytics", 1201, "analytics")
-	flag.BoolVar(&randAnalyticsPort, "ranalytics", false, "port")
-
-	flag.BoolVar(&cpuprofile, "cpuprofile", false, "cpuprofile")
-	flag.BoolVar(&memprofile, "memprofile", false, "memprofile")
-
-	flag.Parse()
+	landmarks := []*membershipProtocol.PeerWithIDChain{
+		membershipProtocol.NewPeerWithIDChain(
+			membershipProtocol.PeerIDChain{membershipProtocol.PeerID{12}},
+			peer.NewPeer(net.ParseIP("10.10.1.16"), baseProtoPort, baseAnalyticsPort),
+			0,
+			0,
+			make(membershipProtocol.Coordinates, 4),
+		),
+		// membershipProtocol.NewPeerWithIdChain(
+		// 	membershipProtocol.PeerIDChain{membershipProtocol.PeerID{17}},
+		// 	peer.NewPeer(net.IPv4(10, 10, 50, 133),
+		// 		baseProtoPort,
+		// 		baseAnalyticsPort),
+		// 	0,
+		// 	0,
+		// 	make(membershipProtocol.Coordinates, 4)),
+		// membershipProtocol.NewPeerWithIdChain(
+		// 	membershipProtocol.PeerIDChain{membershipProtocol.PeerID{23}},
+		// 	peer.NewPeer(net.IPv4(10, 10, 29, 25),
+		// 		baseProtoPort,
+		// 		baseAnalyticsPort),
+		// 	0,
+		// 	0,
+		// 	make(membershipProtocol.Coordinates, 4)),
+		// membershipProtocol.NewPeerWithIdChain(
+		// 	membershipProtocol.PeerIDChain{membershipProtocol.PeerID{23}},
+		// 	peer.NewPeer(net.IPv4(10, 10, 1, 21),
+		// 		baseProtoPort,
+		// 		baseAnalyticsPort),
+		// 	0,
+		// 	0,
+		// 	make(membershipProtocol.Coordinates, 4)),
+	}
+	demmonTreeConf.Landmarks = landmarks
 
 	if logFolder == "" {
 		logFolder = "/tmp/logs"
@@ -135,7 +154,7 @@ func main() {
 
 	logFolder = fmt.Sprintf("%s/%s:%d", logFolder, GetLocalIP(), uint16(protosPortVar))
 
-	babelConf := pkg.Config{
+	babelConf := &pkg.Config{
 		Silent:           silent,
 		Cpuprofile:       cpuprofile,
 		Memprofile:       memprofile,
@@ -144,7 +163,7 @@ func main() {
 		Peer:             peer.NewPeer(GetLocalIP(), uint16(protosPortVar), uint16(analyticsPortVar)),
 	}
 
-	exporterConfs := exporter.Conf{
+	exporterConfs := &exporter.Conf{
 		Silent:          silent,
 		LogFolder:       logFolder,
 		ImporterHost:    "localhost",
@@ -156,7 +175,7 @@ func main() {
 		RequestTimeout:  3 * time.Second,
 	}
 
-	dConf := monitoring.DemmonConf{
+	dConf := &monitoring.DemmonConf{
 		Silent:     silent,
 		LogFolder:  logFolder,
 		LogFile:    "metrics_frontend.log",
@@ -164,50 +183,52 @@ func main() {
 		PluginDir:  fmt.Sprintf("%s/plugins", logFolder),
 	}
 
-	meConf := metrics_engine.Conf{
+	meConf := &engine.Conf{
 		Silent:    silent,
 		LogFolder: logFolder,
 		LogFile:   "metrics_engine.log",
 	}
 
-	//
 	if randProtosPort {
-		protosPortVar = rand.Intn(maxProtosPort-minProtosPort) + minProtosPort
+		protosPortVar = int(getRandInt(int64(maxProtosPort-minProtosPort))) + minProtosPort
 	}
 
 	if randAnalyticsPort {
-		analyticsPortVar = rand.Intn(maxAnalyticsPort-minAnalyticsPort) + minAnalyticsPort
+		analyticsPortVar = int(getRandInt(int64(maxAnalyticsPort-minAnalyticsPort))) + minAnalyticsPort
 	}
 
 	fmt.Println("Self peer: ", babelConf.Peer.String())
-	err := start(babelConf, nodeWatcherConf, exporterConfs, dConf, demmonTreeConf, meConf)
-	if err != nil {
-		panic(err)
-	}
+	start(babelConf, nodeWatcherConf, exporterConfs, dConf, demmonTreeConf, meConf)
 	select {}
 }
 
-func start(babelConf pkg.Config, nwConf pkg.NodeWatcherConf, eConf exporter.Conf, dConf monitoring.DemmonConf, membershipConf membership_protocol.DemmonTreeConfig, meConf metrics_engine.Conf) error {
-	babel := pkg.NewProtoManager(babelConf)
-	nw := pkg.NewNodeWatcher(nwConf, babel)
+func start(
+	babelConf *pkg.Config, nwConf *pkg.NodeWatcherConf, eConf *exporter.Conf,
+	dConf *monitoring.DemmonConf, membershipConf *membershipProtocol.DemmonTreeConfig,
+	meConf *engine.Conf,
+) {
+	babel := pkg.NewProtoManager(*babelConf)
+	nw := pkg.NewNodeWatcher(
+		*nwConf,
+		babel,
+	)
 	babel.RegisterNodeWatcher(nw)
 	babel.RegisterListenAddr(babelConf.Peer.ToTCPAddr())
 	babel.RegisterListenAddr(babelConf.Peer.ToUDPAddr())
 
 	db := tsdb.GetDB(logFolder, "tsdb.log", false, true)
-	me := metrics_engine.NewMetricsEngine(db, meConf, true)
-	fm := membership_frontend.New(babel)
-	monitorProto := monitoring_proto.New(babel, db, me)
-	monitor := monitoring.New(dConf, babel, monitorProto, me, db, fm)
+	me := engine.NewMetricsEngine(db, *meConf, true)
+	fm := membershipFrontend.New(babel)
+	monitorProto := monitoringProto.New(babel, db, me)
+	monitor := monitoring.New(*dConf, monitorProto, me, db, fm)
 
 	babel.RegisterProtocol(monitorProto)
-	babel.RegisterProtocol(membership_protocol.New(membershipConf, babel, nw))
+	babel.RegisterProtocol(membershipProtocol.New(*membershipConf, babel, nw))
 
 	go monitor.Listen()
 	go babel.Start()
 	go setupDemmonExporter(eConf)
 	go setupDemmonMetrics()
-	return nil
 }
 
 func GetLocalIP() net.IP {
@@ -215,6 +236,7 @@ func GetLocalIP() net.IP {
 	if err != nil {
 		panic(err)
 	}
+
 	for _, address := range addrs {
 		// check the address type and if it is not a loopback the display it
 		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
@@ -223,32 +245,60 @@ func GetLocalIP() net.IP {
 			}
 		}
 	}
+
 	panic("no available loopback interfaces")
 }
 
+func ParseFlags() {
+	flag.IntVar(&protosPortVar, "protos", 1200, "protos")
+	flag.BoolVar(&silent, "s", false, "s")
+	flag.StringVar(&logFolder, "l", "", "log file")
+	flag.BoolVar(&randProtosPort, "rprotos", false, "port")
+	flag.IntVar(&analyticsPortVar, "analytics", 1201, "analytics")
+	flag.BoolVar(&randAnalyticsPort, "ranalytics", false, "port")
+	flag.BoolVar(&cpuprofile, "cpuprofile", false, "cpuprofile")
+	flag.BoolVar(&memprofile, "memprofile", false, "memprofile")
+	flag.Parse()
+}
+
 func setupDemmonMetrics() {
+	const (
+		connectBackoffTime = 1 * time.Second
+		expressionTimeout  = 1 * time.Second
+		exportFrequency    = 5 * time.Second
+		defaultTTL         = 1
+		defaultMetricCount = 1
+		maxRetries         = 3
+		connectTimeout     = 3 * time.Second
+	)
+
+	const tickerTimeout = 5 * time.Second
+
 	clientConf := client.DemmonClientConf{
 		DemmonPort:     8090,
 		DemmonHostAddr: "localhost",
 		RequestTimeout: 1 * time.Second,
 	}
 	cl := client.New(clientConf)
+
 	for i := 0; i < 3; i++ {
-		err := cl.ConnectTimeout(3 * time.Second)
+		err := cl.ConnectTimeout(connectTimeout)
 		if err != nil {
-			time.Sleep(1 * time.Second)
+			time.Sleep(connectBackoffTime)
 			continue
 		}
+
 		break
 	}
+
 	_, err := cl.InstallContinuousQuery(
 		`Max(Select("nr_goroutines","*"),"*")`,
 		"the max of series nr_goroutines",
-		1*time.Second,
-		5*time.Second,
+		expressionTimeout,
+		exportFrequency,
 		"nr_goroutines_max",
-		12,
-		5,
+		defaultMetricCount,
+		maxRetries,
 	)
 
 	if err != nil {
@@ -258,11 +308,11 @@ func setupDemmonMetrics() {
 	_, err = cl.InstallContinuousQuery(
 		`Avg(Select("nr_goroutines","*"),"*")`,
 		"the rolling average of series nr_goroutines",
-		1*time.Second,
-		5*time.Second,
+		expressionTimeout,
+		exportFrequency,
 		"nr_goroutines_avg",
-		12,
-		5,
+		defaultMetricCount,
+		maxRetries,
 	)
 
 	if err != nil {
@@ -272,11 +322,11 @@ func setupDemmonMetrics() {
 	_, err = cl.InstallContinuousQuery(
 		`Min(Select("nr_goroutines","*"),"*")`,
 		"the min of series nr_goroutines",
-		1*time.Second,
-		5*time.Second,
+		expressionTimeout,
+		exportFrequency,
 		"nr_goroutines_min",
-		12,
-		5,
+		defaultMetricCount,
+		maxRetries,
 	)
 
 	if err != nil {
@@ -285,12 +335,12 @@ func setupDemmonMetrics() {
 
 	_, err = cl.InstallNeighborhoodInterestSet(
 		`SelectLast("nr_goroutines","*")`,
-		1*time.Second,
-		1,
+		expressionTimeout,
+		defaultTTL,
 		"nr_goroutines_neigh",
-		3*time.Second,
-		3,
-		3,
+		exportFrequency,
+		defaultMetricCount,
+		maxRetries,
 	)
 
 	if err != nil {
@@ -303,41 +353,25 @@ func setupDemmonMetrics() {
 		result = Min(neighRoutines, "*")
 		`,
 		"the min of nr_goroutines of the neighborhood",
-		1*time.Second,
-		5*time.Second,
+		expressionTimeout,
+		exportFrequency,
 		"neigh_routines_min",
-		12,
-		5,
+		defaultMetricCount,
+		maxRetries,
 	)
 
 	if err != nil {
 		panic(err)
 	}
 
-	for range time.NewTicker(5 * time.Second).C {
-		// res, err := cl.Query(
-		// 	`Select("nr_goroutines","*")`,
-		// 	1*time.Second,
-		// )
-		// fmt.Println("nr_goroutines\n", res, err)
-
-		// res, err := cl.Query(
-		// 	`Select("nr_goroutines_max","*")`,
-		// 	1*time.Second,
-		// )
-		// fmt.Printf("\nnr_goroutines_max %+v, %+v\n\n\n", res, err)
-
-		// res, err = cl.Query(
-		// 	`Select("nr_goroutines_avg","*")`,
-		// 	1*time.Second,
-		// )
-		// fmt.Printf("\nnr_goroutines_avg %+v, %+v\n\n\n", res, err)
-
+	for range time.NewTicker(tickerTimeout).C {
 		res, err := cl.Query(
 			"SelectLast('nr_goroutines_neigh',{'host':'.*'})",
 			1*time.Second,
 		)
+
 		fmt.Println("SelectLast('nr_goroutines_neigh',{'host':'.*'}) Query results :")
+
 		for _, ts := range res {
 			fmt.Printf("%+v, %+v\n", ts, err)
 		}
@@ -349,7 +383,9 @@ func setupDemmonMetrics() {
 		if err != nil {
 			panic(err)
 		}
+
 		fmt.Println("Select('neigh_routines_min','*') Query results :")
+
 		for idx, ts := range res {
 			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.Name, ts.Tags, ts.Points)
 		}
@@ -361,17 +397,16 @@ func setupDemmonMetrics() {
 		if err != nil {
 			panic(err)
 		}
+
 		fmt.Println("Select('nr_goroutines','*') Query results :")
+
 		for idx, ts := range res {
 			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.Name, ts.Tags, ts.Points)
 		}
-
-		// activeQueries, err := cl.GetContinuousQueries()
-		// fmt.Printf("\ncontinuous queries: %+v, %+v\n\n\n", activeQueries, err)
 	}
 }
 
-func setupDemmonExporter(eConf exporter.Conf) {
+func setupDemmonExporter(eConf *exporter.Conf) {
 	e, err := exporter.New(eConf, GetLocalIP().String(), "demmon", nil)
 	if err != nil {
 		panic(err)
@@ -379,10 +414,20 @@ func setupDemmonExporter(eConf exporter.Conf) {
 
 	exportFrequncy := 5 * time.Second
 	g := e.NewGauge("nr_goroutines", 12)
-	go e.ExportLoop(context.TODO(), exportFrequncy)
 	setTicker := time.NewTicker(1 * time.Second)
+
+	go e.ExportLoop(context.TODO(), exportFrequncy)
 
 	for range setTicker.C {
 		g.Set(float64(runtime.NumGoroutine()))
 	}
+}
+
+func getRandInt(max int64) int64 {
+	n, err := rand.Int(rand.Reader, big.NewInt(max))
+	if err != nil {
+		panic(err)
+	}
+
+	return n.Int64()
 }
