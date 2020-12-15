@@ -180,13 +180,19 @@ func main() {
 		LogFolder:  logFolder,
 		LogFile:    "metrics_frontend.log",
 		ListenPort: 8090,
-		PluginDir:  fmt.Sprintf("%s/plugins", logFolder),
 	}
 
 	meConf := &engine.Conf{
 		Silent:    silent,
 		LogFolder: logFolder,
 		LogFile:   "metrics_engine.log",
+	}
+
+	dbConf := &tsdb.Conf{
+		SetupLogToFile: true,
+		Silent:         silent,
+		LogFolder:      logFolder,
+		LogFile:        "tsdb.log",
 	}
 
 	if randProtosPort {
@@ -198,14 +204,14 @@ func main() {
 	}
 
 	fmt.Println("Self peer: ", babelConf.Peer.String())
-	start(babelConf, nodeWatcherConf, exporterConfs, dConf, demmonTreeConf, meConf)
+	start(babelConf, nodeWatcherConf, exporterConfs, dConf, demmonTreeConf, meConf, dbConf)
 	select {}
 }
 
 func start(
 	babelConf *pkg.Config, nwConf *pkg.NodeWatcherConf, eConf *exporter.Conf,
 	dConf *monitoring.DemmonConf, membershipConf *membershipProtocol.DemmonTreeConfig,
-	meConf *engine.Conf,
+	meConf *engine.Conf, dbConf *tsdb.Conf,
 ) {
 	babel := pkg.NewProtoManager(*babelConf)
 	nw := pkg.NewNodeWatcher(
@@ -216,14 +222,16 @@ func start(
 	babel.RegisterListenAddr(babelConf.Peer.ToTCPAddr())
 	babel.RegisterListenAddr(babelConf.Peer.ToUDPAddr())
 
-	db := tsdb.GetDB(logFolder, "tsdb.log", false, true)
+	fmt.Printf("Starting db with conf: %+v\n", dbConf)
+
+	db := tsdb.GetDB(dbConf)
 	me := engine.NewMetricsEngine(db, *meConf, true)
 	fm := membershipFrontend.New(babel)
 	monitorProto := monitoringProto.New(babel, db, me)
 	monitor := monitoring.New(*dConf, monitorProto, me, db, fm)
 
 	babel.RegisterProtocol(monitorProto)
-	babel.RegisterProtocol(membershipProtocol.New(*membershipConf, babel, nw))
+	babel.RegisterProtocol(membershipProtocol.New(membershipConf, babel, nw))
 
 	go monitor.Listen()
 	go babel.Start()
@@ -270,9 +278,8 @@ func setupDemmonMetrics() {
 		defaultMetricCount = 1
 		maxRetries         = 3
 		connectTimeout     = 3 * time.Second
+		tickerTimeout      = 5 * time.Second
 	)
-
-	const tickerTimeout = 5 * time.Second
 
 	clientConf := client.DemmonClientConf{
 		DemmonPort:     8090,
@@ -404,21 +411,7 @@ func setupDemmonMetrics() {
 		for idx, ts := range res {
 			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.Name, ts.Tags, ts.Points)
 		}
-
 	}
-	// res, err = cl.Query(
-	// 	"Select('nr_goroutines','*')",
-	// 	1*time.Second,
-	// )
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// fmt.Println("Select('nr_goroutines','*') Query results :")
-
-	// for idx, ts := range res {
-	// 	fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.Name, ts.Tags, ts.Points)
-	// }
 }
 
 func setupDemmonExporter(eConf *exporter.Conf) {

@@ -381,11 +381,13 @@ func (m *Monitor) handleInstallNeighInterestSetMessage(sender peer.Peer, msg mes
 			m.logger.Info("Neigh interest set already present (is local)")
 			continue
 		}
+
 		m.remoteNeighInterestSets[interestSetID] = remoteNeighInterestSet{
 			nrRetries:   0,
 			sender:      sender,
 			interestSet: interestSet,
 		}
+
 		m.babel.RegisterTimer(
 			m.ID(),
 			NewExportNeighInterestSetMetricsTimer(

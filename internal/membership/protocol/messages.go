@@ -213,6 +213,7 @@ func (UpdateChildMessage) Deserializer() message.Deserializer {
 
 func (updateChildMessageSerializer) Serialize(msg message.Message) []byte {
 	ucMsg := msg.(UpdateChildMessage)
+
 	var msgBytes []byte
 
 	msgBytes = append(msgBytes, SerializeMeasuredPeerArray(ucMsg.Siblings)...)
@@ -360,6 +361,7 @@ func (JoinAsChildMsgSerializer) Serialize(msg message.Message) []byte {
 	} else {
 		msgBytes = append(msgBytes, 0)
 	}
+
 	return msgBytes
 }
 
@@ -433,6 +435,7 @@ func (JoinAsChildMessageReplySerializer) Serialize(msg message.Message) []byte {
 	} else {
 		msgBytes[0] = 0
 	}
+
 	bufPos := 1
 	binary.BigEndian.PutUint16(msgBytes[bufPos:], jacMsgR.ParentLevel)
 	msgBytes = append(msgBytes, jacMsgR.Parent.MarshalWithFields()...)
@@ -488,6 +491,7 @@ func (JoinAsChildMessageReplySerializer) Deserialize(msgBytes []byte) message.Me
 			Siblings:    siblings,
 		}
 	}
+
 	bufPos++
 	_, p := UnmarshalPeerWithIdChain(msgBytes[bufPos:])
 	return JoinAsChildMessageReply{

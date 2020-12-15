@@ -14,7 +14,7 @@ type staticTimeseries struct {
 	values          []Observable
 }
 
-func NewStaticTimeSeries(measurementName string, tags map[string]string, values []Observable) TimeSeries {
+func NewStaticTimeSeries(measurementName string, tags map[string]string, values ...Observable) TimeSeries {
 	return &staticTimeseries{measurementName: measurementName, tags: tags, values: values, mu: &sync.Mutex{}}
 }
 

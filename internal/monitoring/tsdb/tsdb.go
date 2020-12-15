@@ -24,21 +24,28 @@ type TSDB struct {
 	buckets *sync.Map
 }
 
-func GetDB(logFile, logFolder string, silent, setupLogToFile bool) *TSDB {
-	if db == nil {
-		createOnce.Do(
-			func() {
-				db = &TSDB{
-					logger:  &logrus.Logger{},
-					buckets: &sync.Map{},
-				}
-				if setupLogToFile {
-					setupLogger(db.logger, logFolder, logFile, silent)
-				}
-			},
-		)
-	}
+type Conf struct {
+	LogFile        string
+	LogFolder      string
+	Silent         bool
+	SetupLogToFile bool
+}
 
+func GetDB(conf *Conf) *TSDB {
+	if db == nil {
+		createOnce.Do(func() {
+			logger := &logrus.Logger{
+				Level: logrus.InfoLevel,
+			}
+			if conf.SetupLogToFile {
+				setupLogger(logger, conf.LogFolder, conf.LogFile, conf.Silent)
+			}
+			db = &TSDB{
+				logger:  logger,
+				buckets: &sync.Map{},
+			}
+		})
+	}
 	return db
 }
 
@@ -101,25 +108,32 @@ func (db *TSDB) AddMetric(
 }
 
 func (db *TSDB) DeleteBucket(name string, tags map[string]string) bool {
-
+	db.logger.Infof("Deleting bucket %s", name)
 	b, ok := db.buckets.LoadAndDelete(name)
 	if !ok {
+		db.logger.Infof("bucket %s not present", name)
 		return false
 	}
 	b.(*Bucket).ClearBucket()
-
+	db.logger.Infof("deleted bucket %s", name)
 	return true
 }
 
 func (db *TSDB) CreateBucket(name string, frequency time.Duration, count int) (*Bucket, error) {
-	newBucket := NewBucket(name, frequency, count, db.logger)
-	toReturn, loaded := db.buckets.LoadOrStore(name, newBucket)
 
+	db.logger.Infof("Creating new bucket with name: %s", name)
+	newBucket := NewBucket(name, frequency, count, db.createEntryForBucket(name))
+	toReturn, loaded := db.buckets.LoadOrStore(name, newBucket)
 	if loaded {
+		db.logger.Infof("bucket %s already exists", name)
 		return nil, ErrAlreadyExists
 	}
-
+	db.logger.Infof("Created new bucket with name: %s", name)
 	return toReturn.(*Bucket), nil
+}
+
+func (db *TSDB) createEntryForBucket(name string) *logrus.Entry {
+	return db.logger.WithField("bucket_name", name)
 }
 
 func (db *TSDB) GetRegisteredBuckets() []string {
@@ -148,7 +162,7 @@ func (f *formatter) Format(e *logrus.Entry) ([]byte, error) {
 func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) {
 	logger.SetFormatter(
 		&formatter{
-			owner: "timeseries_database",
+			owner: "tsdb",
 			lf: &logrus.TextFormatter{
 				DisableColors:   true,
 				ForceColors:     false,
@@ -161,39 +175,30 @@ func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) 
 	if logFolder == "" {
 		logger.Panicf("Invalid logFolder '%s'", logFolder)
 	}
-
 	if logFile == "" {
 		logger.Panicf("Invalid logFile '%s'", logFile)
 	}
 
 	filePath := fmt.Sprintf("%s/%s", logFolder, logFile)
 	err := os.MkdirAll(logFolder, 0777)
-
 	if err != nil {
 		logger.Panic(err)
 	}
-
 	file, err := os.Create(filePath)
-
 	if os.IsExist(err) {
 		var err = os.Remove(filePath)
 		if err != nil {
 			logger.Panic(err)
 		}
-
 		file, err = os.Create(filePath)
-
 		if err != nil {
 			logger.Panic(err)
 		}
 	}
-
 	var out io.Writer = file
-
 	if !silent {
 		out = io.MultiWriter(os.Stdout, file)
 	}
-
 	logger.SetOutput(out)
 }
 

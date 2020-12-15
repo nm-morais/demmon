@@ -127,7 +127,6 @@ func TestUpdateParentMsgSerializer(t *testing.T) {
 }
 
 func TestAbsorbMessageSerializer(t *testing.T) {
-
 	chain := PeerIDChain{}
 	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1}, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
 
@@ -147,15 +146,16 @@ func TestAbsorbMessageSerializer(t *testing.T) {
 		t.Logf("%+v", toSerialize.PeerAbsorber.String())
 		t.Log("peerAbsorber does not match")
 		t.FailNow()
+
 		return
 	}
 
 	if !peer.PeersEqual(absorbed, msgConverted.PeerToKick) {
 		t.Logf("%s", absorbed.String())
 		t.Logf("%+v", msgConverted.PeerToKick)
-
 		t.Log("peer3 does not match")
 		t.FailNow()
+
 		return
 	}
 
@@ -195,6 +195,7 @@ func TestJoinReplyMsgSerializer(t *testing.T) {
 	for i := 0; i < len(children); i++ {
 		curr := children[i]
 		curr2 := msgConverted.Children[i]
+
 		if !curr.Chain().Equal(curr2.Chain()) {
 			t.Log(curr.Chain())
 			t.Log(curr2.Chain())
@@ -202,13 +203,13 @@ func TestJoinReplyMsgSerializer(t *testing.T) {
 			t.FailNow()
 			return
 		}
+
 		if !peer.PeersEqual(curr, curr2.Peer) {
 			t.Log("peers not match")
 			t.FailNow()
 
 			return
 		}
-
 	}
 }
 
@@ -240,6 +241,7 @@ func TestRandomWalkSerializer(t *testing.T) {
 
 	msgConverted := deserialized.(RandomWalkMessage)
 	fmt.Println(msgConverted)
+
 	if !reflect.DeepEqual(sender, msgConverted.Sender) {
 		t.Log("sender not equals")
 		t.Log(sender.StringWithFields())
@@ -247,11 +249,13 @@ func TestRandomWalkSerializer(t *testing.T) {
 	}
 
 	i := 0
+
 	for _, p := range sample {
 		t.Log(p.StringWithFields())
 		t.Log(msgConverted.Sample[i].StringWithFields())
 		i++
 	}
+
 	t.FailNow()
 }
 
@@ -275,10 +279,12 @@ func TestRandomWalkReplySerializer(t *testing.T) {
 	fmt.Println(msgConverted)
 
 	i := 0
+
 	for _, p := range sample {
 		t.Log(p.StringWithFields())
 		t.Log(msgConverted.Sample[i].StringWithFields())
 		i++
 	}
+
 	t.FailNow()
 }

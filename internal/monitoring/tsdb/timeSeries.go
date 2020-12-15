@@ -3,10 +3,11 @@ package tsdb
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -137,11 +138,12 @@ type timeSeries struct {
 	dirty       bool       // if there are pending observations
 	tags        map[string]string
 	name        string
+	logger      *logrus.Entry
 }
 
 // NewTimeSeries creates a new TimeSeries using the function provided for creating new Observable.
-func NewTimeSeries(name string, tags map[string]string, timeSeriesResolution time.Duration, tsLength int) TimeSeries {
-	return NewTimeSeriesWithClock(name, tags, timeSeriesResolution, tsLength, defaultClockInstance)
+func NewTimeSeries(name string, tags map[string]string, timeSeriesResolution time.Duration, tsLength int, logger *logrus.Entry) TimeSeries {
+	return NewTimeSeriesWithClock(name, tags, timeSeriesResolution, tsLength, defaultClockInstance, logger)
 }
 
 // NewTimeSeriesWithClock creates a new TimeSeries using the function provided for creating new Observable and the clock for
@@ -152,11 +154,11 @@ func NewTimeSeriesWithClock(
 	timeSeriesResolution time.Duration,
 	tsLength int,
 	clock Clock,
+	logger *logrus.Entry,
 ) TimeSeries {
 	ts := new(timeSeries)
 
-	ts.init(name, tags, timeSeriesResolution, tsLength, clock)
-
+	ts.init(name, tags, timeSeriesResolution, tsLength, clock, logger)
 	return ts
 }
 
@@ -221,7 +223,7 @@ func (ts *timeSeries) Range(start, finish time.Time) ([]Observable, error) {
 	defer ts.mu.Unlock()
 
 	if start.After(finish) {
-		log.Printf("timeseries: start > finish, %v>%v", start, finish)
+		ts.logger.Infof("timeseries: start > finish, %v>%v", start, finish)
 		return nil, ErrStartAfterFinish
 	}
 
@@ -250,9 +252,10 @@ func (ts *timeSeries) All() []Observable {
 
 	ts.mergePendingUpdates()
 	results := make([]Observable, 0, ts.numBuckets)
-
+	ts.logger.Info("Getting all points..")
 	for i := 0; i < ts.numBuckets; i++ {
 		idx := (i + ts.level.oldest) % ts.numBuckets
+		ts.logger.Infof("idx: %d; ts.level.bucket[idx]: %+v", idx, ts.level.bucket[idx])
 		if ts.level.bucket[idx] != nil {
 			srcValue := ts.level.bucket[idx]
 			results = append(results, srcValue.Clone())
@@ -293,7 +296,7 @@ func (ts *timeSeries) Last() Observable {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
-	var result Observable
+	var result Observable = nil
 
 	now := ts.clock.Time()
 
@@ -302,30 +305,24 @@ func (ts *timeSeries) Last() Observable {
 	}
 
 	ts.mergePendingUpdates()
-	l := ts.level
-	index := l.newest
-
+	ts.logger.Infof("ts.level.newest: %d", ts.level.newest)
 	for i := 0; i < ts.numBuckets; i++ {
-		if l.bucket[index] != nil {
-			result = l.bucket[index].Clone()
-			if result == nil {
-				panic("Cloned result is nil")
-			}
+		idx := ts.level.newest - i
+		if idx < 0 {
+			idx += ts.numBuckets
+		}
 
+		ts.logger.Infof("idx: %d; ts.level.bucket[idx]: %+v", idx, ts.level.bucket[idx])
+		if ts.level.bucket[idx] != nil {
+			result = ts.level.bucket[idx].Clone()
 			break
 		}
-
-		if index == 0 {
-			index = ts.numBuckets
-		}
-		index--
 	}
-
 	return result
 }
 
 // init initializes a level according to the supplied criteria.
-func (ts *timeSeries) init(name string, tags map[string]string, resolution time.Duration, numBuckets int, clock Clock) {
+func (ts *timeSeries) init(name string, tags map[string]string, resolution time.Duration, numBuckets int, clock Clock, logger *logrus.Entry) {
 	ts.mu = sync.Mutex{}
 	ts.name = name
 	ts.tags = tags
@@ -335,15 +332,18 @@ func (ts *timeSeries) init(name string, tags map[string]string, resolution time.
 	newLevel := new(tsLevel)
 	newLevel.InitLevel(resolution, ts.numBuckets)
 	ts.level = newLevel
+	ts.logger = logger
 	ts.Clear()
 }
 
 // AddWithTime records an observation at the specified time.
 func (ts *timeSeries) addWithTime(observation Observable, t time.Time) {
+
+	ts.logger.Infof("Adding %+v at time %s", observation, t)
+
 	if t.After(ts.lastAdd) {
 		ts.lastAdd = t
 	}
-
 	if t.After(ts.pendingTime) {
 		ts.advance(t)
 		ts.mergePendingUpdates()
@@ -369,7 +369,6 @@ func (ts *timeSeries) mergeValue(observation Observable, t time.Time) {
 		if ts.level.bucket[bucketNumber] == nil {
 			ts.level.bucket[bucketNumber] = observation.Clone()
 		}
-
 		ts.level.bucket[bucketNumber] = observation.Clone()
 	}
 }
@@ -378,7 +377,7 @@ func (ts *timeSeries) mergeValue(observation Observable, t time.Time) {
 func (ts *timeSeries) mergePendingUpdates() {
 	if ts.dirty {
 		ts.mergeValue(ts.pending, ts.pendingTime)
-		ts.pending = ts.resetObservation(ts.pending)
+		ts.pending = nil
 		ts.dirty = false
 	}
 }
@@ -418,7 +417,7 @@ func (ts *timeSeries) advance(t time.Time) {
 // latestBuckets returns a copy of the num latest buckets from level.
 func (ts *timeSeries) latestBuckets(num int) []Observable {
 	if num < 0 || num >= ts.numBuckets {
-		log.Print("timeseries: bad num argument: ", num)
+		ts.logger.Print("timeseries: bad num argument: ", num)
 		return nil
 	}
 

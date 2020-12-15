@@ -1,12 +1,10 @@
 package monitoring
 
 import (
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
 	"math"
-	"math/big"
 	"net/http"
 	"os"
 	"reflect"
@@ -23,6 +21,7 @@ import (
 	"github.com/nm-morais/demmon/internal/monitoring/engine"
 	monitoringProto "github.com/nm-morais/demmon/internal/monitoring/protocol"
 	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
+	"github.com/nm-morais/demmon/internal/utils"
 	"github.com/reugn/go-quartz/quartz"
 	"github.com/sirupsen/logrus"
 )
@@ -41,7 +40,6 @@ type DemmonConf struct {
 	Silent     bool
 	LogFolder  string
 	LogFile    string
-	PluginDir  string
 	ListenPort int
 }
 
@@ -354,7 +352,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			break
 		}
 
-		neighSetID := getRandInt(math.MaxInt64)
+		neighSetID := utils.GetRandInt(math.MaxInt64)
 		d.monitorProto.AddNeighborhoodInterestSetReq(uint64(neighSetID), reqBody)
 		d.logger.Infof("Added new neighborhood interest set: %s", reqBody.OutputBucketOpts.Name)
 	case routes.BroadcastMessage:
@@ -580,13 +578,4 @@ func toTimeHookFunc() mapstructure.DecodeHookFunc {
 		}
 		// Convert it by parsing
 	}
-}
-
-func getRandInt(max int) int {
-	n, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
-	if err != nil {
-		panic(err)
-	}
-
-	return int(n.Int64())
 }

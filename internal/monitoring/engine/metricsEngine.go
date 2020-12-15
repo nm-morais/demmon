@@ -33,9 +33,11 @@ type MetricsEngine struct {
 
 func NewMetricsEngine(db *tsdb.TSDB, conf Conf, logToFile bool) *MetricsEngine {
 	logger := logrus.New()
+
 	if logToFile {
 		setupLogger(logger, conf.LogFolder, conf.LogFile, conf.Silent)
 	}
+
 	return &MetricsEngine{
 		logger: logger,
 		db:     db,
@@ -141,7 +143,7 @@ func (e *MetricsEngine) runWithTimeout(expression string, timeoutDuration time.D
 func (e *MetricsEngine) setVMFunctions(vm *otto.Otto) {
 	err := vm.Set(
 		"Select", func(call otto.FunctionCall) otto.Value {
-			return e.selectTs(vm, call)
+			return e.selectTs(vm, &call)
 		},
 	)
 	if err != nil {
@@ -150,7 +152,7 @@ func (e *MetricsEngine) setVMFunctions(vm *otto.Otto) {
 
 	err = vm.Set(
 		"SelectLast", func(call otto.FunctionCall) otto.Value {
-			return e.selectLast(vm, call)
+			return e.selectLast(vm, &call)
 		},
 	)
 	if err != nil {
@@ -159,7 +161,7 @@ func (e *MetricsEngine) setVMFunctions(vm *otto.Otto) {
 
 	err = vm.Set(
 		"SelectRange", func(call otto.FunctionCall) otto.Value {
-			return e.selectRange(vm, call)
+			return e.selectRange(vm, &call)
 		},
 	)
 	if err != nil {
@@ -173,15 +175,15 @@ func (e *MetricsEngine) setVMFunctions(vm *otto.Otto) {
 	// 	panic(err)
 	// }
 
-	err = vm.Set(
-		"Drop", func(call otto.FunctionCall) otto.Value {
-			e.drop(vm, call)
-			return otto.UndefinedValue()
-		},
-	)
-	if err != nil {
-		panic(err)
-	}
+	// err = vm.Set(
+	// 	"Drop", func(call otto.FunctionCall) otto.Value {
+	// 		e.drop(vm, call)
+	// 		return otto.UndefinedValue()
+	// 	},
+	// )
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	err = vm.Set(
 		"Max", func(call otto.FunctionCall) otto.Value {
@@ -209,15 +211,13 @@ func (e *MetricsEngine) setVMFunctions(vm *otto.Otto) {
 	}
 }
 
-func (e *MetricsEngine) selectTs(vm *otto.Otto, call otto.FunctionCall) otto.Value {
-	name, err := call.Argument(0).ToString()
-	if err != nil {
-		throw(vm, "Invalid arg: Name is not a string")
-		return otto.Value{}
-	}
+func (e *MetricsEngine) selectTs(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
 
-	isTagFilterAll := call.Argument(1).IsString() && call.Argument(1).String() == "*"
 	var queryResult []tsdb.TimeSeries
+	defer e.logger.Infof("Select query result: %+v", queryResult)
+
+	name, tagFilters, isTagFilterAll := extractSelectArgs(vm, call)
+
 	if isTagFilterAll {
 		b, ok := e.db.GetBucket(name)
 		if !ok {
@@ -236,30 +236,17 @@ func (e *MetricsEngine) selectTs(vm *otto.Otto, call otto.FunctionCall) otto.Val
 		return res
 	}
 
-	tagFilters := call.Argument(1).Object()
-
-	tags := map[string]string{}
-	tagKeys := tagFilters.Keys()
-	for _, tagKey := range tagKeys {
-		tagVal, err := tagFilters.Get(tagKey)
-		if err != nil {
-			throw(vm, "Invalid arg: tag filters is not a map[string]string")
-			return otto.Value{}
-		}
-		tags[tagKey] = tagVal.String()
-	}
-
 	b, ok := e.db.GetBucket(name)
 	if !ok {
 		throw(vm, fmt.Sprintf("No measurement found with name %s", name))
 		return otto.Value{}
 	}
-	queryResult = b.GetTimeseriesRegex(tags)
+	queryResult = b.GetTimeseriesRegex(tagFilters)
 	if len(queryResult) == 0 {
 		throw(vm, "Select query did not return any results")
 		return otto.Value{}
 	}
-	// e.logger.Infof("Select query result: %+v", queryResult)
+
 	res, err := vm.ToValue(queryResult)
 	if err != nil {
 		throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
@@ -268,15 +255,35 @@ func (e *MetricsEngine) selectTs(vm *otto.Otto, call otto.FunctionCall) otto.Val
 	return res
 }
 
-func (e *MetricsEngine) selectLast(vm *otto.Otto, call otto.FunctionCall) otto.Value {
+func extractSelectArgs(vm *otto.Otto, call *otto.FunctionCall) (name string, tagFilters map[string]string, isTagFilterAll bool) {
 	name, err := call.Argument(0).ToString()
 	if err != nil {
 		throw(vm, "Invalid arg: Name is not a string")
-		return otto.Value{}
 	}
+	isTagFilterAll = call.Argument(1).IsString() && call.Argument(1).String() == "*"
+	if !isTagFilterAll {
+		tagFilters := call.Argument(1).Object()
+		tags := map[string]string{}
+		tagKeys := tagFilters.Keys()
+		for _, tagKey := range tagKeys {
+			tagVal, err := tagFilters.Get(tagKey)
+			if err != nil {
+				throw(vm, "Invalid arg: tag filters is not a map[string]string")
+			}
+			tags[tagKey] = tagVal.String()
+		}
+	}
+	return name, tagFilters, isTagFilterAll
+}
 
-	isTagFilterAll := call.Argument(1).IsString() && call.Argument(1).String() == "*"
+func (e *MetricsEngine) selectLast(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
+	name, tagFilters, isTagFilterAll := extractSelectArgs(vm, call)
+
+	e.logger.Infof("SelectLast query...")
 	var queryResult []tsdb.TimeSeries
+
+	defer e.logger.Infof("SelectLast query result: : %+v", queryResult)
+
 	if isTagFilterAll {
 		b, ok := e.db.GetBucket(name)
 		if !ok {
@@ -284,6 +291,7 @@ func (e *MetricsEngine) selectLast(vm *otto.Otto, call otto.FunctionCall) otto.V
 			return otto.Value{}
 		}
 		queryResult = b.GetAllTimeseriesLast()
+
 		res, err := vm.ToValue(queryResult)
 		if err != nil {
 			throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
@@ -292,32 +300,18 @@ func (e *MetricsEngine) selectLast(vm *otto.Otto, call otto.FunctionCall) otto.V
 		return res
 	}
 
-	tagFilters := call.Argument(1).Object()
-
-	tags := map[string]string{}
-	tagKeys := tagFilters.Keys()
-	for _, tagKey := range tagKeys {
-		tagVal, err := tagFilters.Get(tagKey)
-		if err != nil {
-			throw(vm, "Invalid arg: tag filters is not a map[string]string")
-			return otto.Value{}
-		}
-		tags[tagKey] = tagVal.String()
-	}
-
 	b, ok := e.db.GetBucket(name)
 	if !ok {
 		throw(vm, fmt.Sprintf("No measurement found with name %s", name))
 		return otto.Value{}
 	}
 
-	queryResult = b.GetTimeseriesRegexLastVal(tags)
+	queryResult = b.GetTimeseriesRegexLastVal(tagFilters)
 	if len(queryResult) == 0 {
 		throw(vm, "Select query did not return any results")
 		return otto.Value{}
 	}
 
-	// e.logger.Infof("SelectLast query result: : %+v", queryResult)
 	res, err := vm.ToValue(queryResult)
 	if err != nil {
 		throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
@@ -326,13 +320,8 @@ func (e *MetricsEngine) selectLast(vm *otto.Otto, call otto.FunctionCall) otto.V
 	return res
 }
 
-func (e *MetricsEngine) selectRange(vm *otto.Otto, call otto.FunctionCall) otto.Value {
-	name, err := call.Argument(0).ToString()
-	if err != nil {
-		throw(vm, "Invalid arg: Name is not a string")
-		return otto.Value{}
-	}
-
+func (e *MetricsEngine) selectRange(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
+	name, tagFilters, isTagFilterAll := extractSelectArgs(vm, call)
 	startTimeGeneric, err := call.Argument(2).Export()
 	if err != nil {
 		throw(vm, fmt.Sprintf("err: %s ", err.Error()))
@@ -355,16 +344,20 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call otto.FunctionCall) otto.
 		return otto.Value{}
 	}
 
-	isTagFilterAll := call.Argument(1).IsString() && call.Argument(1).String() == "*"
 	var queryResult []tsdb.TimeSeries
+	defer e.logger.Infof("SelectRange query result: : %+v", queryResult)
 	if isTagFilterAll {
-		b, ok := e.db.GetBucket(name)
+
+		var b *tsdb.Bucket
+		b, ok = e.db.GetBucket(name)
 		if !ok {
 			throw(vm, fmt.Sprintf("No measurement found with name %s", name))
 			return otto.Value{}
 		}
 		queryResult = b.GetAllTimeseriesRange(startTime, endTime)
-		res, err := vm.ToValue(queryResult)
+
+		var res otto.Value
+		res, err = vm.ToValue(queryResult)
 		if err != nil {
 			throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
 			return otto.Value{}
@@ -372,29 +365,17 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call otto.FunctionCall) otto.
 		return res
 	}
 
-	tagFilters := call.Argument(1).Object()
-	tags := map[string]string{}
-	tagKeys := tagFilters.Keys()
-	for _, tagKey := range tagKeys {
-		tagVal, err := tagFilters.Get(tagKey)
-		if err != nil {
-			throw(vm, "Invalid arg: tag filters is not a map[string]string")
-			return otto.Value{}
-		}
-		tags[tagKey] = tagVal.String()
-	}
-
 	b, ok := e.db.GetBucket(name)
 	if !ok {
 		throw(vm, fmt.Sprintf("No measurement found with name %s", name))
 		return otto.Value{}
 	}
-	queryResult = b.GetTimeseriesRegexRange(tags, startTime, endTime)
+	queryResult = b.GetTimeseriesRegexRange(tagFilters, startTime, endTime)
 	if len(queryResult) == 0 {
 		throw(vm, "Select query did not return any results")
 		return otto.Value{}
 	}
-	// e.logger.Infof("SelectRange query result: : %+v", queryResult)
+
 	res, err := vm.ToValue(queryResult)
 	if err != nil {
 		throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
@@ -507,7 +488,7 @@ func (e *MetricsEngine) max(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 	toReturn := tsdb.NewStaticTimeSeries(
 		resultingName,
 		make(map[string]string),
-		[]tsdb.Observable{tsdb.NewObservable(fieldMaxs, time.Now())},
+		tsdb.NewObservable(fieldMaxs, time.Now()),
 	)
 	res, err := vm.ToValue(toReturn.(tsdb.TimeSeries))
 	if err != nil {
@@ -610,7 +591,7 @@ func (e *MetricsEngine) min(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 	toReturn := tsdb.NewStaticTimeSeries(
 		resultingName,
 		make(map[string]string),
-		[]tsdb.Observable{tsdb.NewObservable(fieldMins, time.Now())},
+		tsdb.NewObservable(fieldMins, time.Now()),
 	)
 	res, err := vm.ToValue(toReturn.(tsdb.TimeSeries))
 	if err != nil {
@@ -705,6 +686,7 @@ func (e *MetricsEngine) avg(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 			avg(vm, ts.All(), fieldRegex, fieldCountersTmp, isTagFilterAll)
 			for fieldKey, fieldCounter := range fieldCountersTmp {
 				fieldAvg := fieldCounter.Value / fieldCounter.Counter
+
 				if _, ok := fieldCounters[fieldKey]; !ok {
 					fieldCounters[fieldKey] = &avgIntermediateCalc{}
 				}
@@ -728,9 +710,9 @@ func (e *MetricsEngine) avg(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 	toReturn := tsdb.NewStaticTimeSeries(
 		resultingName,
 		make(map[string]string),
-		[]tsdb.Observable{tsdb.NewObservable(fieldAverages, time.Now())},
+		tsdb.NewObservable(fieldAverages, time.Now()),
 	)
-	res, err := vm.ToValue(toReturn.(tsdb.TimeSeries))
+	res, err := vm.ToValue(toReturn)
 	if err != nil {
 		throw(vm, fmt.Sprintf("An error occurred transforming function output to js object: %s", err.Error()))
 		return otto.Value{}

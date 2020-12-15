@@ -1,12 +1,12 @@
 package frontend
 
 import (
-	"math/rand"
 	"net/http"
 	"sync"
 
 	"github.com/nm-morais/demmon-common/body_types"
 	membershipProtocol "github.com/nm-morais/demmon/internal/membership/protocol"
+	"github.com/nm-morais/demmon/internal/utils"
 	"github.com/nm-morais/go-babel/pkg/errors"
 	"github.com/nm-morais/go-babel/pkg/logs"
 	"github.com/nm-morais/go-babel/pkg/message"
@@ -142,8 +142,9 @@ func randomString(n int) string {
 	s := make([]rune, n)
 
 	for i := range s {
-		s[i] = letters[rand.Intn(len(letters))]
+		s[i] = letters[utils.GetRandInt(len(letters))]
 	}
+
 	return string(s)
 }
 
@@ -178,7 +179,6 @@ func convertView(view membershipProtocol.InView) body_types.View {
 			ID: view.Parent.Chain().String(),
 			IP: view.Parent.IP(),
 		}
-
 	}
 	return body_types.View{
 		Children:    childArr,

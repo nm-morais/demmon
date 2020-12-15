@@ -14,7 +14,7 @@ require (
 	github.com/robertkrimen/otto v0.0.0-20200922221731-ef014fd054ac
 	github.com/sirupsen/logrus v1.7.0
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
-	k8s.io/apimachinery v0.19.4
+	k8s.io/apimachinery v0.20.0
 )
 
 replace github.com/nm-morais/demmon-client => ../demmon-client

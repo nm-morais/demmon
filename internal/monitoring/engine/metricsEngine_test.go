@@ -8,7 +8,12 @@ import (
 	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
 )
 
-var db = tsdb.GetDB("", "", false, false)
+var db = tsdb.GetDB(&tsdb.Conf{
+	LogFile:        "",
+	LogFolder:      "",
+	Silent:         false,
+	SetupLogToFile: false,
+})
 
 type mockClock struct {
 	t time.Time
