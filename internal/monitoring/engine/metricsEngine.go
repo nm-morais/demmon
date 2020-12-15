@@ -44,7 +44,11 @@ func NewMetricsEngine(db *tsdb.TSDB, conf Conf, logToFile bool) *MetricsEngine {
 	}
 }
 
-var errExpressionTimeout = errors.New("timeout running expression")
+var (
+	errExpressionTimeout    = errors.New("timeout running expression")
+	errUnsuportedReturnType = errors.New("unsupported return type")
+	errEmptyResult          = errors.New("query did not return any values")
+)
 
 func (e *MetricsEngine) MakeQuery(expression string, timeoutDuration time.Duration) ([]tsdb.TimeSeries, error) {
 	ottoVal, err := e.runWithTimeout(expression, timeoutDuration)
@@ -61,13 +65,11 @@ func (e *MetricsEngine) MakeQuery(expression string, timeoutDuration time.Durati
 	case tsdb.TimeSeries:
 		return []tsdb.TimeSeries{vConverted}, nil
 	default:
-		return nil, fmt.Errorf("unsupported return type %s", reflect.TypeOf(vGeneric))
+		return nil, errUnsuportedReturnType
 	}
 }
 
 func (e *MetricsEngine) runWithTimeout(expression string, timeoutDuration time.Duration) (*otto.Value, error) {
-	start := time.Now()
-
 	type returnType struct {
 		ans *otto.Value
 		err error
@@ -78,23 +80,20 @@ func (e *MetricsEngine) runWithTimeout(expression string, timeoutDuration time.D
 
 	go func() {
 		defer func() {
-			duration := time.Since(start)
-
 			if caught := recover(); caught != nil {
 				if caught == errExpressionTimeout.Error() {
 					returnChan <- returnType{
 						ans: nil,
 						err: errExpressionTimeout,
 					}
-					e.logger.Infof("expression execution took longer then allowed (%v)", duration)
-
+					e.logger.Error(errExpressionTimeout)
 					return
 				}
 
-				e.logger.Panic(fmt.Sprintf("got error running expression: stacktrace: %s", string(debug.Stack())))
+				e.logger.Errorf("got error: (%w) running expression %s, stacktrace: %s", caught, expression, string(debug.Stack()))
 				returnChan <- returnType{
 					ans: nil,
-					err: fmt.Errorf("%s", caught),
+					err: fmt.Errorf("%w", caught),
 				}
 			}
 		}()
@@ -485,6 +484,11 @@ func (e *MetricsEngine) max(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 		return otto.Value{}
 	}
 
+	if len(fieldMaxs) == 0 {
+		throw(vm, "Max did not return any values")
+		return otto.Value{}
+	}
+
 	toReturn := tsdb.NewStaticTimeSeries(
 		resultingName,
 		make(map[string]string),
@@ -549,7 +553,6 @@ func (e *MetricsEngine) min(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 	var fieldRegex *regexp.Regexp
 	fieldMins := map[string]interface{}{}
 	if !isTagFilterAll {
-		var err error
 		fieldRegex, err = regexp.Compile(call.Argument(1).String())
 		if err != nil {
 			throw(vm, err.Error())
@@ -588,12 +591,19 @@ func (e *MetricsEngine) min(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 
 	// toReturn := tsdb.NewTimeSeries(resultingName, make(map[string]string), tsdb.Granularity{Granularity: math.MaxInt64, Count: 2}, nil)
 	// toReturn.AddPoint(tsdb.Observable{TS: time.Now(), Fields: fieldMins})
+
+	if len(fieldMins) == 0 {
+		throw(vm, "Min did not return any values")
+		return otto.Value{}
+	}
+
 	toReturn := tsdb.NewStaticTimeSeries(
 		resultingName,
 		make(map[string]string),
 		tsdb.NewObservable(fieldMins, time.Now()),
 	)
-	res, err := vm.ToValue(toReturn.(tsdb.TimeSeries))
+
+	res, err := vm.ToValue(toReturn)
 	if err != nil {
 		throw(vm, fmt.Sprintf("An error occurred transforming function output to js object: %s", err.Error()))
 		return otto.Value{}
@@ -605,29 +615,32 @@ func min(
 	vm *otto.Otto,
 	points []tsdb.Observable,
 	fieldRegex *regexp.Regexp,
-	fieldMaxs map[string]interface{},
+	fieldMins map[string]interface{},
 	doAll bool,
 ) {
 	for _, point := range points {
 		for fieldKey, fieldVal := range point.Value() {
-			if doAll || fieldRegex.MatchString(fieldKey) {
-				fieldMin, ok := fieldMaxs[fmt.Sprintf("min_%s", fieldKey)]
-				if !ok {
-					fieldMin = math.MaxFloat64
-				}
-				fieldValFloat, ok := fieldVal.(float64)
-				if !ok {
-					throw(
-						vm,
-						fmt.Sprintf(
-							"Function err: field %s is not of type float64 (%s)",
-							fieldKey,
-							reflect.TypeOf(fieldVal),
-						),
-					)
-				}
-				fieldMaxs[fmt.Sprintf("min_%s", fieldKey)] = math.Min(fieldMin.(float64), fieldValFloat)
+			if !doAll && fieldRegex.MatchString(fieldKey) {
+				continue
 			}
+
+			fieldMin, ok := fieldMins[fmt.Sprintf("min_%s", fieldKey)]
+			if !ok {
+				fieldMin = math.MaxFloat64
+			}
+
+			fieldValFloat, ok := fieldVal.(float64)
+			if !ok {
+				throw(
+					vm,
+					fmt.Sprintf(
+						"Function err: field %s is not of type float64 (%s)",
+						fieldKey,
+						reflect.TypeOf(fieldVal),
+					),
+				)
+			}
+			fieldMins[fmt.Sprintf("min_%s", fieldKey)] = math.Min(fieldMin.(float64), fieldValFloat)
 		}
 	}
 }
@@ -703,6 +716,11 @@ func (e *MetricsEngine) avg(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 	fieldAverages := make(map[string]interface{}, len(fieldCounters))
 	for fieldKey, fieldCounter := range fieldCounters {
 		fieldAverages[fieldKey] = fieldCounter.Value / fieldCounter.Counter
+	}
+
+	if len(fieldAverages) == 0 {
+		throw(vm, "Average did not return any values")
+		return otto.Value{}
 	}
 
 	// toReturn := tsdb.NewTimeSeries(resultingName, make(map[string]string), tsdb.Granularity{Granularity: math.MaxInt64, Count: 2}, nil)

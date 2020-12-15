@@ -275,7 +275,7 @@ func setupDemmonMetrics() {
 		expressionTimeout  = 1 * time.Second
 		exportFrequency    = 5 * time.Second
 		defaultTTL         = 1
-		defaultMetricCount = 1
+		defaultMetricCount = 5
 		maxRetries         = 3
 		connectTimeout     = 3 * time.Second
 		tickerTimeout      = 5 * time.Second

@@ -78,10 +78,8 @@ func (b *Bucket) GetAllTimeseriesLast() []TimeSeries {
 			ts := value.(TimeSeries)
 			lastPt := ts.Last()
 			if lastPt == nil {
-				b.logger.Errorf("Timeseries %+v has no last point", ts.Tags())
 				return true
 			}
-			b.logger.Infof("Timeseries last point: %+v", lastPt)
 			toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), lastPt))
 			return true
 		},

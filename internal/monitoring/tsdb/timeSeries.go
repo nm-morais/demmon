@@ -20,6 +20,9 @@ type observable struct {
 }
 
 func NewObservable(fields map[string]interface{}, ts time.Time) Observable {
+	if len(fields) == 0 {
+		panic("empty fields")
+	}
 	return &observable{
 		ts:     ts,
 		fields: fields,
@@ -166,7 +169,7 @@ func NewTimeSeriesWithClock(
 func (ts *timeSeries) Clear() {
 	ts.mu.Lock()
 	ts.lastAdd = time.Time{}
-	ts.pending = ts.resetObservation(ts.pending)
+	ts.pending = nil
 	ts.pendingTime = time.Time{}
 	ts.dirty = false
 	ts.level.Clear()
@@ -304,10 +307,13 @@ func (ts *timeSeries) Last() Observable {
 		ts.advance(now)
 	}
 
+	ts.logger.Info("Getting last point...")
+
 	ts.mergePendingUpdates()
 	ts.logger.Infof("ts.level.newest: %d", ts.level.newest)
+	var idx int
 	for i := 0; i < ts.numBuckets; i++ {
-		idx := ts.level.newest - i
+		idx = ts.level.newest - i
 		if idx < 0 {
 			idx += ts.numBuckets
 		}
@@ -318,11 +324,18 @@ func (ts *timeSeries) Last() Observable {
 			break
 		}
 	}
+	ts.logger.Infof("idx: %d, Last point: %+v", idx, result)
 	return result
 }
 
 // init initializes a level according to the supplied criteria.
-func (ts *timeSeries) init(name string, tags map[string]string, resolution time.Duration, numBuckets int, clock Clock, logger *logrus.Entry) {
+func (ts *timeSeries) init(name string,
+	tags map[string]string,
+	resolution time.Duration,
+	numBuckets int,
+	clock Clock,
+	logger *logrus.Entry) {
+
 	ts.mu = sync.Mutex{}
 	ts.name = name
 	ts.tags = tags
@@ -397,8 +410,8 @@ func (ts *timeSeries) advance(t time.Time) {
 	// If the time is sufficiently far, just clear the level and advance
 	// directly.
 	if !t.Before(level.end.Add(level.size * time.Duration(ts.numBuckets))) {
-		for _, b := range level.bucket {
-			ts.resetObservation(b)
+		for idx := range level.bucket {
+			level.bucket[idx] = nil
 		}
 
 		level.end = time.Unix(0, (t.UnixNano()/level.size.Nanoseconds())*level.size.Nanoseconds())
@@ -408,7 +421,7 @@ func (ts *timeSeries) advance(t time.Time) {
 		level.end = level.end.Add(level.size)
 		level.newest = level.oldest
 		level.oldest = (level.oldest + 1) % ts.numBuckets
-		ts.resetObservation(level.bucket[level.newest])
+		level.bucket[level.newest] = nil
 	}
 
 	t = level.end
@@ -519,15 +532,15 @@ func (ts *timeSeries) extract(l *tsLevel, start, finish time.Time) []Observable 
 }
 
 // resetObservation clears the content so the struct may be reused.
-func (ts *timeSeries) resetObservation(observation Observable) Observable {
-	if observation == nil {
-		observation = &observable{}
-	} else {
-		observation.Clear()
-	}
+// func (ts *timeSeries) resetObservation(observation Observable) Observable {
+// 	if observation == nil {
+// 		observation = &observable{}
+// 	} else {
+// 		observation.Clear()
+// 	}
 
-	return observation
-}
+// 	return observation
+// }
 
 // func minTime(a, b time.Time) time.Time {
 // 	if a.Before(b) {
