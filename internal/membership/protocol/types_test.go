@@ -51,7 +51,6 @@ func TestSerializePeerWithIDChain(t *testing.T) {
 		if c1 != c2 {
 
 			t.FailNow()
-
 		}
 	}
 

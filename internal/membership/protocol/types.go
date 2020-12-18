@@ -25,6 +25,7 @@ func EuclideanDist(coords1, coords2 Coordinates) (float64, error) {
 		return -1, errors.New("different size coordinates")
 	}
 	var dist float64 = 0
+
 	for i := 0; i < len(coords1); i++ {
 		dist += math.Pow(float64(coords2[i]-coords1[i]), 2)
 	}
@@ -67,8 +68,8 @@ func (c PeerIDChain) Level() uint16 {
 	return uint16(len(c)) - 1
 }
 
+// IsDescendant retuns true if chain <c> is contained in chain <otherPeerChain>.
 func (c PeerIDChain) IsDescendentOf(otherPeerChain PeerIDChain) bool {
-	// IsDescendant retuns true if chain <c> is contained in chain <otherPeerChain>
 
 	if len(c) == 0 || len(otherPeerChain) == 0 {
 		return false

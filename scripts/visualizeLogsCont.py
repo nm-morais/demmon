@@ -11,14 +11,14 @@ wait = 3
 while True:
     try:
         subprocess.run(["ssh", "dicluster",
-                        "ssh node16 'python3 /home/nunomorais/git/nm-morais/demmon/scripts/visualizeLogs.py {} {}'".format(
-                            logs_folder, plot_filepath_remote)], check=True)
+                        "ssh node8 'python3 /home/nunomorais/git/nm-morais/demmon/scripts/visualizeLogs.py {} {}'".format(logs_folder, plot_filepath_remote)], check=True)
     except subprocess.CalledProcessError as e:
         print(e)
 
     try:
         subprocess.run(
-            ["scp", "dicluster:{}/topology.png".format(plot_filepath_remote), "{}".format(plot_filepath_local)],
+            ["scp", "dicluster:{}/topology.png".format(
+                plot_filepath_remote), "{}".format(plot_filepath_local)],
             check=True)
     except subprocess.CalledProcessError as e:
         print(e)

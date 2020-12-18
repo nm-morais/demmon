@@ -7,8 +7,8 @@ import (
 )
 
 type AddNeighborhoodInterestSetReq struct {
-	InterestSetID uint64
-	InterestSet   body_types.NeighborhoodInterestSet
+	Id          uint64
+	InterestSet body_types.NeighborhoodInterestSet
 }
 
 const AddNeighborhoodInterestSetReqID = 2000
@@ -17,10 +17,10 @@ func (r AddNeighborhoodInterestSetReq) ID() protocol.ID {
 	return AddNeighborhoodInterestSetReqID
 }
 
-func NewAddNeighborhoodInterestSetReq(key uint64, interestSet body_types.NeighborhoodInterestSet) request.Request {
+func NewAddNeighborhoodInterestSetReq(id uint64, interestSet body_types.NeighborhoodInterestSet) request.Request {
 	return AddNeighborhoodInterestSetReq{
-		InterestSetID: key,
-		InterestSet:   interestSet,
+		Id:          id,
+		InterestSet: interestSet,
 	}
 }
 

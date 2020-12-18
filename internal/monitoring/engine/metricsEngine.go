@@ -186,7 +186,7 @@ func (e *MetricsEngine) setVMFunctions(vm *otto.Otto) {
 
 	err = vm.Set(
 		"Max", func(call otto.FunctionCall) otto.Value {
-			return e.max(vm, call)
+			return e.max(vm, &call)
 		},
 	)
 	if err != nil {
@@ -261,15 +261,15 @@ func extractSelectArgs(vm *otto.Otto, call *otto.FunctionCall) (name string, tag
 	}
 	isTagFilterAll = call.Argument(1).IsString() && call.Argument(1).String() == "*"
 	if !isTagFilterAll {
-		tagFilters := call.Argument(1).Object()
-		tags := map[string]string{}
-		tagKeys := tagFilters.Keys()
+		tagFiltersGeneric := call.Argument(1).Object()
+		tagFilters = map[string]string{}
+		tagKeys := tagFiltersGeneric.Keys()
 		for _, tagKey := range tagKeys {
-			tagVal, err := tagFilters.Get(tagKey)
+			tagVal, err := tagFiltersGeneric.Get(tagKey)
 			if err != nil {
 				throw(vm, "Invalid arg: tag filters is not a map[string]string")
 			}
-			tags[tagKey] = tagVal.String()
+			tagFilters[tagKey] = tagVal.String()
 		}
 	}
 	return name, tagFilters, isTagFilterAll
@@ -279,6 +279,7 @@ func (e *MetricsEngine) selectLast(vm *otto.Otto, call *otto.FunctionCall) otto.
 	name, tagFilters, isTagFilterAll := extractSelectArgs(vm, call)
 
 	e.logger.Infof("SelectLast query...")
+
 	var queryResult []tsdb.TimeSeries
 
 	defer e.logger.Infof("SelectLast query result: : %+v", queryResult)
@@ -429,7 +430,7 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call *otto.FunctionCall) otto
 // 	return otto.Value{}
 // }
 
-func (e *MetricsEngine) max(vm *otto.Otto, call otto.FunctionCall) otto.Value {
+func (e *MetricsEngine) max(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
 	if len(call.ArgumentList) != 2 {
 		throw(vm, fmt.Sprintf("Invalid args: not enough args, got: %d", len(call.ArgumentList)))
 		return otto.Value{}

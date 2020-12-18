@@ -11,6 +11,7 @@ import (
 	"time"
 
 	client "github.com/nm-morais/demmon-client/pkg"
+	"github.com/nm-morais/demmon-common/body_types"
 	exporter "github.com/nm-morais/demmon-exporter"
 	membershipFrontend "github.com/nm-morais/demmon/internal/membership/frontend"
 	membershipProtocol "github.com/nm-morais/demmon/internal/membership/protocol"
@@ -205,7 +206,6 @@ func main() {
 
 	fmt.Println("Self peer: ", babelConf.Peer.String())
 	start(babelConf, nodeWatcherConf, exporterConfs, dConf, demmonTreeConf, meConf, dbConf)
-	select {}
 }
 
 func start(
@@ -234,9 +234,9 @@ func start(
 	babel.RegisterProtocol(membershipProtocol.New(membershipConf, babel, nw))
 
 	go monitor.Listen()
-	go babel.Start()
 	go setupDemmonExporter(eConf)
 	go setupDemmonMetrics()
+	babel.StartSync()
 }
 
 func GetLocalIP() net.IP {
@@ -274,20 +274,20 @@ func setupDemmonMetrics() {
 		connectBackoffTime = 1 * time.Second
 		expressionTimeout  = 1 * time.Second
 		exportFrequency    = 5 * time.Second
-		defaultTTL         = 1
+		defaultTTL         = 2
 		defaultMetricCount = 5
 		maxRetries         = 3
 		connectTimeout     = 3 * time.Second
 		tickerTimeout      = 5 * time.Second
+		requestTimeout     = 1 * time.Second
 	)
 
 	clientConf := client.DemmonClientConf{
 		DemmonPort:     8090,
 		DemmonHostAddr: "localhost",
-		RequestTimeout: 1 * time.Second,
+		RequestTimeout: requestTimeout,
 	}
 	cl := client.New(clientConf)
-
 	for i := 0; i < 3; i++ {
 		err := cl.ConnectTimeout(connectTimeout)
 		if err != nil {
@@ -340,15 +340,23 @@ func setupDemmonMetrics() {
 		panic(err)
 	}
 
-	_, err = cl.InstallNeighborhoodInterestSet(
-		`SelectLast("nr_goroutines","*")`,
-		expressionTimeout,
-		defaultTTL,
-		"nr_goroutines_neigh",
-		exportFrequency,
-		defaultMetricCount,
-		maxRetries,
-	)
+	_, err = cl.InstallNeighborhoodInterestSet(&body_types.NeighborhoodInterestSet{
+		IS: body_types.InterestSet{
+			MaxRetries: maxRetries,
+			Query: body_types.RunnableExpression{
+				Expression: `SelectLast("nr_goroutines","*")`,
+				Timeout:    expressionTimeout,
+			},
+			OutputBucketOpts: body_types.BucketOptions{
+				Name: "nr_goroutines_neigh",
+				Granularity: body_types.Granularity{
+					Granularity: exportFrequency,
+					Count:       3,
+				},
+			},
+		},
+		TTL: defaultTTL,
+	})
 
 	if err != nil {
 		panic(err)

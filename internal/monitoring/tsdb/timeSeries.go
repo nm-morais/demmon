@@ -23,6 +23,7 @@ func NewObservable(fields map[string]interface{}, ts time.Time) Observable {
 	if len(fields) == 0 {
 		panic("empty fields")
 	}
+
 	return &observable{
 		ts:     ts,
 		fields: fields,
@@ -256,9 +257,11 @@ func (ts *timeSeries) All() []Observable {
 	ts.mergePendingUpdates()
 	results := make([]Observable, 0, ts.numBuckets)
 	ts.logger.Info("Getting all points..")
+
 	for i := 0; i < ts.numBuckets; i++ {
 		idx := (i + ts.level.oldest) % ts.numBuckets
 		ts.logger.Infof("idx: %d; ts.level.bucket[idx]: %+v", idx, ts.level.bucket[idx])
+
 		if ts.level.bucket[idx] != nil {
 			srcValue := ts.level.bucket[idx]
 			results = append(results, srcValue.Clone())
@@ -312,13 +315,16 @@ func (ts *timeSeries) Last() Observable {
 	ts.mergePendingUpdates()
 	ts.logger.Infof("ts.level.newest: %d", ts.level.newest)
 	var idx int
+
 	for i := 0; i < ts.numBuckets; i++ {
+
 		idx = ts.level.newest - i
 		if idx < 0 {
 			idx += ts.numBuckets
 		}
 
 		ts.logger.Infof("idx: %d; ts.level.bucket[idx]: %+v", idx, ts.level.bucket[idx])
+
 		if ts.level.bucket[idx] != nil {
 			result = ts.level.bucket[idx].Clone()
 			break
@@ -335,7 +341,6 @@ func (ts *timeSeries) init(name string,
 	numBuckets int,
 	clock Clock,
 	logger *logrus.Entry) {
-
 	ts.mu = sync.Mutex{}
 	ts.name = name
 	ts.tags = tags

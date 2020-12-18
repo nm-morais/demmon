@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"os"
 	"reflect"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+	"github.com/mitchellh/hashstructure/v2"
 	"github.com/mitchellh/mapstructure"
 	"github.com/nm-morais/demmon-common/body_types"
 	"github.com/nm-morais/demmon-common/routes"
@@ -21,7 +21,6 @@ import (
 	"github.com/nm-morais/demmon/internal/monitoring/engine"
 	monitoringProto "github.com/nm-morais/demmon/internal/monitoring/protocol"
 	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
-	"github.com/nm-morais/demmon/internal/utils"
 	"github.com/reugn/go-quartz/quartz"
 	"github.com/sirupsen/logrus"
 )
@@ -154,60 +153,82 @@ func (d *Demmon) handleDial(w http.ResponseWriter, req *http.Request) {
 func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 	d.logger.Infof("Got request %s with body; %+v", r.Type.String(), r.Message)
 
-	var (
-		ans interface{}
-		err error
-	)
+	var resp *body_types.Response
 
 	switch r.Type {
 	case routes.GetInView:
-		ans, err = d.getInView()
+		ans, err := d.getInView()
+		if err != nil {
+			d.logger.Errorf("Got error fetching view: %s", err.Error())
+			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
+			break
+		}
+		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, ans)
 	case routes.MembershipUpdates:
-		ans, err = d.subscribeNodeEvents(c)
+		ans, err := d.subscribeNodeEvents(c)
+		if err != nil {
+			d.logger.Errorf("Got error subscribing to node events: %s", err.Error())
+			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, ans)
+			break
+		}
+		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, ans)
 	case routes.GetRegisteredMetricBuckets:
-		ans = d.db.GetRegisteredBuckets()
+		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, d.db.GetRegisteredBuckets())
 	case routes.InstallBucket:
 		reqBody := body_types.BucketOptions{}
-		err = mapstructure.Decode(r.Message, &reqBody)
+		err := mapstructure.Decode(r.Message, &reqBody)
 		if err != nil {
+			resp = body_types.NewResponse(r.ID, false, err, 400, r.Type, nil)
 			break
 		}
 		// for _, m := range reqBody {
 		_, err = d.db.CreateBucket(reqBody.Name, reqBody.Granularity.Granularity, reqBody.Granularity.Count)
 		if err != nil {
+			if err == tsdb.ErrAlreadyExists {
+				resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
+				break
+			}
+			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
 			break
 		}
 
 		d.logger.Infof("Installed bucket: %+v", reqBody)
+		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, nil)
 		// }
 	case routes.PushMetricBlob:
 		reqBody := body_types.PointCollectionWithTagsAndName{}
-		err = decode(r.Message, &reqBody)
+		err := decode(r.Message, &reqBody)
 
 		if err != nil {
 			d.logger.Error(err)
 			err = ErrBadBodyType
+			resp = body_types.NewResponse(r.ID, false, err, 400, r.Type, nil)
 			break
 		}
 
 		for _, m := range reqBody {
 			d.logger.Info("Adding metric")
 			err = d.db.AddMetric(m.Name, m.Tags, m.Point.Fields, m.Point.TS)
-
 			if err != nil {
 				d.logger.Errorf("Got error adding metric blob: %s", err.Error())
-				break
+				if err == tsdb.ErrBucketNotFound {
+					resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
+					break
+				}
+				resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
 			}
 
 			d.logger.Info("Done adding metric...")
 		}
+		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, nil)
 	case routes.Query:
 		reqBody := body_types.QueryRequest{}
-		err = decode(r.Message, &reqBody)
+		err := decode(r.Message, &reqBody)
 
 		if err != nil {
 			d.logger.Error(err)
 			err = ErrBadBodyType
+			resp = body_types.NewResponse(r.ID, false, err, 400, r.Type, nil)
 			break
 		}
 
@@ -215,6 +236,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		queryResult, err = d.me.MakeQuery(reqBody.Query.Expression, reqBody.Query.Timeout)
 
 		if err != nil {
+			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
 			break
 		}
 
@@ -241,15 +263,15 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 				},
 			)
 		}
-
-		ans = toReturn
+		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, toReturn)
 	case routes.InstallContinuousQuery:
 		reqBody := body_types.InstallContinuousQueryRequest{}
-		err = decode(r.Message, &reqBody)
+		err := decode(r.Message, &reqBody)
 
 		if err != nil {
 			d.logger.Error(err)
 			err = ErrBadBodyType
+			resp = body_types.NewResponse(r.ID, false, err, 400, r.Type, nil)
 			break
 		}
 
@@ -263,8 +285,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			if err.Error() == "Bucket already exists" {
 				break
 			}
-
-			panic(err)
+			resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
 		}
 
 		d.logger.Infof("installed bucket: %+v", reqBody.OutputBucketOpts)
@@ -292,31 +313,32 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 
 		if err != nil {
 			d.schedulerMu.Unlock()
+			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
 			break
 		}
 
-		ans = body_types.InstallContinuousQueryReply{
-			TaskId: taskId,
+		ans := body_types.InstallContinuousQueryReply{
+			TaskID: taskId,
 		}
 		d.schedulerMu.Unlock()
 		d.logger.Infof("installed continuous query: %+v", reqBody)
-
+		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, ans)
 	case routes.GetContinuousQueries:
-		resp := body_types.GetContinuousQueriesReply{}
+		ans := body_types.GetContinuousQueriesReply{}
 
 		d.continuousQueries.Range(
 			func(key, value interface{}) bool {
 				job := value.(*continuousQueryValueType)
 				job.mu.Lock()
-				resp.ContinuousQueries = append(
-					resp.ContinuousQueries, struct {
-						TaskId    int
+				ans.ContinuousQueries = append(
+					ans.ContinuousQueries, struct {
+						TaskID    int
 						NrRetries int
 						CurrTry   int
 						LastRan   time.Time
 						Error     error
 					}{
-						TaskId:    job.id,
+						TaskID:    job.id,
 						Error:     job.err,
 						LastRan:   job.lastRan,
 						CurrTry:   job.triedNr,
@@ -327,46 +349,54 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 				return true
 			},
 		)
-		ans = resp
+		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, ans)
 	case routes.InstallCustomInterestSet:
 		d.logger.Panic("not yet implemented")
 	case routes.InstallNeighborhoodInterestSet:
 		reqBody := body_types.NeighborhoodInterestSet{}
-		err = decode(r.Message, &reqBody)
+		err := decode(r.Message, &reqBody)
 		if err != nil {
 			d.logger.Error(err)
 			err = ErrBadBodyType
+			resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, nil)
 			break
 		}
 
-		d.logger.Infof("Creating bucket: %s", reqBody.OutputBucketOpts.Name)
+		d.logger.Infof("Creating aggregation func output bucket: %s", reqBody.IS.OutputBucketOpts.Name)
 
 		_, err = d.db.CreateBucket(
-			reqBody.OutputBucketOpts.Name,
-			reqBody.OutputBucketOpts.Granularity.Granularity,
-			reqBody.OutputBucketOpts.Granularity.Count,
+			reqBody.IS.OutputBucketOpts.Name,
+			reqBody.IS.OutputBucketOpts.Granularity.Granularity,
+			reqBody.IS.OutputBucketOpts.Granularity.Count,
 		)
 
 		if err != nil {
 			d.logger.Errorf("Got error installing neighborhood interest set: %s", err.Error())
+			if err == tsdb.ErrAlreadyExists {
+				resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
+			}
 			break
 		}
-
-		neighSetID := utils.GetRandInt(math.MaxInt64)
-		d.monitorProto.AddNeighborhoodInterestSetReq(uint64(neighSetID), reqBody)
-		d.logger.Infof("Added new neighborhood interest set: %s", reqBody.OutputBucketOpts.Name)
+		neighSetID := Hash(reqBody.IS)
+		d.monitorProto.AddNeighborhoodInterestSetReq(neighSetID, reqBody)
+		d.logger.Infof("Added new neighborhood interest set: %+v", reqBody)
+		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, neighSetID)
 	case routes.BroadcastMessage:
 		d.logger.Panic("not yet implemented")
 	case routes.AlarmTrigger:
 		d.logger.Panic("not yet implemented")
 	default:
-		err = ErrNonRecognizedOp
+		resp = body_types.NewResponse(r.ID, false, ErrNonRecognizedOp, 200, r.Type, nil)
 	}
 
-	d.logger.Infof("Got request %s, response: err: %+v, response:%+v", r.Type.String(), err, ans)
+	if resp.Error {
+		d.logger.Errorf("Got request %s, response: status: %d, err: %s", r.Type.String(), resp.Code, resp.GetMsgAsErr().Error())
+	} else {
+		d.logger.Infof("Got request %s, response: status:% d, response: %+v", r.Type.String(), resp.Code, resp.Message)
+	}
 
 	select {
-	case c.out <- body_types.NewResponse(r.ID, false, err, r.Type, ans):
+	case c.out <- resp:
 	case <-time.After(2 * time.Second):
 		d.logger.Panic("TIMEOUT: Could not deliver response")
 	}
@@ -387,9 +417,10 @@ func (d *Demmon) readPump(c *client) {
 	defer func() {
 		err := c.conn.Close()
 		if err != nil {
-			d.logger.Errorf("error closing connection: %w", err.Error())
+			d.logger.Errorf("error closing connection: %s", err.Error())
 		}
 	}()
+
 	for {
 		req := &body_types.Request{}
 		err := c.conn.ReadJSON(req)
@@ -531,6 +562,7 @@ func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) 
 	var out io.Writer = file
 	if !silent {
 		out = io.MultiWriter(os.Stdout, file)
+
 		fmt.Println("Setting metrics_frontend non-silently")
 	}
 	logger.SetOutput(out)
@@ -578,4 +610,12 @@ func toTimeHookFunc() mapstructure.DecodeHookFunc {
 		}
 		// Convert it by parsing
 	}
+}
+
+func Hash(v interface{}) uint64 {
+	hash, err := hashstructure.Hash(v, hashstructure.FormatV2, nil)
+	if err != nil {
+		panic(err)
+	}
+	return hash
 }

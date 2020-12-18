@@ -14,10 +14,10 @@ var installNeighInterestSetMsgSerializerVar = installNeighInterestSetMsgSerializ
 const InstallNeighInterestSetMsgID = 6000
 
 type InstallNeighInterestSetMsg struct {
-	InterestSets map[uint64]body_types.NeighborhoodInterestSet
+	InterestSets map[uint64]neighInterestSet
 }
 
-func NewInstallNeighInterestSetMessage(interestSets map[uint64]body_types.NeighborhoodInterestSet) InstallNeighInterestSetMsg {
+func NewInstallNeighInterestSetMessage(interestSets map[uint64]neighInterestSet) InstallNeighInterestSetMsg {
 	return InstallNeighInterestSetMsg{
 		InterestSets: interestSets,
 	}
@@ -119,11 +119,13 @@ const propagateInterestSetMetricsMsgID = 6002
 type PropagateInterestSetMetricsMsg struct {
 	InterestSetID uint64
 	Metrics       []body_types.Timeseries
+	TTL           int
 }
 
 func NewPropagateInterestSetMetricsMessage(
 	interestSetID uint64,
 	tsArr []tsdb.TimeSeries,
+	ttl int,
 ) PropagateInterestSetMetricsMsg {
 
 	aux := make([]body_types.Timeseries, len(tsArr))
@@ -151,6 +153,7 @@ func NewPropagateInterestSetMetricsMessage(
 	return PropagateInterestSetMetricsMsg{
 		InterestSetID: interestSetID,
 		Metrics:       aux,
+		TTL:           ttl,
 	}
 }
 

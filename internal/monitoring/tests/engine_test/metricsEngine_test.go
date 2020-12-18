@@ -1,10 +1,11 @@
-package engine
+package engine_test
 
 import (
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/nm-morais/demmon/internal/monitoring/engine"
 	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
 )
 
@@ -66,7 +67,7 @@ func TestSelectQuery(t *testing.T) {
 		t.FailNow()
 	}
 
-	me := NewMetricsEngine(db, Conf{}, false)
+	me := engine.NewMetricsEngine(db, engine.Conf{}, false)
 	script := `Select("test", "*")`
 	// `timeseries = Select("test", {"tag1":"ola.*"})
 	// 			for (i = 0; i < timeseries.length; i++) {

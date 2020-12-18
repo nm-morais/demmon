@@ -48,29 +48,7 @@ func (t *exportNeighInterestSetMetricsTimer) Deadline() time.Time {
 	return t.deadline
 }
 
-const ExportLocalNeighInterestSetMetricsTimerID = 6002
-
-type exportLocalNeighInterestSetMetricsTimer struct {
-	deadline      time.Time
-	InterestSetID uint64
-}
-
-func NewExportLocalNeighInterestSetMetricsTimer(duration time.Duration, interestSetID uint64) timer.Timer {
-	return &exportLocalNeighInterestSetMetricsTimer{
-		deadline:      time.Now().Add(duration),
-		InterestSetID: interestSetID,
-	}
-}
-
-func (t *exportLocalNeighInterestSetMetricsTimer) ID() timer.ID {
-	return ExportLocalNeighInterestSetMetricsTimerID
-}
-
-func (t *exportLocalNeighInterestSetMetricsTimer) Deadline() time.Time {
-	return t.deadline
-}
-
-const CleanupInsterestSetsTimerID = 6003
+const CleanupInsterestSetsTimerID = 6002
 
 type cleanupInterestSetTimer struct {
 	deadline time.Time
