@@ -118,43 +118,25 @@ const propagateInterestSetMetricsMsgID = 6002
 
 type PropagateInterestSetMetricsMsg struct {
 	InterestSetID uint64
-	Metrics       []body_types.Timeseries
+	Metrics       []*body_types.TimeseriesDTO
 	TTL           int
 }
 
 func NewPropagateInterestSetMetricsMessage(
 	interestSetID uint64,
-	tsArr []tsdb.TimeSeries,
+	tsArr []tsdb.ReadOnlyTimeSeries,
 	ttl int,
 ) PropagateInterestSetMetricsMsg {
 
-	aux := make([]body_types.Timeseries, len(tsArr))
-
-	for idx, t := range tsArr {
-		allPts := t.All()
-		toAdd := body_types.Timeseries{
-			Name:   t.Name(),
-			Tags:   t.Tags(),
-			Points: make([]body_types.Point, len(allPts)),
-		}
-
-		for idx, p := range allPts {
-
-			toAdd.Points[idx] = body_types.Point{
-				TS:     p.TS(),
-				Fields: p.Value(),
-			}
-
-		}
-
-		aux[idx] = toAdd
-
-	}
-	return PropagateInterestSetMetricsMsg{
+	toReturn := PropagateInterestSetMetricsMsg{
 		InterestSetID: interestSetID,
-		Metrics:       aux,
 		TTL:           ttl,
 	}
+	for _, ts := range tsArr {
+		toReturn.Metrics = append(toReturn.Metrics, ts.ToDTO())
+	}
+
+	return toReturn
 }
 
 func (PropagateInterestSetMetricsMsg) Type() message.ID {
@@ -184,12 +166,15 @@ func (propagateInterestSetMetricsMsgSerializer) Serialize(m message.Message) []b
 }
 
 func (propagateInterestSetMetricsMsgSerializer) Deserialize(msgBytes []byte) message.Message {
-	toDeserialize := PropagateInterestSetMetricsMsg{}
+	toDeserialize := PropagateInterestSetMetricsMsg{
+		Metrics: []*body_types.TimeseriesDTO{},
+	}
 
 	err := json.Unmarshal(msgBytes, &toDeserialize)
 
 	if err != nil {
 		panic(err)
 	}
+
 	return toDeserialize
 }

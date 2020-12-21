@@ -50,8 +50,8 @@ func (b *Bucket) GetTimeseries(tags map[string]string) (TimeSeries, bool) {
 	return ts.(TimeSeries), ok
 }
 
-func (b *Bucket) GetAllTimeseries() []TimeSeries {
-	toReturn := make([]TimeSeries, 0)
+func (b *Bucket) GetAllTimeseries() []ReadOnlyTimeSeries {
+	toReturn := make([]ReadOnlyTimeSeries, 0)
 
 	b.logger.Infof("Getting all timeseries for bucket %s", b.name)
 	b.timeseries.Range(
@@ -66,12 +66,11 @@ func (b *Bucket) GetAllTimeseries() []TimeSeries {
 			return true
 		},
 	)
-
 	return toReturn
 }
 
-func (b *Bucket) GetAllTimeseriesLast() []TimeSeries {
-	toReturn := make([]TimeSeries, 0)
+func (b *Bucket) GetAllTimeseriesLast() []ReadOnlyTimeSeries {
+	toReturn := make([]ReadOnlyTimeSeries, 0)
 
 	b.timeseries.Range(
 		func(key, value interface{}) bool {
@@ -88,8 +87,8 @@ func (b *Bucket) GetAllTimeseriesLast() []TimeSeries {
 	return toReturn
 }
 
-func (b *Bucket) GetAllTimeseriesRange(start, end time.Time) []TimeSeries {
-	toReturn := make([]TimeSeries, 0)
+func (b *Bucket) GetAllTimeseriesRange(start, end time.Time) []ReadOnlyTimeSeries {
+	toReturn := make([]ReadOnlyTimeSeries, 0)
 
 	b.timeseries.Range(
 		func(key, value interface{}) bool {
@@ -138,45 +137,47 @@ func (b *Bucket) getTimeseriesRegex(tagsToMatch map[string]string) []TimeSeries 
 	return matchingTimeseries
 }
 
-func (b *Bucket) GetTimeseriesRegex(tagsToMatch map[string]string) []TimeSeries {
+func (b *Bucket) GetTimeseriesRegex(tagsToMatch map[string]string) []ReadOnlyTimeSeries {
 	matchingTimeseries := b.getTimeseriesRegex(tagsToMatch)
+
+	toReturn := []ReadOnlyTimeSeries{}
 	for _, ts := range matchingTimeseries {
-		matchingTimeseries = append(matchingTimeseries, NewStaticTimeSeries(ts.Name(), ts.Tags(), ts.All()...))
+		toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), ts.All()...))
 	}
 
-	return matchingTimeseries
+	return toReturn
 }
 
-func (b *Bucket) GetTimeseriesRegexRange(tagsToMatch map[string]string, start, end time.Time) []TimeSeries {
+func (b *Bucket) GetTimeseriesRegexRange(tagsToMatch map[string]string, start, end time.Time) []ReadOnlyTimeSeries {
 	matchingTimeseries := b.getTimeseriesRegex(tagsToMatch)
+	toReturn := []ReadOnlyTimeSeries{}
 	for _, ts := range matchingTimeseries {
 		points, err := ts.Range(start, end)
 		if err != nil {
 			panic(err)
 		}
 
-		matchingTimeseries = append(matchingTimeseries, NewStaticTimeSeries(ts.Name(), ts.Tags(), points...))
+		toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), points...))
 	}
 
-	return matchingTimeseries
+	return toReturn
 }
 
-func (b *Bucket) GetTimeseriesRegexLastVal(tagsToMatch map[string]string) []TimeSeries {
+func (b *Bucket) GetTimeseriesRegexLastVal(tagsToMatch map[string]string) []ReadOnlyTimeSeries {
 	matchingTimeseries := b.getTimeseriesRegex(tagsToMatch)
+	toReturn := []ReadOnlyTimeSeries{}
 	for _, ts := range matchingTimeseries {
 		last := ts.Last()
-
-		b.logger.Infof("Last point: %+v", last)
-
+		// b.logger.Infof("Last point: %+v", last)
 		if last != nil {
-			matchingTimeseries = append(
-				matchingTimeseries,
+			toReturn = append(
+				toReturn,
 				NewStaticTimeSeries(ts.Name(), ts.Tags(), last),
 			)
 		}
 	}
 
-	return matchingTimeseries
+	return toReturn
 }
 
 func (b *Bucket) DropAll() {

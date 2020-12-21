@@ -5,58 +5,84 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/nm-morais/demmon-common/body_types"
 )
 
-type staticTimeseries struct {
+type ReadOnlyTimeSeries interface {
+	Name() string
+	Tags() map[string]string
+	All() []Observable
+	Range(start time.Time, end time.Time) ([]Observable, error)
+	Last() Observable
+	ToDTO() *body_types.TimeseriesDTO
+}
+
+type StaticTimeseries struct {
 	mu              *sync.Mutex
-	measurementName string
-	tags            map[string]string
-	values          []Observable
+	MeasurementName string            `json:"name"`
+	TSTags          map[string]string `json:"tags"`
+	Values          []Observable      `json:"values"`
 }
 
-func NewStaticTimeSeries(measurementName string, tags map[string]string, values ...Observable) TimeSeries {
-	return &staticTimeseries{measurementName: measurementName, tags: tags, values: values, mu: &sync.Mutex{}}
+func StaticTimeseriesFromDTO(dto *body_types.TimeseriesDTO) ReadOnlyTimeSeries {
+	ts := &StaticTimeseries{MeasurementName: dto.MeasurementName, TSTags: dto.TSTags, mu: &sync.Mutex{}}
+	for _, pt := range dto.Values {
+		ts.Values = append(ts.Values, NewObservable(pt.Fields, pt.TS))
+	}
+	return ts
 }
 
-func (t *staticTimeseries) Name() string {
+func NewStaticTimeSeries(measurementName string, tags map[string]string, values ...Observable) ReadOnlyTimeSeries {
+	ts := &StaticTimeseries{MeasurementName: measurementName, TSTags: tags, Values: values, mu: &sync.Mutex{}}
+	return ts
+}
+
+func (t *StaticTimeseries) SetName(newName string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.MeasurementName = newName
+}
+
+func (t *StaticTimeseries) Name() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	return t.measurementName
+	return t.MeasurementName
 }
 
-func (t *staticTimeseries) Tags() map[string]string {
+func (t *StaticTimeseries) Tags() map[string]string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+
 	tagsCopy := map[string]string{}
 
-	for tagKey, tagVal := range t.tags {
-
+	for tagKey, tagVal := range t.TSTags {
 		tagsCopy[tagKey] = tagVal
 	}
 
 	return tagsCopy
 }
 
-func (t *staticTimeseries) SetTag(key, val string) {
+func (t *StaticTimeseries) SetTag(key, val string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if t.tags == nil {
-		t.tags = make(map[string]string)
+	if t.TSTags == nil {
+		t.TSTags = make(map[string]string)
 	}
 
-	t.tags[key] = val
+	t.TSTags[key] = val
 }
 
-func (t *staticTimeseries) All() []Observable {
+func (t *StaticTimeseries) All() []Observable {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	toReturn := make([]Observable, 0)
 
-	for i := len(t.values) - 1; i >= 0; i-- {
-		curr := t.values[i]
+	for i := len(t.Values) - 1; i >= 0; i-- {
+		curr := t.Values[i]
 		if curr == nil {
 			continue
 		}
@@ -68,12 +94,12 @@ func (t *staticTimeseries) All() []Observable {
 }
 
 // Recent returns the last value inserted.
-func (t *staticTimeseries) Last() Observable {
+func (t *StaticTimeseries) Last() Observable {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	for i := len(t.values) - 1; i >= 0; i-- {
-		curr := t.values[i]
+	for i := len(t.Values) - 1; i >= 0; i-- {
+		curr := t.Values[i]
 		if curr == nil {
 			continue
 		}
@@ -84,15 +110,39 @@ func (t *staticTimeseries) Last() Observable {
 	return nil
 }
 
+// func (t *StaticTimeseries) UnmarshalJSON(b []byte) error {
+// 	var stuff map[string]string
+// 	err := json.Unmarshal(b, &stuff)
+
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	err = json.Unmarshal([]byte(stuff["tags"]), &t.TSTags)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	err = json.Unmarshal([]byte(stuff["values"]), &t.Values)
+
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	t.MeasurementName = stuff["name"]
+
+// 	return nil
+// }
+
 // Add records an observation at the current time.
-func (t *staticTimeseries) String() string {
+func (t *StaticTimeseries) String() string {
 
 	var sb = strings.Builder{}
 
 	sb.WriteString(fmt.Sprintf("Name: %s", t.Name()))
 	sb.WriteString(" | Tags: ")
 	sb.WriteString("[")
-	for tagKey, tagVal := range t.tags {
+	for tagKey, tagVal := range t.Tags() {
 		sb.WriteString(fmt.Sprintf("%s:%s, ", tagKey, tagVal))
 	}
 
@@ -107,26 +157,33 @@ func (t *staticTimeseries) String() string {
 	return sb.String()
 }
 
-func (t *staticTimeseries) MarshalJSON() ([]byte, error) {
+func (t *StaticTimeseries) ToDTO() *body_types.TimeseriesDTO {
+	toReturn := &body_types.TimeseriesDTO{
+		MeasurementName: t.Name(),
+		TSTags:          t.Tags(),
+	}
+	for _, pt := range t.All() {
+		toReturn.Values = append(toReturn.Values, body_types.NewObservable(pt.Value(), pt.TS()))
+	}
+	return toReturn
+}
+
+func (t *StaticTimeseries) Count() int {
 	panic("not implemented")
 }
 
-func (t *staticTimeseries) Count() int {
+func (t *StaticTimeseries) Frequency() time.Duration {
 	panic("not implemented")
 }
 
-func (t *staticTimeseries) Frequency() time.Duration {
+func (t *StaticTimeseries) AddPoint(p Observable) {
 	panic("not implemented")
 }
 
-func (t *staticTimeseries) AddPoint(p Observable) {
+func (t *StaticTimeseries) Clear() {
 	panic("not implemented")
 }
 
-func (t *staticTimeseries) Clear() {
-	panic("not implemented")
-}
-
-func (t *staticTimeseries) Range(start, end time.Time) ([]Observable, error) {
+func (t *StaticTimeseries) Range(start, end time.Time) ([]Observable, error) {
 	panic("not implemented")
 }

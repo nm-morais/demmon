@@ -58,6 +58,23 @@ func (db *TSDB) GetBucket(name string) (*Bucket, bool) {
 	return bucket.(*Bucket), ok
 }
 
+func (db *TSDB) AddAll(toAdd []ReadOnlyTimeSeries) error {
+	for _, ts := range toAdd {
+		allPts := ts.All()
+		if len(allPts) == 0 {
+			db.logger.Error("err: Cannot add timeseries to DB because it %s is empty")
+			continue
+		}
+		for _, pt := range allPts {
+			err := db.AddMetric(ts.Name(), ts.Tags(), pt.Value(), pt.TS())
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (db *TSDB) GetOrCreateTimeseries(
 	name string,
 	tags map[string]string,
@@ -124,10 +141,12 @@ func (db *TSDB) CreateBucket(name string, frequency time.Duration, count int) (*
 	db.logger.Infof("Creating new bucket with name: %s", name)
 	newBucket := NewBucket(name, frequency, count, db.createEntryForBucket(name))
 	toReturn, loaded := db.buckets.LoadOrStore(name, newBucket)
+
 	if loaded {
 		db.logger.Infof("bucket %s already exists", name)
 		return nil, ErrAlreadyExists
 	}
+
 	db.logger.Infof("Created new bucket with name: %s", name)
 	return toReturn.(*Bucket), nil
 }

@@ -14,92 +14,9 @@ var (
 	ErrStartAfterFinish = errors.New("start is after finish")
 )
 
-type observable struct {
-	ts     time.Time
-	fields map[string]interface{}
-}
-
-func NewObservable(fields map[string]interface{}, ts time.Time) Observable {
-	if len(fields) == 0 {
-		panic("empty fields")
-	}
-
-	return &observable{
-		ts:     ts,
-		fields: fields,
-	}
-}
-
-// Value returns the float's value.
-func (f *observable) Value() map[string]interface{} {
-	toReturn := make(map[string]interface{}, len(f.fields))
-	for k, v := range f.fields {
-		toReturn[k] = v
-	}
-
-	return toReturn
-}
-
-func (f *observable) Clone() Observable {
-	toReturn := NewObservable(f.Value(), f.TS())
-	return toReturn
-}
-
-func (f *observable) TS() time.Time {
-	return f.ts
-}
-
-func (f *observable) Clear() {
-	for k := range f.fields {
-		delete(f.fields, k)
-	}
-}
-
-func (f *observable) CopyFrom(other Observable) {
-	otherFields := other.Value()
-	f.fields = make(map[string]interface{}, len(otherFields))
-
-	for k, v := range otherFields {
-		f.fields[k] = v
-	}
-
-	f.ts = other.TS()
-}
-
-func (f *observable) String() string {
-	if f == nil {
-		return "<nil>"
-	}
-
-	if len(f.fields) == 0 {
-		return "<empty field>"
-	}
-
-	var sb strings.Builder
-
-	sb.WriteString("[")
-
-	for fieldKey, field := range f.fields {
-		sb.WriteString(fmt.Sprintf("%s:%+v, ", fieldKey, field))
-	}
-
-	sb.WriteString("]")
-
-	return sb.String()
-}
-
-// An Observable is a kind of data that can be aggregated in a time series.
-type Observable interface {
-	Clear()                    // Clears the observation so it can be reused.
-	CopyFrom(other Observable) // Copies the contents of a given observation to self
-	TS() time.Time
-	Value() map[string]interface{}
-	Clone() Observable
-	String() string
-}
-
 type TimeSeries interface {
 	Name() string
+	SetName(name string)
 	Tags() map[string]string
 	SetTag(key, val string)
 	All() []Observable
@@ -108,7 +25,6 @@ type TimeSeries interface {
 	Last() Observable
 	Frequency() time.Duration
 	Count() int
-	MarshalJSON() ([]byte, error)
 	Clear()
 }
 
@@ -161,7 +77,6 @@ func NewTimeSeriesWithClock(
 	logger *logrus.Entry,
 ) TimeSeries {
 	ts := new(timeSeries)
-
 	ts.init(name, tags, timeSeriesResolution, tsLength, clock, logger)
 	return ts
 }
@@ -207,6 +122,10 @@ func (ts *timeSeries) AddPoint(observation Observable) {
 	ts.mu.Lock()
 	ts.addWithTime(observation, ts.clock.Time())
 	ts.mu.Unlock()
+}
+
+func (ts *timeSeries) SetName(newName string) {
+	panic("should never set name of a mutable timeseries")
 }
 
 func (ts *timeSeries) SetTag(key, val string) {
@@ -256,11 +175,11 @@ func (ts *timeSeries) All() []Observable {
 
 	ts.mergePendingUpdates()
 	results := make([]Observable, 0, ts.numBuckets)
-	ts.logger.Info("Getting all points..")
+	// ts.logger.Info("Getting all points..")
 
 	for i := 0; i < ts.numBuckets; i++ {
 		idx := (i + ts.level.oldest) % ts.numBuckets
-		ts.logger.Infof("idx: %d; ts.level.bucket[idx]: %+v", idx, ts.level.bucket[idx])
+		// ts.logger.Infof("idx: %d; ts.level.bucket[idx]: %+v", idx, ts.level.bucket[idx])
 
 		if ts.level.bucket[idx] != nil {
 			srcValue := ts.level.bucket[idx]
@@ -310,10 +229,10 @@ func (ts *timeSeries) Last() Observable {
 		ts.advance(now)
 	}
 
-	ts.logger.Info("Getting last point...")
+	// ts.logger.Info("Getting last point...")
 
 	ts.mergePendingUpdates()
-	ts.logger.Infof("ts.level.newest: %d", ts.level.newest)
+	// ts.logger.Infof("ts.level.newest: %d", ts.level.newest)
 	var idx int
 
 	for i := 0; i < ts.numBuckets; i++ {
@@ -323,14 +242,14 @@ func (ts *timeSeries) Last() Observable {
 			idx += ts.numBuckets
 		}
 
-		ts.logger.Infof("idx: %d; ts.level.bucket[idx]: %+v", idx, ts.level.bucket[idx])
+		// ts.logger.Infof("idx: %d; ts.level.bucket[idx]: %+v", idx, ts.level.bucket[idx])
 
 		if ts.level.bucket[idx] != nil {
 			result = ts.level.bucket[idx].Clone()
 			break
 		}
 	}
-	ts.logger.Infof("idx: %d, Last point: %+v", idx, result)
+	// ts.logger.Infof("idx: %d, Last point: %+v", idx, result)
 	return result
 }
 
@@ -451,11 +370,9 @@ func (ts *timeSeries) latestBuckets(num int) []Observable {
 	index := l.newest
 
 	for i := 0; i < num; i++ {
-		result := &observable{}
-		results[i] = result
-
 		if l.bucket[index] != nil {
-			result.CopyFrom(l.bucket[index])
+			results[i] = l.bucket[index].Clone()
+			// result.CopyFrom(l.bucket[index])
 		}
 
 		if index == 0 {
@@ -465,10 +382,6 @@ func (ts *timeSeries) latestBuckets(num int) []Observable {
 	}
 
 	return results
-}
-
-func (ts *timeSeries) MarshalJSON() ([]byte, error) {
-	panic("not implemented")
 }
 
 // extract returns a slice of specified number of observations from a given

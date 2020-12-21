@@ -417,7 +417,7 @@ func setupDemmonMetrics() {
 		fmt.Println("Select('neigh_routines_min','*') Query results :")
 
 		for idx, ts := range res {
-			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.Name, ts.Tags, ts.Points)
+			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
 		}
 	}
 }

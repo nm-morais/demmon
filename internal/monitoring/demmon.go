@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/mitchellh/mapstructure"
+	demmon_client "github.com/nm-morais/demmon-client/pkg"
 	"github.com/nm-morais/demmon-common/body_types"
 	"github.com/nm-morais/demmon-common/routes"
 	membershipFrontend "github.com/nm-morais/demmon/internal/membership/frontend"
@@ -33,6 +34,10 @@ var upgrader = websocket.Upgrader{
 var (
 	ErrBadBodyType     = errors.New("bad request body type")
 	ErrNonRecognizedOp = errors.New("non-recognized operation")
+)
+
+const (
+	DeliverRequestResponseTimeout = 2 * time.Second
 )
 
 type DemmonConf struct {
@@ -55,23 +60,31 @@ type continuousQueryValueType struct {
 	outputBucketOpts body_types.BucketOptions
 }
 
-type continuousQueryJobType struct {
+type customInterestSetWrapper struct {
+	nrRetries int
+	is        body_types.CustomInterestSet
+	*sync.Mutex
+}
+
+type customInterestSetValueType = *customInterestSetWrapper
+
+type continuousQueryJobWrapper struct {
 	id int
 	d  *Demmon
 }
 
 // Description returns a PrintJob description.
-func (job continuousQueryJobType) Description() string {
+func (job continuousQueryJobWrapper) Description() string {
 	return ""
 }
 
 // Key returns a PrintJob unique key.
-func (job continuousQueryJobType) Key() int {
+func (job continuousQueryJobWrapper) Key() int {
 	return job.id
 }
 
 // Execute Called by the Scheduler when a Trigger fires that is associated with the Job.
-func (job continuousQueryJobType) Execute() {
+func (job continuousQueryJobWrapper) Execute() {
 	job.d.handleContinuousQueryTrigger(job.id)
 }
 
@@ -84,6 +97,7 @@ type client struct {
 type Demmon struct {
 	schedulerMu              *sync.Mutex
 	scheduler                quartz.Scheduler
+	customInterestSets       *sync.Map
 	continuousQueries        *sync.Map
 	continuousQueriesCounter *uint64
 	logger                   *logrus.Logger
@@ -111,6 +125,7 @@ func New(
 		counter:                  new(uint64),
 		logger:                   logrus.New(),
 		nodeUpdatesSubscribers:   &sync.Map{},
+		customInterestSets:       &sync.Map{},
 		conf:                     dConf,
 		monitorProto:             monitorProto,
 		db:                       db,
@@ -161,6 +176,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		if err != nil {
 			d.logger.Errorf("Got error fetching view: %s", err.Error())
 			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
+
 			break
 		}
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, ans)
@@ -169,6 +185,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		if err != nil {
 			d.logger.Errorf("Got error subscribing to node events: %s", err.Error())
 			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, ans)
+
 			break
 		}
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, ans)
@@ -184,7 +201,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		// for _, m := range reqBody {
 		_, err = d.db.CreateBucket(reqBody.Name, reqBody.Granularity.Granularity, reqBody.Granularity.Count)
 		if err != nil {
-			if err == tsdb.ErrAlreadyExists {
+			if errors.Is(err, tsdb.ErrAlreadyExists) {
 				resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
 				break
 			}
@@ -196,30 +213,47 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, nil)
 		// }
 	case routes.PushMetricBlob:
-		reqBody := body_types.PointCollectionWithTagsAndName{}
-		err := decode(r.Message, &reqBody)
+		reqBody := []*body_types.TimeseriesDTO{}
 
+		d.logger.Infof("Adding: %+v, type:%s", r.Message, reflect.TypeOf(r.Message))
+
+		err := decode(r.Message, &reqBody)
 		if err != nil {
 			d.logger.Error(err)
 			err = ErrBadBodyType
 			resp = body_types.NewResponse(r.ID, false, err, 400, r.Type, nil)
 			break
 		}
-
-		for _, m := range reqBody {
-			d.logger.Info("Adding metric")
-			err = d.db.AddMetric(m.Name, m.Tags, m.Point.Fields, m.Point.TS)
-			if err != nil {
-				d.logger.Errorf("Got error adding metric blob: %s", err.Error())
-				if err == tsdb.ErrBucketNotFound {
-					resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
-					break
-				}
-				resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
-			}
-
-			d.logger.Info("Done adding metric...")
+		d.logger.Infof("Decoded: %+v, type:%s", reqBody, reflect.TypeOf(reqBody))
+		tsArr := make([]tsdb.ReadOnlyTimeSeries, 0, len(reqBody))
+		for _, ts := range reqBody {
+			tsArr = append(tsArr, tsdb.StaticTimeseriesFromDTO(ts))
 		}
+		err = d.db.AddAll(tsArr)
+		if err != nil {
+			d.logger.Errorf("Got error adding metric blob: %s", err.Error())
+			if errors.Is(err, tsdb.ErrBucketNotFound) {
+				resp = body_types.NewResponse(r.ID, false, err, 404, r.Type, nil)
+				break
+			}
+		}
+
+		// for _, m := range reqBody {
+		// 	d.logger.Info("Adding metric")
+		// 	err = d.db.AddMetric(m.Name, m.Tags, m.Point.Fields, m.Point.TS)
+		// 	if err != nil {
+		// 		d.logger.Errorf("Got error adding metric blob: %s", err.Error())
+		// 		if errors.Is(err, tsdb.ErrBucketNotFound) {
+		// 			resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
+		// 			break switchLabel
+		// 		}
+		// 		resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
+		// 		break switchLabel
+		// 	}
+
+		// 	d.logger.Info("Done adding metric...")
+		// }
+
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, nil)
 	case routes.Query:
 		reqBody := body_types.QueryRequest{}
@@ -232,38 +266,30 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			break
 		}
 
-		var queryResult []tsdb.TimeSeries
+		var queryResult []tsdb.ReadOnlyTimeSeries
 		queryResult, err = d.me.MakeQuery(reqBody.Query.Expression, reqBody.Query.Timeout)
-
 		if err != nil {
 			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
 			break
 		}
 
-		toReturn := make([]body_types.Timeseries, 0, len(queryResult))
+		// toReturn := make([]body_types.ReadOnlyTimeSeries, 0, len(queryResult))
 
-		for _, ts := range queryResult {
-			allPts := ts.All()
-			toReturnPts := make([]body_types.Point, 0, len(allPts))
+		// for _, ts := range queryResult {
+		// 	allPts := ts.All()
+		// 	toReturnPts := make([]body_types.Point, 0, len(allPts))
+		// 	for _, p := range allPts {
+		// 		toReturnPts = append(
+		// 			toReturnPts, body_types.Point{
+		// 				TS:     p.TS(),
+		// 				Fields: p.Value(),
+		// 			},
+		// 		)
+		// 	}
+		// 	toReturn = append(toReturn, body_types.NewStaticTimeSeries(ts.Name(), ts.Tags(), toReturnPts))
+		// }
 
-			for _, p := range allPts {
-				toReturnPts = append(
-					toReturnPts, body_types.Point{
-						TS:     p.TS(),
-						Fields: p.Value(),
-					},
-				)
-			}
-
-			toReturn = append(
-				toReturn, body_types.Timeseries{
-					Name:   ts.Name(),
-					Tags:   ts.Tags(),
-					Points: toReturnPts,
-				},
-			)
-		}
-		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, toReturn)
+		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, queryResult)
 	case routes.InstallContinuousQuery:
 		reqBody := body_types.InstallContinuousQueryRequest{}
 		err := decode(r.Message, &reqBody)
@@ -286,17 +312,18 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 				break
 			}
 			resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
+			break
 		}
 
 		d.logger.Infof("installed bucket: %+v", reqBody.OutputBucketOpts)
 
-		taskId := atomic.AddUint64(d.continuousQueriesCounter, 1)
+		taskID := atomic.AddUint64(d.continuousQueriesCounter, 1)
 		trigger := quartz.NewSimpleTrigger(reqBody.OutputBucketOpts.Granularity.Granularity)
 		cc := &continuousQueryValueType{
 			mu:               &sync.Mutex{},
 			description:      reqBody.Description,
 			err:              nil,
-			id:               int(taskId),
+			id:               int(taskID),
 			nrRetries:        reqBody.NrRetries,
 			query:            reqBody.Expression,
 			queryTimeout:     reqBody.ExpressionTimeout,
@@ -305,8 +332,8 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		}
 		d.continuousQueries.Store(cc.id, cc)
 		d.schedulerMu.Lock()
-		job := &continuousQueryJobType{
-			id: int(taskId),
+		job := &continuousQueryJobWrapper{
+			id: int(taskID),
 			d:  d,
 		}
 		err = d.scheduler.ScheduleJob(job, trigger)
@@ -318,14 +345,13 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		}
 
 		ans := body_types.InstallContinuousQueryReply{
-			TaskID: taskId,
+			TaskID: taskID,
 		}
 		d.schedulerMu.Unlock()
 		d.logger.Infof("installed continuous query: %+v", reqBody)
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, ans)
 	case routes.GetContinuousQueries:
 		ans := body_types.GetContinuousQueriesReply{}
-
 		d.continuousQueries.Range(
 			func(key, value interface{}) bool {
 				job := value.(*continuousQueryValueType)
@@ -351,7 +377,34 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		)
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, ans)
 	case routes.InstallCustomInterestSet:
-		d.logger.Panic("not yet implemented")
+		reqBody := body_types.CustomInterestSet{}
+		err := decode(r.Message, &reqBody)
+		if err != nil {
+			d.logger.Error(err)
+			err = ErrBadBodyType
+			resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, nil)
+			break
+		}
+
+		d.logger.Infof("Creating custom interest set func output bucket: %s", reqBody.IS.OutputBucketOpts.Name)
+
+		_, err = d.db.CreateBucket(
+			reqBody.IS.OutputBucketOpts.Name,
+			reqBody.IS.OutputBucketOpts.Granularity.Granularity,
+			reqBody.IS.OutputBucketOpts.Granularity.Count,
+		)
+
+		if err != nil {
+			d.logger.Errorf("Got error installing custom interest set: %s", err.Error())
+			if errors.Is(err, tsdb.ErrAlreadyExists) {
+				resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
+				break
+			}
+			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
+			break
+		}
+
+		// d.logger.Panic("not yet implemented")
 	case routes.InstallNeighborhoodInterestSet:
 		reqBody := body_types.NeighborhoodInterestSet{}
 		err := decode(r.Message, &reqBody)
@@ -362,7 +415,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			break
 		}
 
-		d.logger.Infof("Creating aggregation func output bucket: %s", reqBody.IS.OutputBucketOpts.Name)
+		d.logger.Infof("Creating neigh interest set func output bucket: %s", reqBody.IS.OutputBucketOpts.Name)
 
 		_, err = d.db.CreateBucket(
 			reqBody.IS.OutputBucketOpts.Name,
@@ -372,21 +425,24 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 
 		if err != nil {
 			d.logger.Errorf("Got error installing neighborhood interest set: %s", err.Error())
-			if err == tsdb.ErrAlreadyExists {
+			if errors.Is(err, tsdb.ErrAlreadyExists) {
 				resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
+				break
 			}
+			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
 			break
 		}
 		neighSetID := Hash(reqBody.IS)
 		d.monitorProto.AddNeighborhoodInterestSetReq(neighSetID, reqBody)
 		d.logger.Infof("Added new neighborhood interest set: %+v", reqBody)
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, neighSetID)
+
 	case routes.BroadcastMessage:
 		d.logger.Panic("not yet implemented")
 	case routes.AlarmTrigger:
 		d.logger.Panic("not yet implemented")
 	default:
-		resp = body_types.NewResponse(r.ID, false, ErrNonRecognizedOp, 200, r.Type, nil)
+		resp = body_types.NewResponse(r.ID, false, ErrNonRecognizedOp, 400, r.Type, nil)
 	}
 
 	if resp.Error {
@@ -397,7 +453,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 
 	select {
 	case c.out <- resp:
-	case <-time.After(2 * time.Second):
+	case <-time.After(DeliverRequestResponseTimeout):
 		d.logger.Panic("TIMEOUT: Could not deliver response")
 	}
 }
@@ -458,6 +514,60 @@ func (d *Demmon) writePump(c *client) {
 	}
 }
 
+func (d *Demmon) handleCustomInterestSet(taskID int) { // TODO FIXME
+	jobGeneric, ok := d.customInterestSets.Load(taskID)
+	if !ok {
+		return
+	}
+	job := jobGeneric.(*body_types.CustomInterestSet)
+	clients := make([]*demmon_client.DemmonClient, len(job.Hosts))
+	for _, p := range job.Hosts { // TODO set ports on hosts instead
+		newCL := demmon_client.New(demmon_client.DemmonClientConf{
+			DemmonPort:     d.conf.ListenPort, // TODO remove this
+			DemmonHostAddr: p.IP.String(),
+			RequestTimeout: job.IS.Query.Timeout,
+		})
+
+		i := 0
+		for ; ; i++ {
+			err := newCL.ConnectTimeout(job.IS.Query.Timeout)
+			if err != nil {
+				if i == job.IS.MaxRetries {
+					// TODO give error
+					return
+				}
+				continue
+			}
+			break
+		}
+	}
+
+	ticker := time.NewTicker(job.IS.OutputBucketOpts.Granularity.Granularity)
+	for range ticker.C {
+		jobGeneric, ok = d.customInterestSets.Load(taskID)
+		if !ok {
+			d.logger.Info("Custom interest set %d returning", taskID)
+			return
+		}
+		job := jobGeneric.(customInterestSetValueType)
+		query := job.is.IS.Query
+		for _, cl := range clients {
+			res, err := cl.Query(query.Expression, query.Timeout)
+			if err != nil {
+				job.Lock()
+				job.nrRetries++
+				job.Unlock()
+			}
+			toAdd := []tsdb.ReadOnlyTimeSeries{}
+			for _, ts := range res {
+				toAdd = append(toAdd, tsdb.StaticTimeseriesFromDTO(ts))
+			}
+			d.db.AddAll(toAdd) // TODO
+		}
+
+	}
+}
+
 func (d *Demmon) handleContinuousQueryTrigger(taskID int) {
 	jobGeneric, ok := d.continuousQueries.Load(taskID)
 	if !ok {
@@ -465,7 +575,6 @@ func (d *Demmon) handleContinuousQueryTrigger(taskID int) {
 		d.schedulerMu.Lock()
 		defer d.schedulerMu.Unlock()
 		err := d.scheduler.DeleteJob(taskID)
-
 		if err != nil {
 			d.logger.Errorf("Failed to delete continuous query: %s", err.Error())
 		}
@@ -495,17 +604,23 @@ func (d *Demmon) handleContinuousQueryTrigger(taskID int) {
 	}
 
 	for _, ts := range res {
-		allPts := ts.All()
-		if len(allPts) == 0 {
-			d.logger.Error("Timeseries result is empty")
-			continue
-		}
-		for _, pt := range allPts {
-			err := d.db.AddMetric(job.outputBucketOpts.Name, ts.Tags(), pt.Value(), pt.TS())
-			if err != nil {
-				panic(err)
-			}
-		}
+		ts.(tsdb.TimeSeries).SetName(job.outputBucketOpts.Name)
+
+		// allPts := ts.All()
+		// if len(allPts) == 0 {
+		// 	d.logger.Error("Timeseries result is empty")
+		// 	continue
+		// }
+		// for _, pt := range allPts {
+		// 	err := d.db.AddMetric(job.outputBucketOpts.Name, ts.Tags(), pt.Value(), pt.TS())
+		// 	if err != nil {
+		// 		panic(err)
+		// 	}
+		// }
+	}
+	err = d.db.AddAll(res)
+	if err != nil {
+		panic(err)
 	}
 
 	job.triedNr = 0
@@ -572,6 +687,7 @@ func decode(input, result interface{}) error {
 	decoder, err := mapstructure.NewDecoder(
 		&mapstructure.DecoderConfig{
 			Metadata: nil,
+			TagName:  "json",
 			DecodeHook: mapstructure.ComposeDecodeHookFunc(
 				toTimeHookFunc(),
 			),
@@ -582,7 +698,7 @@ func decode(input, result interface{}) error {
 		return err
 	}
 
-	if err := decoder.Decode(input); err != nil {
+	if err = decoder.Decode(input); err != nil {
 		return err
 	}
 	return err

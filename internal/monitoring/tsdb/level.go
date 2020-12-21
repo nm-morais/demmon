@@ -1,6 +1,8 @@
 package tsdb
 
-import "time"
+import (
+	"time"
+)
 
 // Information kept per level. Each level consists of a circular list of
 // observations. The start of the level may be derived from end and the

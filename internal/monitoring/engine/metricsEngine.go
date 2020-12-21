@@ -50,7 +50,7 @@ var (
 	errEmptyResult          = errors.New("query did not return any values")
 )
 
-func (e *MetricsEngine) MakeQuery(expression string, timeoutDuration time.Duration) ([]tsdb.TimeSeries, error) {
+func (e *MetricsEngine) MakeQuery(expression string, timeoutDuration time.Duration) ([]tsdb.ReadOnlyTimeSeries, error) {
 	ottoVal, err := e.runWithTimeout(expression, timeoutDuration)
 	if err != nil {
 		return nil, err
@@ -59,12 +59,14 @@ func (e *MetricsEngine) MakeQuery(expression string, timeoutDuration time.Durati
 	if err != nil {
 		return nil, err
 	}
+	e.logger.Infof("Query %s got result %+v", expression, vGeneric)
 	switch vConverted := vGeneric.(type) {
-	case []tsdb.TimeSeries:
+	case []tsdb.ReadOnlyTimeSeries:
 		return vConverted, nil
-	case tsdb.TimeSeries:
-		return []tsdb.TimeSeries{vConverted}, nil
+	case tsdb.ReadOnlyTimeSeries:
+		return []tsdb.ReadOnlyTimeSeries{vConverted}, nil
 	default:
+		e.logger.Panicf("Unsupported return type: %s, (%+v)", reflect.TypeOf(vConverted), vConverted)
 		return nil, errUnsuportedReturnType
 	}
 }
@@ -212,7 +214,7 @@ func (e *MetricsEngine) setVMFunctions(vm *otto.Otto) {
 
 func (e *MetricsEngine) selectTs(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
 
-	var queryResult []tsdb.TimeSeries
+	var queryResult []tsdb.ReadOnlyTimeSeries
 	defer e.logger.Infof("Select query result: %+v", queryResult)
 
 	name, tagFilters, isTagFilterAll := extractSelectArgs(vm, call)
@@ -280,7 +282,7 @@ func (e *MetricsEngine) selectLast(vm *otto.Otto, call *otto.FunctionCall) otto.
 
 	e.logger.Infof("SelectLast query...")
 
-	var queryResult []tsdb.TimeSeries
+	var queryResult []tsdb.ReadOnlyTimeSeries
 
 	defer e.logger.Infof("SelectLast query result: : %+v", queryResult)
 
@@ -344,7 +346,7 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call *otto.FunctionCall) otto
 		return otto.Value{}
 	}
 
-	var queryResult []tsdb.TimeSeries
+	var queryResult []tsdb.ReadOnlyTimeSeries
 	defer e.logger.Infof("SelectRange query result: : %+v", queryResult)
 	if isTagFilterAll {
 
@@ -431,6 +433,7 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call *otto.FunctionCall) otto
 // }
 
 func (e *MetricsEngine) max(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
+
 	if len(call.ArgumentList) != 2 {
 		throw(vm, fmt.Sprintf("Invalid args: not enough args, got: %d", len(call.ArgumentList)))
 		return otto.Value{}
@@ -457,10 +460,10 @@ func (e *MetricsEngine) max(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
 		}
 	}
 	switch toProcess := tsArrGeneric.(type) {
-	case tsdb.TimeSeries:
+	case tsdb.ReadOnlyTimeSeries:
 		resultingName = toProcess.Name()
 		max(vm, toProcess.All(), fieldRegex, fieldMaxs, isTagFilterAll)
-	case []tsdb.TimeSeries:
+	case []tsdb.ReadOnlyTimeSeries:
 		i := 0
 		for _, ts := range toProcess {
 			if i == 0 {
@@ -495,7 +498,8 @@ func (e *MetricsEngine) max(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
 		make(map[string]string),
 		tsdb.NewObservable(fieldMaxs, time.Now()),
 	)
-	res, err := vm.ToValue(toReturn.(tsdb.TimeSeries))
+
+	res, err := vm.ToValue(toReturn.(tsdb.ReadOnlyTimeSeries))
 	if err != nil {
 		throw(vm, fmt.Sprintf("An error occurred transforming function output to js object: %s", err.Error()))
 		return otto.Value{}
@@ -562,10 +566,10 @@ func (e *MetricsEngine) min(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 	}
 
 	switch toProcess := tsArrGeneric.(type) {
-	case tsdb.TimeSeries:
+	case tsdb.ReadOnlyTimeSeries:
 		resultingName = toProcess.Name()
 		min(vm, toProcess.All(), fieldRegex, fieldMins, isTagFilterAll)
-	case []tsdb.TimeSeries:
+	case []tsdb.ReadOnlyTimeSeries:
 		i := 0
 		for _, ts := range toProcess {
 			if i == 0 {
@@ -677,10 +681,10 @@ func (e *MetricsEngine) avg(vm *otto.Otto, call otto.FunctionCall) otto.Value {
 	}
 
 	switch toProcess := tsArrGeneric.(type) {
-	case tsdb.TimeSeries:
+	case tsdb.ReadOnlyTimeSeries:
 		resultingName = toProcess.Name()
 		avg(vm, toProcess.All(), fieldRegex, fieldCounters, isTagFilterAll)
-	case []tsdb.TimeSeries:
+	case []tsdb.ReadOnlyTimeSeries:
 		i := 0
 		for _, ts := range toProcess {
 			if i == 0 {
@@ -893,10 +897,10 @@ func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) 
 
 // var aggregationFunctions = map[string]govaluate.ExpressionFunction{
 // 	"max": func(args ...interface{}) (interface{}, error) {
-// 		var ts tsdb.TimeSeries
+// 		var ts tsdb.ReadOnlyTimeSeries
 // 		var max float64 = -math.MaxFloat64
 // 		switch converted := args[0].(type) {
-// 		case tsdb.TimeSeries:
+// 		case tsdb.ReadOnlyTimeSeries:
 // 			ts = converted
 // 		case string:
 // 			aux, err := instance.db.GetTimeseries(args[0].(string))
@@ -918,10 +922,10 @@ func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) 
 // 		return (float64)(max), nil
 // 	},
 // 	"min": func(args ...interface{}) (interface{}, error) {
-// 		var ts tsdb.TimeSeries
+// 		var ts tsdb.ReadOnlyTimeSeries
 // 		var min float64 = math.MaxFloat64
 // 		switch converted := args[0].(type) {
-// 		case tsdb.TimeSeries:
+// 		case tsdb.ReadOnlyTimeSeries:
 // 			ts = converted
 // 		case string:
 // 			aux, err := instance.db.GetTimeseries(args[0].(string))
@@ -945,10 +949,10 @@ func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) 
 
 // 	},
 // 	"avg": func(args ...interface{}) (interface{}, error) {
-// 		var ts tsdb.TimeSeries
+// 		var ts tsdb.ReadOnlyTimeSeries
 // 		var total float64
 // 		switch converted := args[0].(type) {
-// 		case tsdb.TimeSeries:
+// 		case tsdb.ReadOnlyTimeSeries:
 // 			ts = converted
 // 		case string:
 // 			aux, err := instance.db.GetTimeseries(args[0].(string))
@@ -973,9 +977,9 @@ func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) 
 // 		return (float64)(total / float64(len(all))), nil
 // 	},
 // 	"mode": func(args ...interface{}) (interface{}, error) {
-// 		var ts tsdb.TimeSeries
+// 		var ts tsdb.ReadOnlyTimeSeries
 // 		switch converted := args[0].(type) {
-// 		case tsdb.TimeSeries:
+// 		case tsdb.ReadOnlyTimeSeries:
 // 			ts = converted
 // 		case string:
 // 			aux, err := instance.db.GetTimeseries(args[0].(string))
@@ -998,9 +1002,9 @@ func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) 
 // 		return (float64)(getMode(tmp)), nil
 // 	},
 // 	"last": func(args ...interface{}) (interface{}, error) {
-// 		var ts tsdb.TimeSeries
+// 		var ts tsdb.ReadOnlyTimeSeries
 // 		switch converted := args[0].(type) {
-// 		case tsdb.TimeSeries:
+// 		case tsdb.ReadOnlyTimeSeries:
 // 			ts = converted
 // 		case string:
 // 			aux, err := instance.db.GetTimeseries(args[0].(string))
@@ -1021,13 +1025,13 @@ func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) 
 // 		return (float64)(v.Value), nil
 // 	},
 // 	"range": func(args ...interface{}) (interface{}, error) {
-// 		var ts tsdb.TimeSeries
+// 		var ts tsdb.ReadOnlyTimeSeries
 // 		if len(args) != 3 {
 // 			return nil, fmt.Errorf("Not enough argumments for range, need 3, have %d", len(args))
 // 		}
 
 // 		switch converted := args[0].(type) {
-// 		case tsdb.TimeSeries:
+// 		case tsdb.ReadOnlyTimeSeries:
 // 			ts = converted
 // 		case string:
 // 			aux, err := instance.db.GetTimeseries(args[0].(string))
@@ -1119,7 +1123,7 @@ func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) 
 // 	return val, nil
 // }
 
-// func (e *engine) getMetric(metricName string) (tsdb.TimeSeries, error) {
+// func (e *engine) getMetric(metricName string) (tsdb.ReadOnlyTimeSeries, error) {
 // 	return e.db.GetTimeseries(metricName)
 // }
 
