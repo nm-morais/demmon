@@ -17,8 +17,8 @@ type Observable interface {
 }
 
 type observable struct {
-	ObsTS     time.Time              `json:"timestamp"`
-	ObsFields map[string]interface{} `json:"fields"`
+	ObsTS     time.Time
+	ObsFields map[string]interface{}
 }
 
 func NewObservable(fields map[string]interface{}, ts time.Time) Observable {

@@ -15,17 +15,17 @@ type ReadOnlyTimeSeries interface {
 	All() []Observable
 	Range(start time.Time, end time.Time) ([]Observable, error)
 	Last() Observable
-	ToDTO() *body_types.TimeseriesDTO
+	ToDTO() body_types.TimeseriesDTO
 }
 
 type StaticTimeseries struct {
 	mu              *sync.Mutex
-	MeasurementName string            `json:"name"`
-	TSTags          map[string]string `json:"tags"`
-	Values          []Observable      `json:"values"`
+	MeasurementName string
+	TSTags          map[string]string
+	Values          []Observable
 }
 
-func StaticTimeseriesFromDTO(dto *body_types.TimeseriesDTO) ReadOnlyTimeSeries {
+func StaticTimeseriesFromDTO(dto body_types.TimeseriesDTO) ReadOnlyTimeSeries {
 	ts := &StaticTimeseries{MeasurementName: dto.MeasurementName, TSTags: dto.TSTags, mu: &sync.Mutex{}}
 	for _, pt := range dto.Values {
 		ts.Values = append(ts.Values, NewObservable(pt.Fields, pt.TS))
@@ -157,33 +157,33 @@ func (t *StaticTimeseries) String() string {
 	return sb.String()
 }
 
-func (t *StaticTimeseries) ToDTO() *body_types.TimeseriesDTO {
-	toReturn := &body_types.TimeseriesDTO{
+func (t *StaticTimeseries) Range(start, end time.Time) ([]Observable, error) {
+	panic("not implemented")
+}
+
+func (t *StaticTimeseries) ToDTO() body_types.TimeseriesDTO {
+	toReturn := body_types.TimeseriesDTO{
 		MeasurementName: t.Name(),
 		TSTags:          t.Tags(),
 	}
 	for _, pt := range t.All() {
-		toReturn.Values = append(toReturn.Values, body_types.NewObservable(pt.Value(), pt.TS()))
+		toReturn.Values = append(toReturn.Values, body_types.NewObservableDTO(pt.Value(), pt.TS()))
 	}
 	return toReturn
 }
 
-func (t *StaticTimeseries) Count() int {
-	panic("not implemented")
-}
+// func (t *StaticTimeseries) Count() int {
+// 	panic("not implemented")
+// }
 
-func (t *StaticTimeseries) Frequency() time.Duration {
-	panic("not implemented")
-}
+// func (t *StaticTimeseries) Frequency() time.Duration {
+// 	panic("not implemented")
+// }
 
-func (t *StaticTimeseries) AddPoint(p Observable) {
-	panic("not implemented")
-}
+// func (t *StaticTimeseries) AddPoint(p Observable) {
+// 	panic("not implemented")
+// }
 
-func (t *StaticTimeseries) Clear() {
-	panic("not implemented")
-}
-
-func (t *StaticTimeseries) Range(start, end time.Time) ([]Observable, error) {
-	panic("not implemented")
-}
+// func (t *StaticTimeseries) Clear() {
+// 	panic("not implemented")
+// }

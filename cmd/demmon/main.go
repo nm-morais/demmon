@@ -400,11 +400,11 @@ func setupDemmonMetrics() {
 			panic(err)
 		}
 
+		fmt.Println("Select('nr_goroutines_neigh','*') Query results :")
+
 		for _, ts := range res {
 			fmt.Printf("%+v, %+v\n", ts, err)
 		}
-
-		fmt.Println("Select('nr_goroutines_neigh','*') Query results :")
 
 		res, err = cl.Query(
 			"Select('neigh_routines_min','*')",

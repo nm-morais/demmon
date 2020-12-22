@@ -117,6 +117,7 @@ func (db *TSDB) AddMetric(
 	if !hasBucket {
 		return ErrBucketNotFound
 	}
+
 	timeseries := b.GetOrCreateTimeseries(tags)
 
 	pv := NewObservable(fields, timestamp)
@@ -203,6 +204,7 @@ func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) 
 	if err != nil {
 		logger.Panic(err)
 	}
+
 	file, err := os.Create(filePath)
 	if os.IsExist(err) {
 		var err = os.Remove(filePath)

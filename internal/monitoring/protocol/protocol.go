@@ -346,13 +346,15 @@ func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 		result,
 	)
 
+	timeseriesDTOs := make([]body_types.TimeseriesDTO, 0, len(result))
 	for _, ts := range result {
-		ts.(tsdb.TimeSeries).SetName(remoteInterestSet.InterestSet.OutputBucketOpts.Name)
-		ts.(tsdb.TimeSeries).SetTag("host", m.babel.SelfPeer().IP().String())
+		ts.(*tsdb.StaticTimeseries).SetName(remoteInterestSet.InterestSet.OutputBucketOpts.Name)
+		ts.(*tsdb.StaticTimeseries).SetTag("host", m.babel.SelfPeer().IP().String())
+		tsDTO := ts.ToDTO()
+		timeseriesDTOs = append(timeseriesDTOs, tsDTO)
 	}
 
-	toSendMsg := NewPropagateInterestSetMetricsMessage(interestSetID, result, 1)
-
+	toSendMsg := NewPropagateInterestSetMetricsMessage(interestSetID, timeseriesDTOs, 1)
 	for _, sub := range remoteInterestSet.subscribers {
 		if peer.PeersEqual(sub.p, m.babel.SelfPeer()) {
 			for _, ts := range result {
@@ -362,7 +364,6 @@ func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 					continue
 				}
 				for _, pt := range allPts {
-
 					err := m.tsdb.AddMetric(
 						remoteInterestSet.InterestSet.OutputBucketOpts.Name,
 						ts.Tags(),

@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"github.com/nm-morais/demmon-common/body_types"
-	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
 	"github.com/nm-morais/go-babel/pkg/message"
 	"k8s.io/apimachinery/pkg/util/json"
 )
@@ -118,22 +117,20 @@ const propagateInterestSetMetricsMsgID = 6002
 
 type PropagateInterestSetMetricsMsg struct {
 	InterestSetID uint64
-	Metrics       []*body_types.TimeseriesDTO
+	Metrics       []body_types.TimeseriesDTO
 	TTL           int
 }
 
 func NewPropagateInterestSetMetricsMessage(
 	interestSetID uint64,
-	tsArr []tsdb.ReadOnlyTimeSeries,
+	tsArr []body_types.TimeseriesDTO,
 	ttl int,
 ) PropagateInterestSetMetricsMsg {
 
 	toReturn := PropagateInterestSetMetricsMsg{
 		InterestSetID: interestSetID,
 		TTL:           ttl,
-	}
-	for _, ts := range tsArr {
-		toReturn.Metrics = append(toReturn.Metrics, ts.ToDTO())
+		Metrics:       tsArr,
 	}
 
 	return toReturn
@@ -166,10 +163,7 @@ func (propagateInterestSetMetricsMsgSerializer) Serialize(m message.Message) []b
 }
 
 func (propagateInterestSetMetricsMsgSerializer) Deserialize(msgBytes []byte) message.Message {
-	toDeserialize := PropagateInterestSetMetricsMsg{
-		Metrics: []*body_types.TimeseriesDTO{},
-	}
-
+	toDeserialize := PropagateInterestSetMetricsMsg{}
 	err := json.Unmarshal(msgBytes, &toDeserialize)
 
 	if err != nil {

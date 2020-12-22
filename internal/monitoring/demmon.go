@@ -213,7 +213,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, nil)
 		// }
 	case routes.PushMetricBlob:
-		reqBody := []*body_types.TimeseriesDTO{}
+		reqBody := []body_types.TimeseriesDTO{}
 
 		d.logger.Infof("Adding: %+v, type:%s", r.Message, reflect.TypeOf(r.Message))
 
@@ -236,6 +236,8 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 				resp = body_types.NewResponse(r.ID, false, err, 404, r.Type, nil)
 				break
 			}
+			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
+			break
 		}
 
 		// for _, m := range reqBody {
@@ -289,7 +291,11 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		// 	toReturn = append(toReturn, body_types.NewStaticTimeSeries(ts.Name(), ts.Tags(), toReturnPts))
 		// }
 
-		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, queryResult)
+		toReturn := make([]body_types.TimeseriesDTO, 0, len(queryResult))
+		for _, ts := range queryResult {
+			toReturn = append(toReturn, ts.ToDTO())
+		}
+		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, toReturn)
 	case routes.InstallContinuousQuery:
 		reqBody := body_types.InstallContinuousQueryRequest{}
 		err := decode(r.Message, &reqBody)
@@ -352,6 +358,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, ans)
 	case routes.GetContinuousQueries:
 		ans := body_types.GetContinuousQueriesReply{}
+
 		d.continuousQueries.Range(
 			func(key, value interface{}) bool {
 				job := value.(*continuousQueryValueType)
@@ -604,7 +611,7 @@ func (d *Demmon) handleContinuousQueryTrigger(taskID int) {
 	}
 
 	for _, ts := range res {
-		ts.(tsdb.TimeSeries).SetName(job.outputBucketOpts.Name)
+		ts.(*tsdb.StaticTimeseries).SetName(job.outputBucketOpts.Name)
 
 		// allPts := ts.All()
 		// if len(allPts) == 0 {
