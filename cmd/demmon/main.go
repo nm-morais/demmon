@@ -319,7 +319,7 @@ func setupDemmonMetrics() {
 		}
 	}()
 
-	msgChan, err := cl.InstallBroadcastMessageHandler(1)
+	msgChan, err := cl.InstallBroadcastMessageHandler(0)
 
 	if err != nil {
 		panic(err)

@@ -63,6 +63,14 @@ type continuousQueryValueType struct {
 	outputBucketOpts body_types.BucketOptions
 }
 
+type broadcastMessageSubscribers struct {
+	*sync.Mutex
+	subs []*struct {
+		client *client
+		subID  int
+	}
+}
+
 type customInterestSetWrapper struct {
 	nrRetries int
 	is        body_types.CustomInterestSet
@@ -443,9 +451,26 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		if !extractBody(r, &reqBody, d, resp) {
 			break
 		}
-		d.broadcastMessageSubscribers.Store(r.ID, c)
-		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, nil)
+		actualGeneric, loaded := d.broadcastMessageSubscribers.LoadOrStore(reqBody.ID, &broadcastMessageSubscribers{
+			Mutex: &sync.Mutex{},
+			subs: []*struct {
+				client *client
+				subID  int
+			}{
+				{client: c, subID: int(r.ID)},
+			},
+		})
 
+		if loaded {
+			actual := actualGeneric.(*broadcastMessageSubscribers)
+			actual.Lock()
+			actual.subs = append(actual.subs, &struct {
+				client *client
+				subID  int
+			}{client: c, subID: int(r.ID)})
+			actual.Unlock()
+		}
+		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, nil)
 	case routes.AlarmTrigger:
 		d.logger.Panic("not yet implemented")
 	default:
@@ -493,12 +518,18 @@ func (d *Demmon) handleBroadcastMessages() {
 	for bcastMsg := range msgChan {
 		msgCopy := bcastMsg
 		d.logger.Infof("Delivering Bcast message: %+v", bcastMsg)
-		d.broadcastMessageSubscribers.Range(func(key, valueGeneric interface{}) bool {
-			subID := key.(uint64)
-			client := valueGeneric.(*client)
-			client.out <- body_types.NewResponse(subID, true, nil, 200, routes.InstallBroadcastMessageHandler, msgCopy)
-			return true
-		})
+
+		subsGeneric, ok := d.broadcastMessageSubscribers.Load(bcastMsg.ID)
+		if !ok {
+			d.logger.Warn("Could not deliver broadcasted messages because there are no listeners for msg type %d", bcastMsg.ID)
+			continue
+		}
+		subs := subsGeneric.(*broadcastMessageSubscribers)
+		subs.Lock()
+		for _, cl := range subs.subs {
+			cl.client.out <- body_types.NewResponse(uint64(cl.subID), true, nil, 200, routes.InstallBroadcastMessageHandler, msgCopy)
+		}
+		subs.Unlock()
 	}
 }
 
