@@ -2,8 +2,10 @@ package protocol
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"time"
 
+	"github.com/nm-morais/demmon-common/body_types"
 	"github.com/nm-morais/go-babel/pkg/message"
 )
 
@@ -747,6 +749,54 @@ func (WalkReplyMessageSerializer) Serialize(msg message.Message) []byte {
 func (WalkReplyMessageSerializer) Deserialize(msgBytes []byte) message.Message {
 	_, sample := DeserializePeerWithIDChainArray(msgBytes)
 	return WalkReplyMessage{Sample: sample}
+}
+
+const broadcastMessageID = 1012
+
+func NewBroadcastMessage(wrappedMsg body_types.Message) BroadcastMessage {
+	return BroadcastMessage{
+		Message: wrappedMsg,
+	}
+}
+
+type BroadcastMessage struct {
+	Message body_types.Message
+}
+
+type BroadcastMessageSerializer struct{}
+
+func (BroadcastMessage) Type() message.ID {
+	return broadcastMessageID
+}
+
+var broadcastMessageSerializer = BroadcastMessageSerializer{}
+
+func (BroadcastMessage) Serializer() message.Serializer {
+	return broadcastMessageSerializer
+}
+
+func (BroadcastMessage) Deserializer() message.Deserializer {
+	return broadcastMessageSerializer
+}
+
+func (BroadcastMessageSerializer) Serialize(msg message.Message) []byte {
+	broadcast := msg.(BroadcastMessage)
+	msgBytes, err := json.Marshal(broadcast.Message)
+
+	if err != nil {
+		panic(err)
+	}
+	return msgBytes
+}
+
+func (BroadcastMessageSerializer) Deserialize(msgBytes []byte) message.Message {
+	broadcastMsg := body_types.Message{}
+	err := json.Unmarshal(msgBytes, &broadcastMsg)
+
+	if err != nil {
+		panic(err)
+	}
+	return BroadcastMessage{Message: broadcastMsg}
 }
 
 /*

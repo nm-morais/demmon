@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"reflect"
@@ -22,6 +23,7 @@ import (
 	"github.com/nm-morais/demmon/internal/monitoring/engine"
 	monitoringProto "github.com/nm-morais/demmon/internal/monitoring/protocol"
 	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
+	"github.com/nm-morais/demmon/internal/utils"
 	"github.com/reugn/go-quartz/quartz"
 	"github.com/sirupsen/logrus"
 )
@@ -34,6 +36,7 @@ var upgrader = websocket.Upgrader{
 var (
 	ErrBadBodyType     = errors.New("bad request body type")
 	ErrNonRecognizedOp = errors.New("non-recognized operation")
+	ErrCannotConnect   = errors.New("could not connect to peer")
 )
 
 const (
@@ -66,8 +69,6 @@ type customInterestSetWrapper struct {
 	*sync.Mutex
 }
 
-type customInterestSetValueType = *customInterestSetWrapper
-
 type continuousQueryJobWrapper struct {
 	id int
 	d  *Demmon
@@ -95,19 +96,21 @@ type client struct {
 }
 
 type Demmon struct {
-	schedulerMu              *sync.Mutex
-	scheduler                quartz.Scheduler
-	customInterestSets       *sync.Map
-	continuousQueries        *sync.Map
-	continuousQueriesCounter *uint64
-	logger                   *logrus.Logger
-	counter                  *uint64
-	conf                     DemmonConf
-	db                       *tsdb.TSDB
-	nodeUpdatesSubscribers   *sync.Map
-	monitorProto             *monitoringProto.Monitor
-	fm                       *membershipFrontend.MembershipFrontend
-	me                       *engine.MetricsEngine
+	schedulerMu                     *sync.Mutex
+	scheduler                       quartz.Scheduler
+	customInterestSets              *sync.Map
+	continuousQueries               *sync.Map
+	continuousQueriesCounter        *uint64
+	logger                          *logrus.Logger
+	counter                         *uint64
+	conf                            DemmonConf
+	db                              *tsdb.TSDB
+	nodeUpdatesSubscribers          *sync.Map
+	broadcastMessageSubscribersLock *sync.Mutex
+	broadcastMessageSubscribers     *sync.Map
+	monitorProto                    *monitoringProto.Monitor
+	fm                              *membershipFrontend.MembershipFrontend
+	me                              *engine.MetricsEngine
 }
 
 func New(
@@ -118,23 +121,28 @@ func New(
 	fm *membershipFrontend.MembershipFrontend,
 ) *Demmon {
 	d := &Demmon{
-		continuousQueries:        &sync.Map{},
-		schedulerMu:              &sync.Mutex{},
-		scheduler:                quartz.NewStdScheduler(),
-		continuousQueriesCounter: new(uint64),
-		counter:                  new(uint64),
-		logger:                   logrus.New(),
-		nodeUpdatesSubscribers:   &sync.Map{},
-		customInterestSets:       &sync.Map{},
-		conf:                     dConf,
-		monitorProto:             monitorProto,
-		db:                       db,
-		fm:                       fm,
-		me:                       me,
+		continuousQueries:               &sync.Map{},
+		schedulerMu:                     &sync.Mutex{},
+		scheduler:                       quartz.NewStdScheduler(),
+		continuousQueriesCounter:        new(uint64),
+		counter:                         new(uint64),
+		logger:                          logrus.New(),
+		nodeUpdatesSubscribers:          &sync.Map{},
+		broadcastMessageSubscribersLock: &sync.Mutex{},
+		broadcastMessageSubscribers:     &sync.Map{},
+		customInterestSets:              &sync.Map{},
+		conf:                            dConf,
+		monitorProto:                    monitorProto,
+		db:                              db,
+		fm:                              fm,
+		me:                              me,
 	}
 	d.scheduler.Start()
-	setupLogger(d.logger, d.conf.LogFolder, d.conf.LogFile, d.conf.Silent)
 
+	go d.handleNodeUpdates()
+	go d.handleBroadcastMessages()
+
+	setupLogger(d.logger, d.conf.LogFolder, d.conf.LogFile, d.conf.Silent)
 	return d
 }
 
@@ -168,38 +176,23 @@ func (d *Demmon) handleDial(w http.ResponseWriter, req *http.Request) {
 func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 	d.logger.Infof("Got request %s with body; %+v", r.Type.String(), r.Message)
 
-	var resp *body_types.Response
+	var resp = &body_types.Response{}
 
 	switch r.Type {
 	case routes.GetInView:
-		ans, err := d.getInView()
-		if err != nil {
-			d.logger.Errorf("Got error fetching view: %s", err.Error())
-			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
-
-			break
-		}
-		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, ans)
+		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, d.getInView())
 	case routes.MembershipUpdates:
-		ans, err := d.subscribeNodeEvents(c)
-		if err != nil {
-			d.logger.Errorf("Got error subscribing to node events: %s", err.Error())
-			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, ans)
-
-			break
-		}
-		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, ans)
+		ans := d.subscribeNodeEvents(r, c)
+		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, ans)
 	case routes.GetRegisteredMetricBuckets:
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, d.db.GetRegisteredBuckets())
 	case routes.InstallBucket:
 		reqBody := body_types.BucketOptions{}
-		err := mapstructure.Decode(r.Message, &reqBody)
-		if err != nil {
-			resp = body_types.NewResponse(r.ID, false, err, 400, r.Type, nil)
+		if !extractBody(r, &reqBody, d, resp) {
 			break
 		}
 		// for _, m := range reqBody {
-		_, err = d.db.CreateBucket(reqBody.Name, reqBody.Granularity.Granularity, reqBody.Granularity.Count)
+		_, err := d.db.CreateBucket(reqBody.Name, reqBody.Granularity.Granularity, reqBody.Granularity.Count)
 		if err != nil {
 			if errors.Is(err, tsdb.ErrAlreadyExists) {
 				resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
@@ -215,21 +208,16 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 	case routes.PushMetricBlob:
 		reqBody := []body_types.TimeseriesDTO{}
 
-		d.logger.Infof("Adding: %+v, type:%s", r.Message, reflect.TypeOf(r.Message))
-
-		err := decode(r.Message, &reqBody)
-		if err != nil {
-			d.logger.Error(err)
-			err = ErrBadBodyType
-			resp = body_types.NewResponse(r.ID, false, err, 400, r.Type, nil)
+		if !extractBody(r, &reqBody, d, resp) {
 			break
 		}
-		d.logger.Infof("Decoded: %+v, type:%s", reqBody, reflect.TypeOf(reqBody))
+
+		d.logger.Infof("Adding: %+v, type:%s", r.Message, reflect.TypeOf(r.Message))
 		tsArr := make([]tsdb.ReadOnlyTimeSeries, 0, len(reqBody))
 		for _, ts := range reqBody {
 			tsArr = append(tsArr, tsdb.StaticTimeseriesFromDTO(ts))
 		}
-		err = d.db.AddAll(tsArr)
+		err := d.db.AddAll(tsArr)
 		if err != nil {
 			d.logger.Errorf("Got error adding metric blob: %s", err.Error())
 			if errors.Is(err, tsdb.ErrBucketNotFound) {
@@ -259,17 +247,11 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, nil)
 	case routes.Query:
 		reqBody := body_types.QueryRequest{}
-		err := decode(r.Message, &reqBody)
-
-		if err != nil {
-			d.logger.Error(err)
-			err = ErrBadBodyType
-			resp = body_types.NewResponse(r.ID, false, err, 400, r.Type, nil)
+		if !extractBody(r, &reqBody, d, resp) {
 			break
 		}
 
-		var queryResult []tsdb.ReadOnlyTimeSeries
-		queryResult, err = d.me.MakeQuery(reqBody.Query.Expression, reqBody.Query.Timeout)
+		queryResult, err := d.me.MakeQuery(reqBody.Query.Expression, reqBody.Query.Timeout)
 		if err != nil {
 			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
 			break
@@ -298,16 +280,11 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, toReturn)
 	case routes.InstallContinuousQuery:
 		reqBody := body_types.InstallContinuousQueryRequest{}
-		err := decode(r.Message, &reqBody)
-
-		if err != nil {
-			d.logger.Error(err)
-			err = ErrBadBodyType
-			resp = body_types.NewResponse(r.ID, false, err, 400, r.Type, nil)
+		if !extractBody(r, &reqBody, d, resp) {
 			break
 		}
 
-		_, err = d.db.CreateBucket(
+		_, err := d.db.CreateBucket(
 			reqBody.OutputBucketOpts.Name,
 			reqBody.OutputBucketOpts.Granularity.Granularity,
 			reqBody.OutputBucketOpts.Granularity.Count,
@@ -385,17 +362,11 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, ans)
 	case routes.InstallCustomInterestSet:
 		reqBody := body_types.CustomInterestSet{}
-		err := decode(r.Message, &reqBody)
-		if err != nil {
-			d.logger.Error(err)
-			err = ErrBadBodyType
-			resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, nil)
+		if !extractBody(r, &reqBody, d, resp) {
 			break
 		}
 
-		d.logger.Infof("Creating custom interest set func output bucket: %s", reqBody.IS.OutputBucketOpts.Name)
-
-		_, err = d.db.CreateBucket(
+		_, err := d.db.CreateBucket(
 			reqBody.IS.OutputBucketOpts.Name,
 			reqBody.IS.OutputBucketOpts.Granularity.Granularity,
 			reqBody.IS.OutputBucketOpts.Granularity.Count,
@@ -411,20 +382,28 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			break
 		}
 
+		setID := utils.GetRandInt(math.MaxInt64)
+		customIntSet := &customInterestSetWrapper{
+			nrRetries: 0,
+			is:        reqBody,
+			Mutex:     &sync.Mutex{},
+		}
+		d.logger.Infof("Creating custom interest set %d func output bucket: %s", setID, reqBody.IS.OutputBucketOpts.Name)
+		d.customInterestSets.Store(setID, customIntSet)
+
+		go d.handleCustomInterestSet(setID, r, c)
+		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, nil)
+
 		// d.logger.Panic("not yet implemented")
 	case routes.InstallNeighborhoodInterestSet:
 		reqBody := body_types.NeighborhoodInterestSet{}
-		err := decode(r.Message, &reqBody)
-		if err != nil {
-			d.logger.Error(err)
-			err = ErrBadBodyType
-			resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, nil)
+		if !extractBody(r, &reqBody, d, resp) {
 			break
 		}
 
 		d.logger.Infof("Creating neigh interest set func output bucket: %s", reqBody.IS.OutputBucketOpts.Name)
 
-		_, err = d.db.CreateBucket(
+		_, err := d.db.CreateBucket(
 			reqBody.IS.OutputBucketOpts.Name,
 			reqBody.IS.OutputBucketOpts.Granularity.Granularity,
 			reqBody.IS.OutputBucketOpts.Granularity.Count,
@@ -439,13 +418,34 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
 			break
 		}
+
 		neighSetID := Hash(reqBody.IS)
 		d.monitorProto.AddNeighborhoodInterestSetReq(neighSetID, reqBody)
 		d.logger.Infof("Added new neighborhood interest set: %+v", reqBody)
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, neighSetID)
 
 	case routes.BroadcastMessage:
-		d.logger.Panic("not yet implemented")
+		reqBody := body_types.Message{}
+		if !extractBody(r, &reqBody, d, resp) {
+			break
+		}
+
+		err := d.fm.BroadcastMessage(reqBody)
+		if err != nil {
+			resp = body_types.NewResponse(r.ID, false, err, 400, r.Type, nil)
+			break
+		}
+
+		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, nil)
+
+	case routes.InstallBroadcastMessageHandler:
+		reqBody := body_types.InstallMessageHandlerRequest{}
+		if !extractBody(r, &reqBody, d, resp) {
+			break
+		}
+		d.broadcastMessageSubscribers.Store(r.ID, c)
+		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, nil)
+
 	case routes.AlarmTrigger:
 		d.logger.Panic("not yet implemented")
 	default:
@@ -465,15 +465,69 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 	}
 }
 
-func (d *Demmon) subscribeNodeEvents(c *client) (body_types.NodeUpdateSubscriptionResponse, error) {
-	d.nodeUpdatesSubscribers.Store(c.id, c)
-	return body_types.NodeUpdateSubscriptionResponse{
-		View: d.fm.GetInView(),
-	}, nil
+func extractBody(r *body_types.Request, reqBody interface{}, d *Demmon, resp *body_types.Response) bool {
+	err := decode(r.Message, reqBody)
+	if err != nil {
+		d.logger.Error(err)
+		resp.Code = 400
+		resp.ID = r.ID
+		resp.Error = true
+		resp.Type = r.Type
+		resp.Message = ErrBadBodyType
+
+		return false
+	}
+
+	return true
 }
 
-func (d *Demmon) getInView() (body_types.View, error) {
-	return d.fm.GetInView(), nil
+func (d *Demmon) subscribeNodeEvents(r *body_types.Request, c *client) body_types.NodeUpdateSubscriptionResponse {
+	d.nodeUpdatesSubscribers.Store(r.ID, c)
+	return body_types.NodeUpdateSubscriptionResponse{
+		View: d.fm.GetInView(),
+	}
+}
+
+func (d *Demmon) handleBroadcastMessages() {
+	msgChan := d.fm.GetBroadcastChan()
+	for bcastMsg := range msgChan {
+		msgCopy := bcastMsg
+		d.logger.Infof("Delivering Bcast message: %+v", bcastMsg)
+		d.broadcastMessageSubscribers.Range(func(key, valueGeneric interface{}) bool {
+			subID := key.(uint64)
+			client := valueGeneric.(*client)
+			client.out <- body_types.NewResponse(subID, true, nil, 200, routes.InstallBroadcastMessageHandler, msgCopy)
+			return true
+		})
+	}
+}
+
+func (d *Demmon) handleNodeUpdates() {
+	nodeUps, nodeDowns := d.fm.MembershipUpdates()
+	for {
+		select {
+		case nodeUp := <-nodeUps:
+			d.logger.Infof("Delivering node up %+v", nodeUp)
+			d.nodeUpdatesSubscribers.Range(func(key, valueGeneric interface{}) bool {
+				subID := key.(uint64)
+				client := valueGeneric.(*client)
+				client.out <- body_types.NewResponse(subID, true, nil, 200, routes.MembershipUpdates, nodeUp)
+				return true
+			})
+		case nodeDown := <-nodeDowns:
+			d.logger.Infof("Delivering node down %+v", nodeDown)
+			d.nodeUpdatesSubscribers.Range(func(key, valueGeneric interface{}) bool {
+				subID := key.(uint64)
+				client := valueGeneric.(*client)
+				client.out <- body_types.NewResponse(subID, true, nil, 200, routes.MembershipUpdates, nodeDown)
+				return true
+			})
+		}
+	}
+}
+
+func (d *Demmon) getInView() body_types.View {
+	return d.fm.GetInView()
 }
 
 func (d *Demmon) readPump(c *client) {
@@ -521,57 +575,72 @@ func (d *Demmon) writePump(c *client) {
 	}
 }
 
-func (d *Demmon) handleCustomInterestSet(taskID int) { // TODO FIXME
+//TODO proper disconnecting
+func (d *Demmon) handleCustomInterestSet(taskID int, req *body_types.Request, c *client) {
+	defer d.logger.Warnf("Custom interest set %d returning", taskID)
 	jobGeneric, ok := d.customInterestSets.Load(taskID)
 	if !ok {
 		return
 	}
-	job := jobGeneric.(*body_types.CustomInterestSet)
-	clients := make([]*demmon_client.DemmonClient, len(job.Hosts))
-	for _, p := range job.Hosts { // TODO set ports on hosts instead
+	customJobWrapper := jobGeneric.(*customInterestSetWrapper)
+	clients := make([]*demmon_client.DemmonClient, len(customJobWrapper.is.Hosts))
+
+	for idx, p := range customJobWrapper.is.Hosts { // TODO set ports on hosts instead
+
 		newCL := demmon_client.New(demmon_client.DemmonClientConf{
 			DemmonPort:     d.conf.ListenPort, // TODO remove this
-			DemmonHostAddr: p.IP.String(),
-			RequestTimeout: job.IS.Query.Timeout,
+			DemmonHostAddr: p.String(),
+			RequestTimeout: customJobWrapper.is.IS.Query.Timeout,
 		})
 
 		i := 0
 		for ; ; i++ {
-			err := newCL.ConnectTimeout(job.IS.Query.Timeout)
+			err := newCL.ConnectTimeout(customJobWrapper.is.IS.Query.Timeout)
 			if err != nil {
-				if i == job.IS.MaxRetries {
-					// TODO give error
+				if i == customJobWrapper.is.IS.MaxRetries {
+					d.logger.Errorf("Could not connect to custom interest set %d target: %s ", taskID, p.String())
+					c.out <- body_types.NewResponse(req.ID, true, nil, 500, routes.InstallCustomInterestSet, ErrCannotConnect.Error())
 					return
 				}
 				continue
 			}
+			clients[idx] = newCL
 			break
 		}
 	}
 
-	ticker := time.NewTicker(job.IS.OutputBucketOpts.Granularity.Granularity)
+	ticker := time.NewTicker(customJobWrapper.is.IS.OutputBucketOpts.Granularity.Granularity)
+
 	for range ticker.C {
+		d.logger.Infof("Custom interest set %d trigger", taskID)
 		jobGeneric, ok = d.customInterestSets.Load(taskID)
 		if !ok {
-			d.logger.Info("Custom interest set %d returning", taskID)
 			return
 		}
-		job := jobGeneric.(customInterestSetValueType)
+		job := jobGeneric.(*customInterestSetWrapper)
 		query := job.is.IS.Query
+
 		for _, cl := range clients {
 			res, err := cl.Query(query.Expression, query.Timeout)
 			if err != nil {
-				job.Lock()
-				job.nrRetries++
-				job.Unlock()
+				c.out <- body_types.NewResponse(req.ID, true, nil, 500, routes.InstallCustomInterestSet, ErrCannotConnect)
+				return
 			}
 			toAdd := []tsdb.ReadOnlyTimeSeries{}
-			for _, ts := range res {
-				toAdd = append(toAdd, tsdb.StaticTimeseriesFromDTO(ts))
-			}
-			d.db.AddAll(toAdd) // TODO
-		}
 
+			for _, ts := range res {
+				ts.MeasurementName = job.is.IS.OutputBucketOpts.Name
+				tmp := tsdb.StaticTimeseriesFromDTO(ts)
+				toAdd = append(toAdd, tmp)
+			}
+			d.logger.Info("Custom interest set %d adding to DB values: %+v", toAdd)
+
+			err = d.db.AddAll(toAdd)
+			if err != nil {
+				d.logger.Panicf("Unexpected err adding metric to db: %s", err.Error())
+				return
+			}
+		}
 	}
 }
 
@@ -697,6 +766,7 @@ func decode(input, result interface{}) error {
 			TagName:  "json",
 			DecodeHook: mapstructure.ComposeDecodeHookFunc(
 				toTimeHookFunc(),
+				mapstructure.StringToIPHookFunc(),
 			),
 			Result: result,
 		},
@@ -704,8 +774,8 @@ func decode(input, result interface{}) error {
 	if err != nil {
 		return err
 	}
-
-	if err = decoder.Decode(input); err != nil {
+	err = decoder.Decode(input)
+	if err != nil {
 		return err
 	}
 	return err

@@ -288,6 +288,7 @@ func setupDemmonMetrics() {
 		RequestTimeout: requestTimeout,
 	}
 	cl := client.New(clientConf)
+
 	for i := 0; i < 3; i++ {
 		err := cl.ConnectTimeout(connectTimeout)
 		if err != nil {
@@ -298,123 +299,84 @@ func setupDemmonMetrics() {
 		break
 	}
 
-	_, err := cl.InstallContinuousQuery(
-		`Max(Select("nr_goroutines","*"),"*")`,
-		"the max of series nr_goroutines",
+	_, errChan, err := cl.InstallCustomInterestSet(
+		`SelectLast("nr_goroutines","*")`,
 		expressionTimeout,
-		exportFrequency,
-		"nr_goroutines_max",
-		defaultMetricCount,
-		maxRetries,
-	)
+		"nr_goroutines_landmarks",
+		[]net.IP{demmonTreeConf.Landmarks[0].Peer.IP()},
+		body_types.Granularity{
+			Granularity: exportFrequency,
+			Count:       10,
+		})
 
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = cl.InstallContinuousQuery(
-		`Avg(Select("nr_goroutines","*"),"*")`,
-		"the rolling average of series nr_goroutines",
-		expressionTimeout,
-		exportFrequency,
-		"nr_goroutines_avg",
-		defaultMetricCount,
-		maxRetries,
-	)
+	go func() {
+		for err := range errChan {
+			panic(err)
+		}
+	}()
+
+	msgChan, err := cl.InstallBroadcastMessageHandler(1)
 
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = cl.InstallContinuousQuery(
-		`Min(Select("nr_goroutines","*"),"*")`,
-		"the min of series nr_goroutines",
-		expressionTimeout,
-		exportFrequency,
-		"nr_goroutines_min",
-		defaultMetricCount,
-		maxRetries,
-	)
-
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = cl.InstallNeighborhoodInterestSet(&body_types.NeighborhoodInterestSet{
-		IS: body_types.InterestSet{
-			MaxRetries: maxRetries,
-			Query: body_types.RunnableExpression{
-				Expression: `SelectLast("nr_goroutines","*")`,
-				Timeout:    expressionTimeout,
-			},
-			OutputBucketOpts: body_types.BucketOptions{
-				Name: "nr_goroutines_neigh",
-				Granularity: body_types.Granularity{
-					Granularity: exportFrequency,
-					Count:       3,
-				},
-			},
-		},
-		TTL: defaultTTL,
-	})
-
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = cl.InstallContinuousQuery(
-		`
-		neighRoutines = Select("nr_goroutines_neigh","*")
-		result = Min(neighRoutines, "*")
-		`,
-		"the min of nr_goroutines of the neighborhood",
-		expressionTimeout,
-		exportFrequency,
-		"neigh_routines_min",
-		defaultMetricCount,
-		maxRetries,
-	)
-
-	if err != nil {
-		panic(err)
-	}
+	go func() {
+		for msg := range msgChan {
+			fmt.Printf("Got message:%+v\n", msg)
+		}
+	}()
 
 	for range time.NewTicker(tickerTimeout).C {
+		err := cl.BroadcastMessage(
+			body_types.Message{
+				ID:      1,
+				TTL:     2,
+				Content: struct{ Message string }{Message: "hey"}},
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		// res, err := cl.Query(
+		// 	"SelectLast('nr_goroutines_neigh',{'host':'.*'})",
+		// 	1*time.Second,
+		// )
+
+		// fmt.Println("SelectLast('nr_goroutines_neigh',{'host':'.*'}) Query results :")
+
+		// for _, ts := range res {
+		// 	fmt.Printf("%+v, %+v\n", ts, err)
+		// }
+
+		// res, err = cl.Query(
+		// 	"Select('nr_goroutines_neigh','*')",
+		// 	1*time.Second,
+		// )
+
+		// if err != nil {
+		// 	panic(err)
+		// }
+
+		// fmt.Println("Select('nr_goroutines_neigh','*') Query results :")
+
+		// for _, ts := range res {
+		// 	fmt.Printf("%+v, %+v\n", ts, err)
+		// }
+
 		res, err := cl.Query(
-			"SelectLast('nr_goroutines_neigh',{'host':'.*'})",
-			1*time.Second,
-		)
-
-		fmt.Println("SelectLast('nr_goroutines_neigh',{'host':'.*'}) Query results :")
-
-		for _, ts := range res {
-			fmt.Printf("%+v, %+v\n", ts, err)
-		}
-
-		res, err = cl.Query(
-			"Select('nr_goroutines_neigh','*')",
-			1*time.Second,
-		)
-
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println("Select('nr_goroutines_neigh','*') Query results :")
-
-		for _, ts := range res {
-			fmt.Printf("%+v, %+v\n", ts, err)
-		}
-
-		res, err = cl.Query(
-			"Select('neigh_routines_min','*')",
+			"Select('nr_goroutines','*')",
 			1*time.Second,
 		)
 		if err != nil {
 			panic(err)
 		}
 
-		fmt.Println("Select('neigh_routines_min','*') Query results :")
+		fmt.Println("Select('nr_goroutines_landmarks','*') Query results :")
 
 		for idx, ts := range res {
 			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
@@ -447,3 +409,98 @@ func getRandInt(max int64) int64 {
 
 	return n.Int64()
 }
+
+// _, err := cl.InstallContinuousQuery(
+// 	`Max(Select("nr_goroutines","*"),"*")`,
+// 	"the max of series nr_goroutines",
+// 	expressionTimeout,
+// 	exportFrequency,
+// 	"nr_goroutines_max",
+// 	defaultMetricCount,
+// 	maxRetries,
+// )
+
+// if err != nil {
+// 	panic(err)
+// }
+
+// _, err = cl.InstallContinuousQuery(
+// 	`Avg(Select("nr_goroutines","*"),"*")`,
+// 	"the rolling average of series nr_goroutines",
+// 	expressionTimeout,
+// 	exportFrequency,
+// 	"nr_goroutines_avg",
+// 	defaultMetricCount,
+// 	maxRetries,
+// )
+
+// if err != nil {
+// 	panic(err)
+// }
+
+// _, err = cl.InstallContinuousQuery(
+// 	`Min(Select("nr_goroutines","*"),"*")`,
+// 	"the min of series nr_goroutines",
+// 	expressionTimeout,
+// 	exportFrequency,
+// 	"nr_goroutines_min",
+// 	defaultMetricCount,
+// 	maxRetries,
+// )
+
+// if err != nil {
+// 	panic(err)
+// }
+
+// _, err = cl.InstallNeighborhoodInterestSet(&body_types.NeighborhoodInterestSet{
+// 	IS: body_types.InterestSet{
+// 		MaxRetries: maxRetries,
+// 		Query: body_types.RunnableExpression{
+// 			Expression: `SelectLast("nr_goroutines","*")`,
+// 			Timeout:    expressionTimeout,
+// 		},
+// 		OutputBucketOpts: body_types.BucketOptions{
+// 			Name: "nr_goroutines_neigh",
+// 			Granularity: body_types.Granularity{
+// 				Granularity: exportFrequency,
+// 				Count:       3,
+// 			},
+// 		},
+// 	},
+// 	TTL: defaultTTL,
+// })
+
+// if err != nil {
+// 	panic(err)
+// }
+
+// _, err = cl.InstallContinuousQuery(
+// 	`
+// 	neighRoutines = Select("nr_goroutines_neigh","*")
+// 	result = Min(neighRoutines, "*")
+// 	`,
+// 	"the min of nr_goroutines of the neighborhood",
+// 	expressionTimeout,
+// 	exportFrequency,
+// 	"neigh_routines_min",
+// 	defaultMetricCount,
+// 	maxRetries,
+// )
+
+// if err != nil {
+// 	panic(err)
+// }
+
+// res, err, updateChan := cl.SubscribeNodeUpdates()
+
+// if err != nil {
+// 	panic(err)
+// }
+
+// fmt.Println("Starting view:", res)
+
+// go func() {
+// 	for nodeUpdate := range updateChan {
+// 		fmt.Printf("Node Update: %+v\n", nodeUpdate)
+// 	}
+// }()

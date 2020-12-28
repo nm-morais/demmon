@@ -120,7 +120,7 @@ func (ts *timeSeries) String() string {
 // Add records an observation at the current time.
 func (ts *timeSeries) AddPoint(observation Observable) {
 	ts.mu.Lock()
-	ts.addWithTime(observation, ts.clock.Time())
+	ts.addWithTime(observation, observation.TS())
 	ts.mu.Unlock()
 }
 

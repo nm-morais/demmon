@@ -1,6 +1,9 @@
 package protocol
 
-import "github.com/nm-morais/go-babel/pkg/notification"
+import (
+	"github.com/nm-morais/demmon-common/body_types"
+	"github.com/nm-morais/go-babel/pkg/notification"
+)
 
 const peerMeasuredNotificationID = 2000
 
@@ -100,4 +103,20 @@ func NewIDChangeNotification(newID PeerIDChain) IDChangeNotification {
 
 func (IDChangeNotification) ID() notification.ID {
 	return IDChangeNotificationID
+}
+
+const BroadcastMessageReceivedID = 2006
+
+type BroadcastMessageReceived struct {
+	Message body_types.Message
+}
+
+func NewBroadcastMessageReceived(msgBytes body_types.Message) BroadcastMessageReceived {
+	return BroadcastMessageReceived{
+		Message: msgBytes,
+	}
+}
+
+func (BroadcastMessageReceived) ID() notification.ID {
+	return BroadcastMessageReceivedID
 }

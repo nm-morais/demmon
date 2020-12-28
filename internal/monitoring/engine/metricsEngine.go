@@ -215,7 +215,7 @@ func (e *MetricsEngine) setVMFunctions(vm *otto.Otto) {
 func (e *MetricsEngine) selectTs(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
 
 	var queryResult []tsdb.ReadOnlyTimeSeries
-	defer e.logger.Infof("Select query result: %+v", queryResult)
+	// defer e.logger.Infof("Select query result: %+v", queryResult)
 
 	name, tagFilters, isTagFilterAll := extractSelectArgs(vm, call)
 

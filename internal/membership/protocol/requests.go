@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"github.com/nm-morais/demmon-common/body_types"
 	"github.com/nm-morais/go-babel/pkg/protocol"
 	"github.com/nm-morais/go-babel/pkg/request"
 )
@@ -72,5 +73,21 @@ func (r GetIDReply) ID() protocol.ID {
 func NewGetIDReqReply(currID PeerIDChain) request.Reply {
 	return GetIDReply{
 		CurrID: currID,
+	}
+}
+
+const BroadcastMessageReqID = 2004
+
+type BroadcastMessageRequest struct {
+	Message body_types.Message
+}
+
+func (r BroadcastMessageRequest) ID() protocol.ID {
+	return BroadcastMessageReqID
+}
+
+func NewBroadcastMessageRequest(msg body_types.Message) request.Reply {
+	return BroadcastMessageRequest{
+		Message: msg,
 	}
 }

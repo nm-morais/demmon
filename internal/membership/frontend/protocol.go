@@ -18,30 +18,27 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type NodeChangeEvent struct {
-	Node *membershipProtocol.PeerWithIDChain
-	View membershipProtocol.InView
-}
-
 const protoID = 5000
 const name = "DemmonTree_Frontend"
 const requestIDLength = 10
 
 type MembershipFrontend struct {
-	logger    *logrus.Logger
-	requests  *sync.Map
-	babel     protocolManager.ProtocolManager
-	nodeUps   chan NodeChangeEvent
-	nodeDowns chan NodeChangeEvent
+	logger            *logrus.Logger
+	requests          *sync.Map
+	babel             protocolManager.ProtocolManager
+	nodeUps           chan body_types.NodeUpdates
+	nodeDowns         chan body_types.NodeUpdates
+	broadcastMessages chan body_types.Message
 }
 
 func New(babel protocolManager.ProtocolManager) *MembershipFrontend {
 	mf := &MembershipFrontend{
-		logger:    logs.NewLogger(name),
-		babel:     babel,
-		requests:  &sync.Map{},
-		nodeDowns: make(chan NodeChangeEvent),
-		nodeUps:   make(chan NodeChangeEvent),
+		logger:            logs.NewLogger(name),
+		babel:             babel,
+		requests:          &sync.Map{},
+		nodeDowns:         make(chan body_types.NodeUpdates),
+		nodeUps:           make(chan body_types.NodeUpdates),
+		broadcastMessages: make(chan body_types.Message),
 	}
 	babel.RegisterProtocol(mf)
 
@@ -64,6 +61,7 @@ func (f *MembershipFrontend) Init() {
 	f.babel.RegisterRequestReplyHandler(f.ID(), membershipProtocol.GetNeighboursReqReplyID, f.handleGetInViewReply)
 	f.babel.RegisterNotificationHandler(f.ID(), membershipProtocol.NodeUpNotification{}, f.handleNodeUp)
 	f.babel.RegisterNotificationHandler(f.ID(), membershipProtocol.NodeDownNotification{}, f.handleNodeDown)
+	f.babel.RegisterNotificationHandler(f.ID(), membershipProtocol.BroadcastMessageReceived{}, f.handleBcastMessageReceived)
 }
 
 func (f *MembershipFrontend) GetInView() body_types.View {
@@ -71,30 +69,60 @@ func (f *MembershipFrontend) GetInView() body_types.View {
 	reqChan := make(chan membershipProtocol.InView)
 	f.requests.Store(reqKey, reqChan)
 	f.babel.SendRequest(membershipProtocol.NewGetNeighboursReq(reqKey), f.ID(), membershipProtocol.ProtoID)
-
 	response := <-reqChan
-
 	return convertView(response)
+}
+
+func (f *MembershipFrontend) BroadcastMessage(msg body_types.Message) error {
+	f.babel.SendRequest(membershipProtocol.NewBroadcastMessageRequest(msg), f.ID(), membershipProtocol.ProtoID)
+	return nil
+}
+
+func (f *MembershipFrontend) handleBcastMessageReceived(notifGeneric notification.Notification) {
+	notif := notifGeneric.(membershipProtocol.BroadcastMessageReceived)
+	f.logger.Infof("Delivering received broadcast message: %+v", notif.Message)
+	select {
+	case f.broadcastMessages <- notif.Message:
+	default:
+		f.logger.Error("Discarding broadcast message because channel had no listener")
+	}
 }
 
 func (f *MembershipFrontend) handleNodeUp(n notification.Notification) {
 	nodeUp := n.(membershipProtocol.NodeUpNotification)
-	f.nodeUps <- NodeChangeEvent{
-		Node: nodeUp.PeerUp,
-		View: nodeUp.InView,
+	f.logger.Infof("Delivering node up event, peer: %+v, view:%+v", nodeUp.PeerUp, nodeUp.InView)
+	select {
+	case f.nodeUps <- body_types.NodeUpdates{
+		Type: body_types.NodeUp,
+		Peer: body_types.Peer{ID: nodeUp.PeerUp.Chain().String(), IP: nodeUp.PeerUp.IP()},
+		View: convertView(nodeUp.InView),
+	}:
+	default:
+		f.logger.Error("Discarding node update because channel had no listener")
 	}
 }
 
 func (f *MembershipFrontend) handleNodeDown(n notification.Notification) {
 	nodeDown := n.(membershipProtocol.NodeDownNotification)
-	f.nodeDowns <- NodeChangeEvent{
-		Node: nodeDown.PeerDown,
-		View: nodeDown.InView,
+	f.logger.Infof("Delivering node down event, peer: %+v, view:%+v", nodeDown.PeerDown, nodeDown.InView)
+	select {
+	case f.nodeDowns <- body_types.NodeUpdates{
+		Type: body_types.NodeDown,
+		Peer: body_types.Peer{ID: nodeDown.PeerDown.Chain().String(), IP: nodeDown.PeerDown.IP()},
+		View: convertView(nodeDown.InView),
+	}:
+
+	default:
+		f.logger.Error("Discarding node update because channel had no listener")
 	}
 }
 
-func (f *MembershipFrontend) MembershipUpdates() (nodeUp, nodeDown chan NodeChangeEvent) {
+func (f *MembershipFrontend) MembershipUpdates() (nodeUp, nodeDown chan body_types.NodeUpdates) {
 	return f.nodeUps, f.nodeDowns
+}
+
+func (f *MembershipFrontend) GetBroadcastChan() chan body_types.Message {
+	return f.broadcastMessages
 }
 
 func (f *MembershipFrontend) Start() {
@@ -176,8 +204,8 @@ func convertView(view membershipProtocol.InView) body_types.View {
 	if view.Grandparent != nil {
 
 		gparent = &body_types.Peer{
-			ID: view.Parent.Chain().String(),
-			IP: view.Parent.IP(),
+			ID: view.Grandparent.Chain().String(),
+			IP: view.Grandparent.IP(),
 		}
 	}
 	return body_types.View{

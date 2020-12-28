@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/nm-morais/demmon-common/body_types"
 	"github.com/nm-morais/demmon/internal/utils"
 	"github.com/nm-morais/go-babel/pkg/errors"
 	"github.com/nm-morais/go-babel/pkg/logs"
@@ -214,6 +215,7 @@ func (d *DemmonTree) Start() {
 
 func (d *DemmonTree) Init() {
 	d.babel.RegisterRequestHandler(d.ID(), GetNeighboursReqID, d.handleGetInView)
+	d.babel.RegisterRequestHandler(d.ID(), BroadcastMessageReqID, d.handleBroadcastMessageReq)
 
 	d.babel.RegisterMessageHandler(d.ID(), JoinMessage{}, d.handleJoinMessage)
 	d.babel.RegisterMessageHandler(d.ID(), JoinReplyMessage{}, d.handleJoinReplyMessage)
@@ -224,6 +226,8 @@ func (d *DemmonTree) Init() {
 	d.babel.RegisterMessageHandler(d.ID(), UpdateChildMessage{}, d.handleUpdateChildMessage)
 	d.babel.RegisterMessageHandler(d.ID(), AbsorbMessage{}, d.handleAbsorbMessage)
 	d.babel.RegisterMessageHandler(d.ID(), DisconnectAsChildMessage{}, d.handleDisconnectAsChildMsg)
+
+	d.babel.RegisterMessageHandler(d.ID(), BroadcastMessage{}, d.handleBroadcastMessage)
 
 	// d.babel.RegisterMessageHandler(d.ID(), switchMessage{}, d.handleSwitchMessage)
 	// d.babel.RegisterMessageHandler(d.ID(), joinAsParentMessage{}, d.handleJoinAsParentMessage)
@@ -262,15 +266,28 @@ func (d *DemmonTree) handleGetInView(req request.Request) request.Reply {
 	return NewGetNeighboursReqReply(getInViewReq.Key, view)
 }
 
+func (d *DemmonTree) handleBroadcastMessageReq(req request.Request) request.Reply {
+	bcastReq := req.(BroadcastMessageRequest)
+	wrapperMsg := NewBroadcastMessage(body_types.Message{
+		ID:      bcastReq.Message.ID,
+		TTL:     bcastReq.Message.TTL - 1,
+		Content: bcastReq.Message,
+	})
+	d.broadcastMessage(wrapperMsg, true, true, true)
+	return nil
+}
+
 // notification handlers
 
 func (d *DemmonTree) handlePeerMeasuredNotification(n notification.Notification) {
 	peerMeasuredNotification := n.(PeerMeasuredNotification)
 	delete(d.measuringPeers, peerMeasuredNotification.peerMeasured.String())
+
 	if d.isNeighbour(peerMeasuredNotification.peerMeasured.Peer) {
 		d.logger.Warnf("New peer measured: %s is a neighbor", peerMeasuredNotification.peerMeasured)
 		return
 	}
+
 	currNodeStats, err := d.nodeWatcher.GetNodeInfo(peerMeasuredNotification.peerMeasured)
 	if err != nil {
 		d.logger.Panic(err.Reason())
@@ -303,6 +320,7 @@ func (d *DemmonTree) handleLandmarkMeasuredNotification(nGeneric notification.No
 		if err != nil {
 			d.logger.Panic("landmark was measured but has no measurement...")
 		}
+
 		d.self.Coordinates[idx] = uint64(landmarkStats.LatencyCalc().CurrValue().Milliseconds())
 		d.self = NewPeerWithIDChain(
 			d.self.Chain(),
@@ -394,7 +412,9 @@ func (d *DemmonTree) sendUpdateChildMessage(dest peer.Peer) {
 
 		for _, sibling := range d.mySiblings {
 			nodeStats, err := d.nodeWatcher.GetNodeInfo(sibling.Peer)
+
 			var currLat time.Duration
+
 			if err != nil {
 				d.logger.Warnf("Do not have latency measurement for %s", sibling.String())
 				currLat = math.MaxInt64
@@ -436,6 +456,7 @@ func (d *DemmonTree) handleExternalNeighboringTimer(joinTimer timer.Timer) {
 
 	// r = rand.Float32()
 	var msgToSend message.Message
+
 	var peerToSendTo *PeerWithIDChain
 	// if r < d.config.BiasedWalkProbability {
 	// 	msgToSend = NewBiasedWalkMessage(uint16(d.config.RandomWalkTTL), selfPeerWithChain, sample)
@@ -1217,6 +1238,7 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 			upMsg.Parent.Chain().Level()+1,
 		) // IMPORTANT FOR VISUALIZER
 		d.self = NewPeerWithIDChain(myNewChain, d.self.Peer, d.self.nChildren, d.self.Version()+1, d.self.Coordinates)
+
 		for childStr, child := range d.myChildren {
 			childID := child.Chain()[len(child.Chain())-1]
 			d.myChildren[childStr] = NewPeerWithIDChain(
@@ -1245,6 +1267,25 @@ func (d *DemmonTree) handleUpdateChildMessage(sender peer.Peer, m message.Messag
 	}
 	d.myChildren[sender.String()] = upMsg.Child
 	d.myChildrenLatencies[child.String()] = upMsg.Siblings
+}
+
+func (d *DemmonTree) handleBroadcastMessage(sender peer.Peer, m message.Message) {
+	bcastMsg := m.(BroadcastMessage)
+	d.logger.Infof("got broadcastMessage %+v from %s", m, sender.String())
+	d.babel.SendNotification(NewBroadcastMessageReceived(bcastMsg.Message))
+	if bcastMsg.Message.TTL > 0 { // propagate
+		bcastMsg.Message.TTL--
+		sibling, child, parent := d.getPeerRelationshipType(sender)
+		if parent || sibling {
+			d.broadcastMessage(bcastMsg, false, true, false)
+			return
+		}
+
+		if child {
+			d.broadcastMessage(bcastMsg, true, false, true)
+			return
+		}
+	}
 }
 
 func (d *DemmonTree) InConnRequested(dialerProto protocol.ID, p peer.Peer) bool {
@@ -2347,6 +2388,46 @@ func (d *DemmonTree) peerMapToArr(peers map[string]*PeerWithIDChain) []*PeerWith
 		toReturn = append(toReturn, p)
 	}
 	return toReturn
+}
+
+func (d *DemmonTree) broadcastMessage(msg message.Message, sendToSiblings, sendToChildren, sendToParent bool) {
+	if sendToSiblings {
+		for _, s := range d.mySiblings {
+			d.babel.SendMessage(msg, s, d.ID(), d.ID())
+		}
+	}
+
+	if sendToChildren {
+		for _, s := range d.myChildren {
+			d.babel.SendMessage(msg, s, d.ID(), d.ID())
+		}
+	}
+
+	if sendToParent {
+		if d.myParent != nil {
+			d.babel.SendMessage(msg, d.myParent, d.ID(), d.ID())
+		}
+	}
+}
+
+func (d *DemmonTree) getPeerRelationshipType(p peer.Peer) (isSibling, isChildren, isParent bool) {
+	for _, sibling := range d.mySiblings {
+		if peer.PeersEqual(sibling, p) {
+			return true, false, false
+		}
+	}
+
+	for _, children := range d.myChildren {
+		if peer.PeersEqual(children, p) {
+			return false, true, false
+		}
+	}
+
+	if peer.PeersEqual(p, d.myParent) {
+		return false, false, true
+	}
+
+	return false, false, false
 }
 
 // func (d *DemmonTree) resetSwitchTimer() {
