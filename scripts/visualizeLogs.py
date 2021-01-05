@@ -50,10 +50,13 @@ def parse_files(file_paths, output_folder):
                 # split = line.split(" ")
                 # for i, s in enumerate(split):
                 # print(i, s)
-                parent_name = str(line.split(" ")[10])
+                split_line = line.split(" ")
+                # for i, s in enumerate(split_line):
+                #     print(i, s)
+
+                parent_name = str(split_line[11])
                 # print(parent_name)
                 parent_name = parent_name.split(":")[0]
-                # print(parent_name)
                 parent_ip = parent_name[6:]
 
             if "My level" in line and node_level == -1:
@@ -71,21 +74,22 @@ def parse_files(file_paths, output_folder):
                 split = line.split(" ")
                 # print(split)
 
-                ip_port = str(split[6])[:-1]
+                ip_port = str(split[7])[:-1]
                 ip = str(ip_port.split(":")[0])[6:]
 
-                # for i, s in enumerate(split):
-                #     print(i, s)
+                for i, s in enumerate(split):
+                    print(i, s)
                 # print(ip)
 
                 # print(line)
-                latStr = split[10]
+                latStr = split[11]
                 latStr2 = latStr[:-1]
 
                 try:
                     added = latencies_added[(node_ip, ip)]
                 except KeyError:
-                    latencies.append((node_ip, ip, (int(latStr2) / 1000000) / 2))
+                    latencies.append(
+                        (node_ip, ip, (int(latStr2) / 1000000) / 2))
                     latencies_added[(node_ip, ip)] = {}
 
         # print(latencies_added)
@@ -146,7 +150,8 @@ def parse_files(file_paths, output_folder):
         for latencyPair in nodes[node]["latencies"]:
             # G.add_edge(node, latencyPair[0], weight=latencyPair[1],
             #           parent=False, latency=True, label=latencyPair[1])
-            latencyEdges[(latencyPair[0], latencyPair[1])] = int(latencyPair[2])
+            latencyEdges[(latencyPair[0], latencyPair[1])
+                         ] = int(latencyPair[2])
 
         if nodes[node]["landmark"]:
             nodeLabels[node] = node
@@ -169,7 +174,8 @@ def parse_files(file_paths, output_folder):
                     curr = 0
                     parentPos = (parent_less_nodes, -10)
                     parent_less_nodes += 100
-                    print("err: {} has no parent, supposed to be: {}".format(node, parent))
+                    print("err: {} has no parent, supposed to be: {}".format(
+                        node, parent))
                     print("parent: {}".format(parent))
 
                 parent_children = children[parentId]
@@ -194,7 +200,8 @@ def parse_files(file_paths, output_folder):
                 print("thisLvlWidth", thisLvlWidth)
                 print("thisLvlStep", thisLvlStep)
 
-                nodePos = [parentPos[0] - (thisLvlWidth / 2) + curr * thisLvlStep, parentPos[1] + 5]
+                nodePos = [
+                    parentPos[0] - (thisLvlWidth / 2) + curr * thisLvlStep, parentPos[1] + 5]
 
                 nodes[node]["pos"] = nodePos
                 pos[node] = nodePos
@@ -273,13 +280,15 @@ def parse_files(file_paths, output_folder):
                            edge_color=parent_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, width=4, ax=ax)
     nx.draw_networkx_edges(G, pos, style='dashed', edgelist=latencyEdges, width=1,
                            alpha=0.5, edge_color=edge_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, ax=ax)
-    nx.draw_networkx_edge_labels(G, pos, latencyEdgeLabels, label_pos=0.33, alpha=0.5, font_size=6, ax=ax)
+    nx.draw_networkx_edge_labels(
+        G, pos, latencyEdgeLabels, label_pos=0.33, alpha=0.5, font_size=6, ax=ax)
 
     print(minLat, maxLat)
 
     cbaxes = fig.add_axes([0.95, 0.05, 0.01, 0.65])
     norm = mpl.colors.Normalize(vmin=minLat, vmax=maxLat)
-    cb1 = mpl.colorbar.ColorbarBase(cbaxes, cmap=cmap, norm=norm, orientation='vertical')
+    cb1 = mpl.colorbar.ColorbarBase(
+        cbaxes, cmap=cmap, norm=norm, orientation='vertical')
     plt.savefig("{}/topology.png".format(output_folder))
 
 

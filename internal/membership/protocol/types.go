@@ -68,7 +68,7 @@ func (c PeerIDChain) Level() uint16 {
 	return uint16(len(c)) - 1
 }
 
-// IsDescendant retuns true if chain <c> is contained in chain <otherPeerChain>.
+// IsDescendant returns true if chain <c> is contained in chain <otherPeerChain>.
 func (c PeerIDChain) IsDescendentOf(otherPeerChain PeerIDChain) bool {
 
 	if len(c) == 0 || len(otherPeerChain) == 0 {

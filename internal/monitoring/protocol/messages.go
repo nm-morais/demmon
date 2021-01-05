@@ -6,17 +6,17 @@ import (
 	"k8s.io/apimachinery/pkg/util/json"
 )
 
-// ADD INTEREST SET
+// NEIGH INTEREST SETS
 
 var installNeighInterestSetMsgSerializerVar = installNeighInterestSetMsgSerializer{}
 
 const InstallNeighInterestSetMsgID = 6000
 
 type InstallNeighInterestSetMsg struct {
-	InterestSets map[uint64]neighInterestSet
+	InterestSets map[int64]neighInterestSet
 }
 
-func NewInstallNeighInterestSetMessage(interestSets map[uint64]neighInterestSet) InstallNeighInterestSetMsg {
+func NewInstallNeighInterestSetMessage(interestSets map[int64]neighInterestSet) InstallNeighInterestSetMsg {
 	return InstallNeighInterestSetMsg{
 		InterestSets: interestSets,
 	}
@@ -58,38 +58,100 @@ func (installNeighInterestSetMsgSerializer) Deserialize(msgBytes []byte) message
 	return toDeserialize
 }
 
-var removeNeighInterestSetMsgSerializerVar = removeNeighInterestSetMsgSerializer{}
+// var removeNeighInterestSetMsgSerializerVar = removeNeighInterestSetMsgSerializer{}
 
 // REMOVE INTEREST SET
 
-const removeNeighInterestSetMsgID = 6001
+// const removeNeighInterestSetMsgID = 6001
 
-type RemoveNeighInterestSetMsg struct {
-	InterestSetID uint64
+// type RemoveNeighInterestSetMsg struct {
+// 	InterestSetID uint64
+// }
+
+// func NewRemoveNeighInterestSetMessage(id uint64) RemoveNeighInterestSetMsg {
+// 	return RemoveNeighInterestSetMsg{
+// 		InterestSetID: id,
+// 	}
+// }
+
+// func (RemoveNeighInterestSetMsg) Type() message.ID {
+// 	return removeNeighInterestSetMsgID
+// }
+
+// func (RemoveNeighInterestSetMsg) Serializer() message.Serializer {
+// 	return removeNeighInterestSetMsgSerializerVar
+// }
+
+// func (RemoveNeighInterestSetMsg) Deserializer() message.Deserializer {
+// 	return removeNeighInterestSetMsgSerializerVar
+// }
+
+// type removeNeighInterestSetMsgSerializer struct{}
+
+// func (removeNeighInterestSetMsgSerializer) Serialize(m message.Message) []byte {
+// 	mConverted := m.(RemoveNeighInterestSetMsg)
+// 	msgBytes, err := json.Marshal(mConverted)
+
+// 	if err != nil {
+// 		panic(err)
+// 	}
+
+// 	return msgBytes
+// }
+
+// func (removeNeighInterestSetMsgSerializer) Deserialize(msgBytes []byte) message.Message {
+// 	toDeserialize := RemoveNeighInterestSetMsg{}
+
+// 	err := json.Unmarshal(msgBytes, &toDeserialize)
+
+// 	if err != nil {
+// 		panic(err)
+// 	}
+
+// 	return toDeserialize
+// }
+
+var propagateNeighInterestSetMetricsMsgSerializerVar = propagateNeighInterestSetMetricsMsgSerializer{}
+
+const propagateInterestSetMetricsMsgID = 6002
+
+type PropagateNeighInterestSetMetricsMsg struct {
+	InterestSetID int64
+	Metrics       []body_types.TimeseriesDTO
+	TTL           int
 }
 
-func NewRemoveNeighInterestSetMessage(id uint64) RemoveNeighInterestSetMsg {
-	return RemoveNeighInterestSetMsg{
-		InterestSetID: id,
+func NewPropagateNeighInterestSetMetricsMessage(
+	interestSetID int64,
+	tsArr []body_types.TimeseriesDTO,
+	ttl int,
+) PropagateNeighInterestSetMetricsMsg {
+
+	toReturn := PropagateNeighInterestSetMetricsMsg{
+		InterestSetID: interestSetID,
+		TTL:           ttl,
+		Metrics:       tsArr,
 	}
+
+	return toReturn
 }
 
-func (RemoveNeighInterestSetMsg) Type() message.ID {
-	return removeNeighInterestSetMsgID
+func (PropagateNeighInterestSetMetricsMsg) Type() message.ID {
+	return propagateInterestSetMetricsMsgID
 }
 
-func (RemoveNeighInterestSetMsg) Serializer() message.Serializer {
-	return removeNeighInterestSetMsgSerializerVar
+func (PropagateNeighInterestSetMetricsMsg) Serializer() message.Serializer {
+	return propagateNeighInterestSetMetricsMsgSerializerVar
 }
 
-func (RemoveNeighInterestSetMsg) Deserializer() message.Deserializer {
-	return removeNeighInterestSetMsgSerializerVar
+func (PropagateNeighInterestSetMetricsMsg) Deserializer() message.Deserializer {
+	return propagateNeighInterestSetMetricsMsgSerializerVar
 }
 
-type removeNeighInterestSetMsgSerializer struct{}
+type propagateNeighInterestSetMetricsMsgSerializer struct{}
 
-func (removeNeighInterestSetMsgSerializer) Serialize(m message.Message) []byte {
-	mConverted := m.(RemoveNeighInterestSetMsg)
+func (propagateNeighInterestSetMetricsMsgSerializer) Serialize(m message.Message) []byte {
+	mConverted := m.(PropagateNeighInterestSetMetricsMsg)
 	msgBytes, err := json.Marshal(mConverted)
 
 	if err != nil {
@@ -99,9 +161,8 @@ func (removeNeighInterestSetMsgSerializer) Serialize(m message.Message) []byte {
 	return msgBytes
 }
 
-func (removeNeighInterestSetMsgSerializer) Deserialize(msgBytes []byte) message.Message {
-	toDeserialize := RemoveNeighInterestSetMsg{}
-
+func (propagateNeighInterestSetMetricsMsgSerializer) Deserialize(msgBytes []byte) message.Message {
+	toDeserialize := PropagateNeighInterestSetMetricsMsg{}
 	err := json.Unmarshal(msgBytes, &toDeserialize)
 
 	if err != nil {
@@ -111,48 +172,46 @@ func (removeNeighInterestSetMsgSerializer) Deserialize(msgBytes []byte) message.
 	return toDeserialize
 }
 
-var propagateInterestSetMetricsMsgSerializerVar = propagateInterestSetMetricsMsgSerializer{}
+// TREE AGG FUNCS
 
-const propagateInterestSetMetricsMsgID = 6002
+const propagateTreeAggFuncMetricsMsgID = 6003
 
-type PropagateInterestSetMetricsMsg struct {
-	InterestSetID uint64
-	Metrics       []body_types.TimeseriesDTO
-	TTL           int
+var propagateTreeAggFuncMsgSerializerVar = propagateTreeAggFuncMsgSerializer{}
+
+type PropagateTreeAggFuncMetricsMsg struct {
+	InterestSetID int64
+	Value         *body_types.ObservableDTO
 }
 
-func NewPropagateInterestSetMetricsMessage(
-	interestSetID uint64,
-	tsArr []body_types.TimeseriesDTO,
-	ttl int,
-) PropagateInterestSetMetricsMsg {
+func NewPropagateTreeAggFuncMetricsMessage(
+	interestSetID int64,
+	value *body_types.ObservableDTO,
+) PropagateTreeAggFuncMetricsMsg {
 
-	toReturn := PropagateInterestSetMetricsMsg{
+	toReturn := PropagateTreeAggFuncMetricsMsg{
 		InterestSetID: interestSetID,
-		TTL:           ttl,
-		Metrics:       tsArr,
+		Value:         value,
 	}
 
 	return toReturn
 }
 
-func (PropagateInterestSetMetricsMsg) Type() message.ID {
+func (PropagateTreeAggFuncMetricsMsg) Type() message.ID {
 	return propagateInterestSetMetricsMsgID
 }
 
-func (PropagateInterestSetMetricsMsg) Serializer() message.Serializer {
-	return propagateInterestSetMetricsMsgSerializerVar
+func (PropagateTreeAggFuncMetricsMsg) Serializer() message.Serializer {
+	return propagateTreeAggFuncMsgSerializerVar
 }
 
-func (PropagateInterestSetMetricsMsg) Deserializer() message.Deserializer {
-	return propagateInterestSetMetricsMsgSerializerVar
+func (PropagateTreeAggFuncMetricsMsg) Deserializer() message.Deserializer {
+	return propagateTreeAggFuncMsgSerializerVar
 }
 
-type propagateInterestSetMetricsMsgSerializer struct{}
+type propagateTreeAggFuncMsgSerializer struct{}
 
-func (propagateInterestSetMetricsMsgSerializer) Serialize(m message.Message) []byte {
-	mConverted := m.(PropagateInterestSetMetricsMsg)
-
+func (propagateTreeAggFuncMsgSerializer) Serialize(m message.Message) []byte {
+	mConverted := m.(PropagateTreeAggFuncMetricsMsg)
 	msgBytes, err := json.Marshal(mConverted)
 
 	if err != nil {
@@ -162,8 +221,58 @@ func (propagateInterestSetMetricsMsgSerializer) Serialize(m message.Message) []b
 	return msgBytes
 }
 
-func (propagateInterestSetMetricsMsgSerializer) Deserialize(msgBytes []byte) message.Message {
-	toDeserialize := PropagateInterestSetMetricsMsg{}
+func (propagateTreeAggFuncMsgSerializer) Deserialize(msgBytes []byte) message.Message {
+	toDeserialize := PropagateTreeAggFuncMetricsMsg{}
+	err := json.Unmarshal(msgBytes, &toDeserialize)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return toDeserialize
+}
+
+var installTreeAggFuncMsgSerializerVar = installTreeAggFuncMsgSerializer{}
+
+const InstallTreeAggFuncMsgID = 6004
+
+type InstallTreeAggFuncMsg struct {
+	InterestSets map[int64]treeAggSet
+}
+
+func NewInstallTreeAggFuncMessage(interestSets map[int64]treeAggSet) InstallTreeAggFuncMsg {
+	return InstallTreeAggFuncMsg{
+		InterestSets: interestSets,
+	}
+}
+
+func (InstallTreeAggFuncMsg) Type() message.ID {
+	return InstallTreeAggFuncMsgID
+}
+
+func (InstallTreeAggFuncMsg) Serializer() message.Serializer {
+	return installTreeAggFuncMsgSerializerVar
+}
+
+func (InstallTreeAggFuncMsg) Deserializer() message.Deserializer {
+	return installTreeAggFuncMsgSerializerVar
+}
+
+type installTreeAggFuncMsgSerializer struct{}
+
+func (installTreeAggFuncMsgSerializer) Serialize(m message.Message) []byte {
+	mConverted := m.(InstallTreeAggFuncMsg)
+	msgBytes, err := json.Marshal(mConverted)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return msgBytes
+}
+
+func (installTreeAggFuncMsgSerializer) Deserialize(msgBytes []byte) message.Message {
+	toDeserialize := InstallTreeAggFuncMsg{}
 	err := json.Unmarshal(msgBytes, &toDeserialize)
 
 	if err != nil {

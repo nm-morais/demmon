@@ -30,10 +30,10 @@ const ExportNeighInterestSetMetricsTimerID = 6001
 
 type exportNeighInterestSetMetricsTimer struct {
 	deadline      time.Time
-	InterestSetID uint64
+	InterestSetID int64
 }
 
-func NewExportNeighInterestSetMetricsTimer(duration time.Duration, interestSetID uint64) timer.Timer {
+func NewExportNeighInterestSetMetricsTimer(duration time.Duration, interestSetID int64) timer.Timer {
 	return &exportNeighInterestSetMetricsTimer{
 		deadline:      time.Now().Add(duration),
 		InterestSetID: interestSetID,
@@ -65,5 +65,47 @@ func (t *cleanupInterestSetTimer) ID() timer.ID {
 }
 
 func (t *cleanupInterestSetTimer) Deadline() time.Time {
+	return t.deadline
+}
+
+const ExportTreeAggregationFuncTimerID = 6003
+
+type exportTreeAggregationFuncTimer struct {
+	deadline      time.Time
+	InterestSetID int64
+}
+
+func NewExportTreeAggregationFuncTimer(duration time.Duration, interestSetID int64) timer.Timer {
+	return &exportTreeAggregationFuncTimer{
+		deadline:      time.Now().Add(duration),
+		InterestSetID: interestSetID,
+	}
+}
+
+func (t *exportTreeAggregationFuncTimer) ID() timer.ID {
+	return ExportTreeAggregationFuncTimerID
+}
+
+func (t *exportTreeAggregationFuncTimer) Deadline() time.Time {
+	return t.deadline
+}
+
+const BroadcastTreeAggregationFuncsTimerID = 6004
+
+type BroadcastTreeAggregationFuncsTimer struct {
+	deadline time.Time
+}
+
+func NewBroadcastTreeAggregationFuncsTimer(duration time.Duration) timer.Timer {
+	return &BroadcastTreeAggregationFuncsTimer{
+		deadline: time.Now().Add(duration),
+	}
+}
+
+func (t *BroadcastTreeAggregationFuncsTimer) ID() timer.ID {
+	return BroadcastTreeAggregationFuncsTimerID
+}
+
+func (t *BroadcastTreeAggregationFuncsTimer) Deadline() time.Time {
 	return t.deadline
 }

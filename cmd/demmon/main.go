@@ -218,6 +218,7 @@ func start(
 		*nwConf,
 		babel,
 	)
+
 	babel.RegisterNodeWatcher(nw)
 	babel.RegisterListenAddr(babelConf.Peer.ToTCPAddr())
 	babel.RegisterListenAddr(babelConf.Peer.ToUDPAddr())

@@ -496,6 +496,7 @@ func (JoinAsChildMessageReplySerializer) Deserialize(msgBytes []byte) message.Me
 
 	bufPos++
 	_, p := UnmarshalPeerWithIdChain(msgBytes[bufPos:])
+
 	return JoinAsChildMessageReply{
 		Parent:      parent,
 		ProposedID:  proposedID,
@@ -786,6 +787,7 @@ func (BroadcastMessageSerializer) Serialize(msg message.Message) []byte {
 	if err != nil {
 		panic(err)
 	}
+
 	return msgBytes
 }
 

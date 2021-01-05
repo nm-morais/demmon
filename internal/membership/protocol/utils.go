@@ -2,6 +2,8 @@ package protocol
 
 import (
 	"math/rand"
+
+	"github.com/nm-morais/demmon/internal/utils"
 )
 
 func getRandSample(nrPeersToSelect int, peers ...*PeerWithIDChain) map[string]*PeerWithIDChain {
@@ -19,6 +21,7 @@ func getRandSample(nrPeersToSelect int, peers ...*PeerWithIDChain) map[string]*P
 
 func getPeersExcluding(toFilter []*PeerWithIDChain, exclusions map[string]interface{}) []*PeerWithIDChain {
 	toReturn := make([]*PeerWithIDChain, 0)
+
 	for _, p := range toFilter {
 		_, excluded := exclusions[p.String()]
 		if !excluded {
@@ -34,7 +37,7 @@ func getRandomExcluding(toFilter []*PeerWithIDChain, exclusions map[string]inter
 	if filteredLen == 0 {
 		return nil
 	}
-	return filtered[rand.Intn(filteredLen)]
+	return filtered[utils.GetRandInt(filteredLen)]
 }
 
 // func getBiasedPeerExcluding(toFilter []*PeerWithIdChain, biasTowards *PeerWithIdChain, exclusions ...peer.Peer) *PeerWithIdChain {
@@ -53,6 +56,7 @@ func getRandomExcluding(toFilter []*PeerWithIDChain, exclusions map[string]inter
 
 func getExcludingDescendantsOf(toFilter []*PeerWithIDChain, ascendantChain PeerIDChain) []*PeerWithIDChain {
 	toReturn := make([]*PeerWithIDChain, 0)
+
 	for _, peer := range toFilter {
 		if !peer.IsDescendentOf(ascendantChain) {
 			toReturn = append(toReturn, peer)

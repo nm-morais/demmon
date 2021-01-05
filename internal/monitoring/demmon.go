@@ -428,9 +428,38 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		}
 
 		neighSetID := Hash(reqBody.IS)
-		d.monitorProto.AddNeighborhoodInterestSetReq(neighSetID, reqBody)
+		d.monitorProto.AddNeighborhoodInterestSetReq(int64(neighSetID), reqBody)
 		d.logger.Infof("Added new neighborhood interest set: %+v", reqBody)
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, neighSetID)
+
+	case routes.InstallTreeAggregationFunction:
+		reqBody := body_types.TreeAggregationSet{}
+		if !extractBody(r, &reqBody, d, resp) {
+			break
+		}
+
+		d.logger.Infof("Creating neigh interest set func output bucket: %s", reqBody.OutputBucketOpts.Name)
+
+		_, err := d.db.CreateBucket(
+			reqBody.OutputBucketOpts.Name,
+			reqBody.OutputBucketOpts.Granularity.Granularity,
+			reqBody.OutputBucketOpts.Granularity.Count,
+		)
+
+		if err != nil {
+			d.logger.Errorf("Got error installing neighborhood interest set: %s", err.Error())
+			if errors.Is(err, tsdb.ErrAlreadyExists) {
+				resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
+				break
+			}
+			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
+			break
+		}
+
+		treeSetID := utils.GetRandInt(math.MaxInt64)
+		d.monitorProto.AddTreeAggregationFuncReq(treeSetID, reqBody)
+		d.logger.Infof("Added new neighborhood interest set: %+v", reqBody)
+		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, treeSetID)
 
 	case routes.BroadcastMessage:
 		reqBody := body_types.Message{}
@@ -445,7 +474,6 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		}
 
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, nil)
-
 	case routes.InstallBroadcastMessageHandler:
 		reqBody := body_types.InstallMessageHandlerRequest{}
 		if !extractBody(r, &reqBody, d, resp) {
@@ -521,13 +549,17 @@ func (d *Demmon) handleBroadcastMessages() {
 
 		subsGeneric, ok := d.broadcastMessageSubscribers.Load(bcastMsg.ID)
 		if !ok {
-			d.logger.Warn("Could not deliver broadcasted messages because there are no listeners for msg type %d", bcastMsg.ID)
+			d.logger.Warnf("Could not deliver broadcasted messages because there are no listeners for msg type %d", bcastMsg.ID)
 			continue
 		}
 		subs := subsGeneric.(*broadcastMessageSubscribers)
 		subs.Lock()
 		for _, cl := range subs.subs {
-			cl.client.out <- body_types.NewResponse(uint64(cl.subID), true, nil, 200, routes.InstallBroadcastMessageHandler, msgCopy)
+			cl.client.out <- body_types.NewResponse(uint64(cl.subID), true, nil, 200, routes.InstallBroadcastMessageHandler, body_types.Message{
+				ID:      msgCopy.ID,
+				TTL:     msgCopy.TTL,
+				Content: msgCopy.Content,
+			})
 		}
 		subs.Unlock()
 	}
@@ -535,6 +567,7 @@ func (d *Demmon) handleBroadcastMessages() {
 
 func (d *Demmon) handleNodeUpdates() {
 	nodeUps, nodeDowns := d.fm.MembershipUpdates()
+
 	for {
 		select {
 		case nodeUp := <-nodeUps:
@@ -607,7 +640,7 @@ func (d *Demmon) writePump(c *client) {
 }
 
 //TODO proper disconnecting
-func (d *Demmon) handleCustomInterestSet(taskID int, req *body_types.Request, c *client) {
+func (d *Demmon) handleCustomInterestSet(taskID int64, req *body_types.Request, c *client) {
 	defer d.logger.Warnf("Custom interest set %d returning", taskID)
 	jobGeneric, ok := d.customInterestSets.Load(taskID)
 	if !ok {

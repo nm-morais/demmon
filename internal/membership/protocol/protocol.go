@@ -271,7 +271,7 @@ func (d *DemmonTree) handleBroadcastMessageReq(req request.Request) request.Repl
 	wrapperMsg := NewBroadcastMessage(body_types.Message{
 		ID:      bcastReq.Message.ID,
 		TTL:     bcastReq.Message.TTL - 1,
-		Content: bcastReq.Message,
+		Content: bcastReq.Message.Content,
 	})
 	d.broadcastMessage(wrapperMsg, true, true, true)
 	return nil
@@ -1272,7 +1272,7 @@ func (d *DemmonTree) handleUpdateChildMessage(sender peer.Peer, m message.Messag
 func (d *DemmonTree) handleBroadcastMessage(sender peer.Peer, m message.Message) {
 	bcastMsg := m.(BroadcastMessage)
 	d.logger.Infof("got broadcastMessage %+v from %s", m, sender.String())
-	d.babel.SendNotification(NewBroadcastMessageReceived(bcastMsg.Message))
+	d.babel.SendNotification(NewBroadcastMessageReceivedNotification(bcastMsg.Message))
 	if bcastMsg.Message.TTL > 0 { // propagate
 		bcastMsg.Message.TTL--
 		sibling, child, parent := d.getPeerRelationshipType(sender)
@@ -2139,7 +2139,7 @@ func (d *DemmonTree) addToEView(p *PeerWithIDChain) {
 	}
 
 	if len(d.eView) >= d.config.MaxPeersInEView { // eView is full
-		toRemoveIdx := utils.GetRandInt(len(d.eView))
+		toRemoveIdx := int(utils.GetRandInt(len(d.eView)))
 		i := 0
 		for _, p := range d.eView {
 			if i == toRemoveIdx {

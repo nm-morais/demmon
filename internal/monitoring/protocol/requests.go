@@ -6,18 +6,18 @@ import (
 	"github.com/nm-morais/go-babel/pkg/request"
 )
 
+const AddNeighborhoodInterestSetReqID = 2000
+
 type AddNeighborhoodInterestSetReq struct {
-	Id          uint64
+	Id          int64
 	InterestSet body_types.NeighborhoodInterestSet
 }
-
-const AddNeighborhoodInterestSetReqID = 2000
 
 func (r AddNeighborhoodInterestSetReq) ID() protocol.ID {
 	return AddNeighborhoodInterestSetReqID
 }
 
-func NewAddNeighborhoodInterestSetReq(id uint64, interestSet body_types.NeighborhoodInterestSet) request.Request {
+func NewAddNeighborhoodInterestSetReq(id int64, interestSet body_types.NeighborhoodInterestSet) request.Request {
 	return AddNeighborhoodInterestSetReq{
 		Id:          id,
 		InterestSet: interestSet,
@@ -25,17 +25,53 @@ func NewAddNeighborhoodInterestSetReq(id uint64, interestSet body_types.Neighbor
 }
 
 type RemoveNeighborhoodInterestSetReq struct {
-	InterestSetID uint64
+	InterestSetID int64
 }
 
-const RemoveNeighborhoodInterestSetReqID = 2000
+const RemoveNeighborhoodInterestSetReqID = 2001
 
 func (r RemoveNeighborhoodInterestSetReq) ID() protocol.ID {
 	return RemoveNeighborhoodInterestSetReqID
 }
 
-func NewRemoveNeighborhoodInterestSetReq(key uint64) request.Request {
+func NewRemoveNeighborhoodInterestSetReq(key int64) request.Request {
 	return RemoveNeighborhoodInterestSetReq{
+		InterestSetID: key,
+	}
+}
+
+// TreeAggregationFunction
+
+const AddTreeAggregationFuncReqID = 2002
+
+type AddTreeAggregationFuncReq struct {
+	Id          int64
+	InterestSet body_types.TreeAggregationSet
+}
+
+func (r AddTreeAggregationFuncReq) ID() protocol.ID {
+	return AddTreeAggregationFuncReqID
+}
+
+func NewAddTreeAggregationFuncReq(id int64, interestSet body_types.TreeAggregationSet) request.Request {
+	return AddTreeAggregationFuncReq{
+		Id:          id,
+		InterestSet: interestSet,
+	}
+}
+
+type RemoveTreeAggregationFuncReq struct {
+	InterestSetID uint64
+}
+
+const RemoveTreeAggregationFuncReqID = 2003
+
+func (r RemoveTreeAggregationFuncReq) ID() protocol.ID {
+	return RemoveTreeAggregationFuncReqID
+}
+
+func NewRemoveTreeAggregationFuncReq(key uint64) request.Request {
+	return RemoveTreeAggregationFuncReq{
 		InterestSetID: key,
 	}
 }

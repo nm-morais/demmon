@@ -111,7 +111,7 @@ type BroadcastMessageReceived struct {
 	Message body_types.Message
 }
 
-func NewBroadcastMessageReceived(msgBytes body_types.Message) BroadcastMessageReceived {
+func NewBroadcastMessageReceivedNotification(msgBytes body_types.Message) BroadcastMessageReceived {
 	return BroadcastMessageReceived{
 		Message: msgBytes,
 	}
