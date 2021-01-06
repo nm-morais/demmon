@@ -44,7 +44,7 @@ type neighInterestSet struct {
 type treeAggSet struct {
 	nrRetries   int
 	AggSet      body_types.TreeAggregationSet
-	childValues map[string]tsdb.Observable
+	childValues map[string]map[string]interface{}
 	local       bool
 	parent      bool
 }
@@ -54,24 +54,23 @@ type Monitor struct {
 	neighInterestSets map[int64]*neighInterestSet
 	treeAggFuncs      map[int64]*treeAggSet
 
-	interestSetTimerIds map[int64]timer.ID
-	currView            membershipProtocol.InView
-	logger              *logrus.Logger
-	babel               protocolManager.ProtocolManager
-	me                  *engine.MetricsEngine
-	tsdb                *tsdb.TSDB
+	currView membershipProtocol.InView
+	logger   *logrus.Logger
+	babel    protocolManager.ProtocolManager
+	me       *engine.MetricsEngine
+	tsdb     *tsdb.TSDB
 }
 
 func New(babel protocolManager.ProtocolManager, db *tsdb.TSDB, me *engine.MetricsEngine) *Monitor {
 	return &Monitor{
-		tsdb:                db,
-		me:                  me,
-		currID:              make(membershipProtocol.PeerIDChain, 0),
-		interestSetTimerIds: make(map[int64]uint16),
-		neighInterestSets:   make(map[int64]*neighInterestSet),
-		currView:            membershipProtocol.InView{},
-		babel:               babel,
-		logger:              logs.NewLogger(name),
+		tsdb:              db,
+		me:                me,
+		currID:            make(membershipProtocol.PeerIDChain, 0),
+		treeAggFuncs:      make(map[int64]*treeAggSet),
+		neighInterestSets: make(map[int64]*neighInterestSet),
+		currView:          membershipProtocol.InView{},
+		babel:             babel,
+		logger:            logs.NewLogger(name),
 	}
 }
 
@@ -141,7 +140,8 @@ func (m *Monitor) Init() { // REPLY HANDLERS
 		ExportNeighInterestSetMetricsTimerID,
 		m.handleExportNeighInterestSetMetricsTimer,
 	)
-	m.babel.RegisterTimerHandler(m.ID(), RebroadcastInterestSetTimerID, m.handleBroadcastInterestSetsTimer)
+	m.babel.RegisterTimerHandler(m.ID(), RebroadcastTreeAggregationFuncsTimerID, m.handleRebroadcastTreeInterestSetsTimer)
+	m.babel.RegisterTimerHandler(m.ID(), RebroadcastInterestSetTimerID, m.handleRebroadcastInterestSetsTimer)
 	m.babel.RegisterTimerHandler(m.ID(), CleanupInsterestSetsTimerID, m.handleCleanupInterestSetsTimer)
 }
 
@@ -149,6 +149,11 @@ func (m *Monitor) Start() {
 	m.babel.RegisterTimer(
 		m.ID(),
 		NewRebroadcastInterestSetsTimer(RebroadcastNeighInterestSetsTimerDuration),
+	)
+
+	m.babel.RegisterTimer(
+		m.ID(),
+		NewBroadcastTreeAggregationFuncsTimer(RebroadcastTreeInterestSetsTimerDuration),
 	)
 
 	m.babel.RegisterTimer(

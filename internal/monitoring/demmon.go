@@ -438,7 +438,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			break
 		}
 
-		d.logger.Infof("Creating neigh interest set func output bucket: %s", reqBody.OutputBucketOpts.Name)
+		d.logger.Infof("Creating tree aggregation func output bucket: %s", reqBody.OutputBucketOpts.Name)
 
 		_, err := d.db.CreateBucket(
 			reqBody.OutputBucketOpts.Name,
@@ -447,7 +447,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		)
 
 		if err != nil {
-			d.logger.Errorf("Got error installing neighborhood interest set: %s", err.Error())
+			d.logger.Errorf("Got error installing tree aggregation function: %s", err.Error())
 			if errors.Is(err, tsdb.ErrAlreadyExists) {
 				resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
 				break
@@ -458,7 +458,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 
 		treeSetID := utils.GetRandInt(math.MaxInt64)
 		d.monitorProto.AddTreeAggregationFuncReq(treeSetID, reqBody)
-		d.logger.Infof("Added new neighborhood interest set: %+v", reqBody)
+		d.logger.Infof("Added new tree aggregation function: %+v", reqBody)
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, treeSetID)
 
 	case routes.BroadcastMessage:

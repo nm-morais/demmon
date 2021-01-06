@@ -296,93 +296,9 @@ func setupDemmonMetrics() {
 			time.Sleep(connectBackoffTime)
 			continue
 		}
-
 		break
 	}
-
-	_, errChan, err := cl.InstallCustomInterestSet(
-		`SelectLast("nr_goroutines","*")`,
-		expressionTimeout,
-		"nr_goroutines_landmarks",
-		[]net.IP{demmonTreeConf.Landmarks[0].Peer.IP()},
-		body_types.Granularity{
-			Granularity: exportFrequency,
-			Count:       10,
-		})
-
-	if err != nil {
-		panic(err)
-	}
-
-	go func() {
-		for err := range errChan {
-			panic(err)
-		}
-	}()
-
-	msgChan, err := cl.InstallBroadcastMessageHandler(1)
-
-	if err != nil {
-		panic(err)
-	}
-
-	go func() {
-		for msg := range msgChan {
-			fmt.Printf("Got message:%+v\n", msg)
-		}
-	}()
-
-	for range time.NewTicker(tickerTimeout).C {
-		err := cl.BroadcastMessage(
-			body_types.Message{
-				ID:      1,
-				TTL:     2,
-				Content: struct{ Message string }{Message: "hey"}},
-		)
-		if err != nil {
-			panic(err)
-		}
-
-		// res, err := cl.Query(
-		// 	"SelectLast('nr_goroutines_neigh',{'host':'.*'})",
-		// 	1*time.Second,
-		// )
-
-		// fmt.Println("SelectLast('nr_goroutines_neigh',{'host':'.*'}) Query results :")
-
-		// for _, ts := range res {
-		// 	fmt.Printf("%+v, %+v\n", ts, err)
-		// }
-
-		// res, err = cl.Query(
-		// 	"Select('nr_goroutines_neigh','*')",
-		// 	1*time.Second,
-		// )
-
-		// if err != nil {
-		// 	panic(err)
-		// }
-
-		// fmt.Println("Select('nr_goroutines_neigh','*') Query results :")
-
-		// for _, ts := range res {
-		// 	fmt.Printf("%+v, %+v\n", ts, err)
-		// }
-
-		res, err := cl.Query(
-			"Select('nr_goroutines','*')",
-			1*time.Second,
-		)
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println("Select('nr_goroutines_landmarks','*') Query results :")
-
-		for idx, ts := range res {
-			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
-		}
-	}
+	testTreeFuncAggSet(cl)
 }
 
 func setupDemmonExporter(eConf *exporter.Conf) {
@@ -411,97 +327,305 @@ func getRandInt(max int64) int64 {
 	return n.Int64()
 }
 
-// _, err := cl.InstallContinuousQuery(
-// 	`Max(Select("nr_goroutines","*"),"*")`,
-// 	"the max of series nr_goroutines",
-// 	expressionTimeout,
-// 	exportFrequency,
-// 	"nr_goroutines_max",
-// 	defaultMetricCount,
-// 	maxRetries,
-// )
+func testNeighInterestSets(cl *client.DemmonClient) {
+	const (
+		connectBackoffTime = 1 * time.Second
+		expressionTimeout  = 1 * time.Second
+		exportFrequency    = 5 * time.Second
+		defaultTTL         = 2
+		defaultMetricCount = 12
+		maxRetries         = 3
+		connectTimeout     = 3 * time.Second
+		tickerTimeout      = 5 * time.Second
+		requestTimeout     = 1 * time.Second
+	)
 
-// if err != nil {
-// 	panic(err)
-// }
+	_, err := cl.InstallContinuousQuery(
+		`Max(Select("nr_goroutines","*"),"*")`,
+		"the max of series nr_goroutines",
+		expressionTimeout,
+		exportFrequency,
+		"nr_goroutines_max",
+		defaultMetricCount,
+		maxRetries,
+	)
 
-// _, err = cl.InstallContinuousQuery(
-// 	`Avg(Select("nr_goroutines","*"),"*")`,
-// 	"the rolling average of series nr_goroutines",
-// 	expressionTimeout,
-// 	exportFrequency,
-// 	"nr_goroutines_avg",
-// 	defaultMetricCount,
-// 	maxRetries,
-// )
+	if err != nil {
+		panic(err)
+	}
 
-// if err != nil {
-// 	panic(err)
-// }
+	_, err = cl.InstallContinuousQuery(
+		`Avg(Select("nr_goroutines","*"),"*")`,
+		"the rolling average of series nr_goroutines",
+		expressionTimeout,
+		exportFrequency,
+		"nr_goroutines_avg",
+		defaultMetricCount,
+		maxRetries,
+	)
 
-// _, err = cl.InstallContinuousQuery(
-// 	`Min(Select("nr_goroutines","*"),"*")`,
-// 	"the min of series nr_goroutines",
-// 	expressionTimeout,
-// 	exportFrequency,
-// 	"nr_goroutines_min",
-// 	defaultMetricCount,
-// 	maxRetries,
-// )
+	if err != nil {
+		panic(err)
+	}
 
-// if err != nil {
-// 	panic(err)
-// }
+	_, err = cl.InstallContinuousQuery(
+		`Min(Select("nr_goroutines","*"),"*")`,
+		"the min of series nr_goroutines",
+		expressionTimeout,
+		exportFrequency,
+		"nr_goroutines_min",
+		defaultMetricCount,
+		maxRetries,
+	)
 
-// _, err = cl.InstallNeighborhoodInterestSet(&body_types.NeighborhoodInterestSet{
-// 	IS: body_types.InterestSet{
-// 		MaxRetries: maxRetries,
-// 		Query: body_types.RunnableExpression{
-// 			Expression: `SelectLast("nr_goroutines","*")`,
-// 			Timeout:    expressionTimeout,
-// 		},
-// 		OutputBucketOpts: body_types.BucketOptions{
-// 			Name: "nr_goroutines_neigh",
-// 			Granularity: body_types.Granularity{
-// 				Granularity: exportFrequency,
-// 				Count:       3,
-// 			},
-// 		},
-// 	},
-// 	TTL: defaultTTL,
-// })
+	if err != nil {
+		panic(err)
+	}
 
-// if err != nil {
-// 	panic(err)
-// }
+	_, err = cl.InstallNeighborhoodInterestSet(&body_types.NeighborhoodInterestSet{
+		IS: body_types.InterestSet{
+			MaxRetries: maxRetries,
+			Query: body_types.RunnableExpression{
+				Expression: `SelectLast("nr_goroutines","*")`,
+				Timeout:    expressionTimeout,
+			},
+			OutputBucketOpts: body_types.BucketOptions{
+				Name: "nr_goroutines_neigh",
+				Granularity: body_types.Granularity{
+					Granularity: exportFrequency,
+					Count:       3,
+				},
+			},
+		},
+		TTL: defaultTTL,
+	})
 
-// _, err = cl.InstallContinuousQuery(
-// 	`
-// 	neighRoutines = Select("nr_goroutines_neigh","*")
-// 	result = Min(neighRoutines, "*")
-// 	`,
-// 	"the min of nr_goroutines of the neighborhood",
-// 	expressionTimeout,
-// 	exportFrequency,
-// 	"neigh_routines_min",
-// 	defaultMetricCount,
-// 	maxRetries,
-// )
+	if err != nil {
+		panic(err)
+	}
 
-// if err != nil {
-// 	panic(err)
-// }
+	_, err = cl.InstallContinuousQuery(
+		`neighRoutines = Select("nr_goroutines_neigh","*")
+		 result = Min(neighRoutines, "*")`,
+		"the min of nr_goroutines of the neighborhood",
+		expressionTimeout,
+		exportFrequency,
+		"neigh_routines_min",
+		defaultMetricCount,
+		maxRetries,
+	)
 
-// res, err, updateChan := cl.SubscribeNodeUpdates()
+	if err != nil {
+		panic(err)
+	}
 
-// if err != nil {
-// 	panic(err)
-// }
+	for range time.NewTicker(tickerTimeout).C {
 
-// fmt.Println("Starting view:", res)
+		res, err := cl.Query(
+			"Select('nr_goroutines_neigh','*')",
+			1*time.Second,
+		)
+		if err != nil {
+			panic(err)
+		}
 
-// go func() {
-// 	for nodeUpdate := range updateChan {
-// 		fmt.Printf("Node Update: %+v\n", nodeUpdate)
-// 	}
-// }()
+		fmt.Println("Select('nr_goroutines_neigh','*') Query results :")
+
+		for idx, ts := range res {
+			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
+		}
+
+		res, err = cl.Query(
+			"Select('neigh_routines_min','*')",
+			1*time.Second,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println("Select('neigh_routines_min','*') Query results :")
+
+		for idx, ts := range res {
+			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
+		}
+
+		res, err = cl.Query(
+			"Select('nr_goroutines_avg','*')",
+			1*time.Second,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println("Select('nr_goroutines_avg','*') Query results :")
+
+		for idx, ts := range res {
+			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
+		}
+	}
+}
+
+func testTreeFuncAggSet(cl *client.DemmonClient) {
+
+	// 	`neighRoutines = Select("nr_goroutines_neigh","*")
+	// 	result = Min(neighRoutines, "*")`,
+	//    "the min of nr_goroutines of the neighborhood",
+	//    expressionTimeout,
+	//    exportFrequency,
+	//    "neigh_routines_min",
+	//    defaultMetricCount,
+	//    maxRetries,
+
+	const (
+		connectBackoffTime = 1 * time.Second
+		expressionTimeout  = 1 * time.Second
+		exportFrequency    = 5 * time.Second
+		defaultTTL         = 2
+		defaultMetricCount = 12
+		maxRetries         = 3
+		connectTimeout     = 3 * time.Second
+		tickerTimeout      = 5 * time.Second
+		requestTimeout     = 1 * time.Second
+	)
+
+	_, err := cl.InstallTreeAggregationFunction(
+		&body_types.TreeAggregationSet{
+			MaxRetries: 3,
+			Query: body_types.RunnableExpression{
+				Timeout: expressionTimeout,
+				Expression: `point = SelectLast("nr_goroutines","*")[0].Last()
+							result = {"count":1, "value":point.Value().value}`,
+			},
+			OutputBucketOpts: body_types.BucketOptions{
+				Name: "avg_nr_goroutines_tree",
+				Granularity: body_types.Granularity{
+					Granularity: exportFrequency,
+					Count:       defaultMetricCount,
+				},
+			},
+			MergeFunction: body_types.RunnableExpression{
+				Timeout: expressionTimeout,
+				Expression: `
+							aux = {"count":0, "value":0}
+							for (i = 0; i < args.length; i++) {
+								aux.count += args[i].count
+								aux.value += args[i].value					
+							}
+							result = aux
+							`,
+			},
+			Levels: 10,
+		})
+
+	if err != nil {
+		panic(err)
+	}
+
+	for range time.NewTicker(tickerTimeout).C {
+		res, err := cl.Query(
+			"Select('avg_nr_goroutines_tree','*')",
+			1*time.Second,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println("Select('avg_nr_goroutines_tree','*') Query results :")
+
+		for idx, ts := range res {
+			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
+		}
+	}
+}
+
+func testNodeUpdates(cl *client.DemmonClient) {
+
+	res, err, updateChan := cl.SubscribeNodeUpdates()
+
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Starting view:", res)
+
+	go func() {
+		for nodeUpdate := range updateChan {
+			fmt.Printf("Node Update: %+v\n", nodeUpdate)
+		}
+	}()
+}
+
+func testMsgBroadcast(cl *client.DemmonClient) {
+	const tickerTimeout = 5 * time.Second
+
+	msgChan, err := cl.InstallBroadcastMessageHandler(1)
+
+	if err != nil {
+		panic(err)
+	}
+
+	go func() {
+		for range time.NewTicker(tickerTimeout).C {
+			err := cl.BroadcastMessage(
+				body_types.Message{
+					ID:      1,
+					TTL:     2,
+					Content: struct{ Message string }{Message: "hey"}},
+			)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}()
+
+	go func() {
+		for msg := range msgChan {
+			fmt.Printf("Got message:%+v\n", msg)
+		}
+	}()
+}
+
+func testCustomInterestSet(cl *client.DemmonClient) {
+	const (
+		tickerTimeout     = 5 * time.Second
+		exportFrequency   = 5 * time.Second
+		expressionTimeout = 1 * time.Second
+	)
+
+	_, errChan, err := cl.InstallCustomInterestSet(
+		`SelectLast("nr_goroutines","*")`,
+		expressionTimeout,
+		"nr_goroutines_landmarks",
+		[]net.IP{demmonTreeConf.Landmarks[0].Peer.IP()},
+		body_types.Granularity{
+			Granularity: exportFrequency,
+			Count:       10,
+		})
+
+	if err != nil {
+		panic(err)
+	}
+
+	go func() {
+		for err := range errChan {
+			panic(err)
+		}
+	}()
+
+	for range time.NewTicker(tickerTimeout).C {
+
+		res, err := cl.Query(
+			"Select('nr_goroutines_landmarks','*')",
+			1*time.Second,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println("Select('nr_goroutines_landmarks','*') Query results :")
+
+		for idx, ts := range res {
+			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
+		}
+	}
+}

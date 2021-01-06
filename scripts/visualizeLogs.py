@@ -74,7 +74,8 @@ def parse_files(file_paths, output_folder):
                 split = line.split(" ")
                 # print(split)
 
-                ip_port = str(split[7])[:-1]
+                ip_port = str(split[7
+                                    ])[:-1]
                 ip = str(ip_port.split(":")[0])[6:]
 
                 for i, s in enumerate(split):

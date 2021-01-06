@@ -50,7 +50,7 @@ var (
 	errEmptyResult          = errors.New("query did not return any values")
 )
 
-func (e *MetricsEngine) MakeQuerySingleReturn(expression string, timeoutDuration time.Duration) (tsdb.ReadOnlyTimeSeries, error) {
+func (e *MetricsEngine) MakeQuerySingleReturn(expression string, timeoutDuration time.Duration) (map[string]interface{}, error) {
 	vm := otto.New()
 	e.setVMFunctions(vm)
 	ottoVal, err := e.runWithTimeout(vm, expression, timeoutDuration)
@@ -61,10 +61,10 @@ func (e *MetricsEngine) MakeQuerySingleReturn(expression string, timeoutDuration
 	if err != nil {
 		return nil, err
 	}
-	e.logger.Infof("Query %s got result %+v", expression, vGeneric)
+	e.logger.Infof("QuerySingleReturn %s got result %+v", expression, vGeneric)
 
 	switch vConverted := vGeneric.(type) {
-	case tsdb.ReadOnlyTimeSeries:
+	case map[string]interface{}:
 		return vConverted, nil
 	default:
 		e.logger.Panicf("Unsupported return type: %s, (%+v)", reflect.TypeOf(vConverted), vConverted)
@@ -76,13 +76,16 @@ func (e *MetricsEngine) MakeQuery(expression string, timeoutDuration time.Durati
 	vm := otto.New()
 	e.setVMFunctions(vm)
 	ottoVal, err := e.runWithTimeout(vm, expression, timeoutDuration)
+
 	if err != nil {
 		return nil, err
 	}
+
 	vGeneric, err := ottoVal.Export()
 	if err != nil {
 		return nil, err
 	}
+
 	e.logger.Infof("Query %s got result %+v", expression, vGeneric)
 
 	switch vConverted := vGeneric.(type) {
@@ -96,22 +99,25 @@ func (e *MetricsEngine) MakeQuery(expression string, timeoutDuration time.Durati
 	}
 }
 
-func (e *MetricsEngine) RunMergeFunc(expression string, timeoutDuration time.Duration, args interface{}) (map[string]interface{}, error) {
+func (e *MetricsEngine) RunMergeFunc(expression string, timeoutDuration time.Duration, args []map[string]interface{}) (map[string]interface{}, error) {
 	vm := otto.New()
 	err := vm.Set("args", args)
+
 	if err != nil {
 		return nil, err
 	}
+
 	ottoVal, err := e.runWithTimeout(vm, expression, timeoutDuration)
 	if err != nil {
 		return nil, err
 	}
+
 	vGeneric, err := ottoVal.Export()
 	if err != nil {
 		return nil, err
 	}
 
-	e.logger.Infof("Function %s got result %+v", expression, vGeneric)
+	e.logger.Infof("Merge function %s got result %+v", expression, vGeneric)
 
 	switch vConverted := vGeneric.(type) {
 	case map[string]interface{}:

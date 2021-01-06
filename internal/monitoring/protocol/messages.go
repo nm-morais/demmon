@@ -197,7 +197,7 @@ func NewPropagateTreeAggFuncMetricsMessage(
 }
 
 func (PropagateTreeAggFuncMetricsMsg) Type() message.ID {
-	return propagateInterestSetMetricsMsgID
+	return propagateTreeAggFuncMetricsMsgID
 }
 
 func (PropagateTreeAggFuncMetricsMsg) Serializer() message.Serializer {
@@ -237,10 +237,10 @@ var installTreeAggFuncMsgSerializerVar = installTreeAggFuncMsgSerializer{}
 const InstallTreeAggFuncMsgID = 6004
 
 type InstallTreeAggFuncMsg struct {
-	InterestSets map[int64]treeAggSet
+	InterestSets map[int64]body_types.TreeAggregationSet
 }
 
-func NewInstallTreeAggFuncMessage(interestSets map[int64]treeAggSet) InstallTreeAggFuncMsg {
+func NewInstallTreeAggFuncMessage(interestSets map[int64]body_types.TreeAggregationSet) InstallTreeAggFuncMsg {
 	return InstallTreeAggFuncMsg{
 		InterestSets: interestSets,
 	}

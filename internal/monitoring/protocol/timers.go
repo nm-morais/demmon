@@ -90,7 +90,7 @@ func (t *exportTreeAggregationFuncTimer) Deadline() time.Time {
 	return t.deadline
 }
 
-const BroadcastTreeAggregationFuncsTimerID = 6004
+const RebroadcastTreeAggregationFuncsTimerID = 6004
 
 type BroadcastTreeAggregationFuncsTimer struct {
 	deadline time.Time
@@ -103,7 +103,7 @@ func NewBroadcastTreeAggregationFuncsTimer(duration time.Duration) timer.Timer {
 }
 
 func (t *BroadcastTreeAggregationFuncsTimer) ID() timer.ID {
-	return BroadcastTreeAggregationFuncsTimerID
+	return RebroadcastTreeAggregationFuncsTimerID
 }
 
 func (t *BroadcastTreeAggregationFuncsTimer) Deadline() time.Time {

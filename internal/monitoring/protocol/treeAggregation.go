@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/nm-morais/demmon-common/body_types"
-	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
 	"github.com/nm-morais/go-babel/pkg/message"
 	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/request"
@@ -14,24 +13,22 @@ import (
 
 // BROADCAST TIMER
 
-func (m *Monitor) handleBroadcastTreeInterestSetsTimer(t timer.Timer) {
+func (m *Monitor) handleRebroadcastTreeInterestSetsTimer(t timer.Timer) {
 	m.babel.RegisterTimer(
 		m.ID(),
 		NewBroadcastTreeAggregationFuncsTimer(RebroadcastTreeInterestSetsTimerDuration),
 	)
 
-	treeAggFuncstoSend := make(map[int64]treeAggSet)
+	treeAggFuncstoSend := make(map[int64]body_types.TreeAggregationSet)
 
 	for isID, is := range m.treeAggFuncs {
 		if is.AggSet.Levels > 0 {
-			treeAggFuncstoSend[isID] = treeAggSet{
-				AggSet: body_types.TreeAggregationSet{
-					MaxRetries:       is.AggSet.MaxRetries,
-					Query:            is.AggSet.Query,
-					OutputBucketOpts: is.AggSet.OutputBucketOpts,
-					MergeFunction:    is.AggSet.MergeFunction,
-					Levels:           is.AggSet.Levels - 1,
-				},
+			treeAggFuncstoSend[isID] = body_types.TreeAggregationSet{
+				MaxRetries:       is.AggSet.MaxRetries,
+				Query:            is.AggSet.Query,
+				OutputBucketOpts: is.AggSet.OutputBucketOpts,
+				MergeFunction:    is.AggSet.MergeFunction,
+				Levels:           is.AggSet.Levels - 1,
 			}
 		}
 	}
@@ -41,6 +38,7 @@ func (m *Monitor) handleBroadcastTreeInterestSetsTimer(t timer.Timer) {
 	}
 
 	toSend := NewInstallTreeAggFuncMessage(treeAggFuncstoSend)
+
 	for _, child := range m.currView.Children {
 		m.babel.SendMessage(toSend, child, m.ID(), m.ID())
 	}
@@ -67,6 +65,7 @@ func (m *Monitor) handleExportTreeAggregationFuncTimer(t timer.Timer) {
 
 	query := treeAggFunc.AggSet.Query
 	queryResult, err := m.me.MakeQuerySingleReturn(query.Expression, query.Timeout)
+
 	if err != nil {
 		treeAggFunc.nrRetries++
 		m.logger.Errorf(
@@ -96,15 +95,27 @@ func (m *Monitor) handleExportTreeAggregationFuncTimer(t timer.Timer) {
 		queryResult,
 	)
 
-	valuesToMerge := []tsdb.Observable{}
-	for _, childVal := range treeAggFunc.childValues {
-		valuesToMerge = append(valuesToMerge, childVal)
-	}
-	valuesToMerge = append(valuesToMerge, queryResult.Last())
+	var mergedVal map[string]interface{}
+	if len(treeAggFunc.childValues) > 0 {
+		valuesToMerge := []map[string]interface{}{}
+		for _, childVal := range treeAggFunc.childValues {
+			valuesToMerge = append(valuesToMerge, childVal)
+		}
 
-	mergedVal, err := m.me.RunMergeFunc(treeAggFunc.AggSet.MergeFunction.Expression, treeAggFunc.AggSet.MergeFunction.Timeout, valuesToMerge)
-	if err != nil {
-		panic(err)
+		valuesToMerge = append(valuesToMerge, queryResult)
+
+		m.logger.Infof(
+			"Merging values: (%+v)",
+			valuesToMerge,
+		)
+
+		mergedVal, err = m.me.RunMergeFunc(treeAggFunc.AggSet.MergeFunction.Expression, treeAggFunc.AggSet.MergeFunction.Timeout, valuesToMerge)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		m.logger.Warn("Not merging values due to not having children values")
+		mergedVal = queryResult
 	}
 
 	if treeAggFunc.local {
@@ -121,7 +132,14 @@ func (m *Monitor) handleExportTreeAggregationFuncTimer(t timer.Timer) {
 
 	if treeAggFunc.parent {
 		toSendMsg := NewPropagateTreeAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: time.Now(), Fields: mergedVal})
+
 		if m.currView.Parent != nil {
+			m.logger.Infof(
+				"propagating metrics for tree aggregation function %d (%+v) to parent %s",
+				interestSetID,
+				mergedVal,
+				m.currView.Parent.String(),
+			)
 			m.babel.SendMessage(toSendMsg, m.currView.Parent, m.ID(), m.ID())
 		} else {
 			m.logger.Errorf(
@@ -170,45 +188,47 @@ func (m *Monitor) handlePropagateTreeAggFuncMetricsMessage(sender peer.Peer, msg
 		treeAggSet.AggSet.OutputBucketOpts.Name,
 		sender.String(),
 	)
-	treeAggSet.childValues[sender.String()] = tsdb.NewObservable(msgConverted.Value.Fields, msgConverted.Value.TS)
+	treeAggSet.childValues[sender.String()] = msgConverted.Value.Fields
 }
 
 func (m *Monitor) handleInstallTreeAggFuncMetricsMessage(sender peer.Peer, msg message.Message) {
 	installTreeAggFuncMsg := msg.(InstallTreeAggFuncMsg)
 	_, _, parent := m.getPeerRelationshipType(sender)
 	if !parent {
-		m.logger.Warn("received install neigh interest set from peer not in my view")
+		m.logger.Warn("received install tree aggregation function from peer not in my view")
 		return
 	}
 
 	m.logger.Infof(
-		"received message to install neigh interest sets from %s (%+v)",
+		"received message to install tree aggregation function from %s (%+v)",
 		sender.String(),
 		installTreeAggFuncMsg,
 	)
 
 	for treeAggFuncID, treeAggFunc := range installTreeAggFuncMsg.InterestSets {
-		m.logger.Infof("installing neigh interest set %d: %+v", treeAggFuncID, treeAggFunc)
 
 		is, alreadyExists := m.treeAggFuncs[treeAggFuncID]
 
 		if alreadyExists {
 			is.parent = true
-			m.logger.Info("Neigh interest set already present")
+
+			m.logger.Info("tree aggregation function already present")
 			continue
 		}
 
+		m.logger.Infof("installing tree aggregation function %d: %+v", treeAggFuncID, treeAggFunc)
 		m.treeAggFuncs[treeAggFuncID] = &treeAggSet{
 			nrRetries:   0,
-			childValues: make(map[string]tsdb.Observable),
+			childValues: make(map[string]map[string]interface{}),
 			local:       false,
 			parent:      true,
+			AggSet:      treeAggFunc,
 		}
 
 		m.babel.RegisterTimer(
 			m.ID(),
 			NewExportTreeAggregationFuncTimer(
-				treeAggFunc.AggSet.OutputBucketOpts.Granularity.Granularity,
+				treeAggFunc.OutputBucketOpts.Granularity.Granularity,
 				treeAggFuncID,
 			),
 		)
@@ -237,7 +257,7 @@ func (m *Monitor) handleAddTreeAggregationFuncRequest(req request.Request) reque
 	m.treeAggFuncs[addTreeAggFuncSetReq.Id] = &treeAggSet{
 		nrRetries:   0,
 		AggSet:      addTreeAggFuncSetReq.InterestSet,
-		childValues: make(map[string]tsdb.Observable),
+		childValues: make(map[string]map[string]interface{}),
 		local:       true,
 		parent:      false,
 	}
