@@ -168,9 +168,8 @@ func (m *Monitor) handlePropagateTreeAggFuncMetricsMessage(sender peer.Peer, msg
 
 	if !ok {
 		m.logger.Errorf(
-			"received propagation of metric values for missing tree agg func %d: %s from %s",
+			"received propagation of metric values for missing tree agg func %d from %s",
 			treeAggSetID,
-			treeAggSet.AggSet.OutputBucketOpts.Name,
 			sender.String(),
 		)
 		return

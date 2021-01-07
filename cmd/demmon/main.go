@@ -540,7 +540,7 @@ func testTreeFuncAggSet(cl *client.DemmonClient) {
 
 func testNodeUpdates(cl *client.DemmonClient) {
 
-	res, err, updateChan := cl.SubscribeNodeUpdates()
+	res, err, _, updateChan := cl.SubscribeNodeUpdates()
 
 	if err != nil {
 		panic(err)
@@ -558,7 +558,7 @@ func testNodeUpdates(cl *client.DemmonClient) {
 func testMsgBroadcast(cl *client.DemmonClient) {
 	const tickerTimeout = 5 * time.Second
 
-	msgChan, err := cl.InstallBroadcastMessageHandler(1)
+	msgChan, _, err := cl.InstallBroadcastMessageHandler(1)
 
 	if err != nil {
 		panic(err)
@@ -591,16 +591,27 @@ func testCustomInterestSet(cl *client.DemmonClient) {
 		exportFrequency   = 5 * time.Second
 		expressionTimeout = 1 * time.Second
 	)
-
-	_, errChan, err := cl.InstallCustomInterestSet(
-		`SelectLast("nr_goroutines","*")`,
-		expressionTimeout,
-		"nr_goroutines_landmarks",
-		[]net.IP{demmonTreeConf.Landmarks[0].Peer.IP()},
-		body_types.Granularity{
-			Granularity: exportFrequency,
-			Count:       10,
-		})
+	_, errChan, _, err := cl.InstallCustomInterestSet(body_types.CustomInterestSet{
+		Hosts: []body_types.CustomInterestSetHost{
+			{
+				IP:   demmonTreeConf.Landmarks[0].Peer.IP(),
+				Port: 8090,
+			},
+		},
+		IS: body_types.InterestSet{MaxRetries: 3,
+			Query: body_types.RunnableExpression{
+				Timeout:    expressionTimeout,
+				Expression: `SelectLast("nr_goroutines","*")`,
+			},
+			OutputBucketOpts: body_types.BucketOptions{
+				Name: "nr_goroutines_landmarks",
+				Granularity: body_types.Granularity{
+					Granularity: exportFrequency,
+					Count:       10,
+				},
+			},
+		},
+	})
 
 	if err != nil {
 		panic(err)

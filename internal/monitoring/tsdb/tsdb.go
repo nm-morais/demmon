@@ -141,15 +141,18 @@ func (db *TSDB) CreateBucket(name string, frequency time.Duration, count int) (*
 
 	db.logger.Infof("Creating new bucket with name: %s", name)
 	newBucket := NewBucket(name, frequency, count, db.createEntryForBucket(name))
-	toReturn, loaded := db.buckets.LoadOrStore(name, newBucket)
-
+	bucketGeneric, loaded := db.buckets.LoadOrStore(name, newBucket)
+	bucket := bucketGeneric.(*Bucket)
 	if loaded {
 		db.logger.Infof("bucket %s already exists", name)
+		if bucket.count == count && bucket.granularity == frequency {
+			return bucket, nil
+		}
 		return nil, ErrAlreadyExists
 	}
 
 	db.logger.Infof("Created new bucket with name: %s", name)
-	return toReturn.(*Bucket), nil
+	return bucket, nil
 }
 
 func (db *TSDB) createEntryForBucket(name string) *logrus.Entry {
