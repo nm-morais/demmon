@@ -298,7 +298,7 @@ func setupDemmonMetrics() {
 		}
 		break
 	}
-	testTreeFuncAggSet(cl)
+	testCustomInterestSet(cl)
 }
 
 func setupDemmonExporter(eConf *exporter.Conf) {

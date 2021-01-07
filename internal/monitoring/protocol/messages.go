@@ -232,9 +232,9 @@ func (propagateTreeAggFuncMsgSerializer) Deserialize(msgBytes []byte) message.Me
 	return toDeserialize
 }
 
-var installTreeAggFuncMsgSerializerVar = installTreeAggFuncMsgSerializer{}
-
 const InstallTreeAggFuncMsgID = 6004
+
+var installTreeAggFuncMsgSerializerVar = installTreeAggFuncMsgSerializer{}
 
 type InstallTreeAggFuncMsg struct {
 	InterestSets map[int64]body_types.TreeAggregationSet
@@ -273,6 +273,116 @@ func (installTreeAggFuncMsgSerializer) Serialize(m message.Message) []byte {
 
 func (installTreeAggFuncMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	toDeserialize := InstallTreeAggFuncMsg{}
+	err := json.Unmarshal(msgBytes, &toDeserialize)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return toDeserialize
+}
+
+// GLOBAL AGG FUNCS
+
+const propagateGlobalAggFuncMetricsMsgID = 6004
+
+var propagateGlobalAggFuncMsgSerializerVar = propagateGlobalAggFuncMsgSerializer{}
+
+type PropagateGlobalAggFuncMetricsMsg struct {
+	InterestSetID int64
+	Value         *body_types.ObservableDTO
+}
+
+func NewPropagateGlobalAggFuncMetricsMessage(
+	interestSetID int64,
+	value *body_types.ObservableDTO,
+) PropagateGlobalAggFuncMetricsMsg {
+
+	toReturn := PropagateGlobalAggFuncMetricsMsg{
+		InterestSetID: interestSetID,
+		Value:         value,
+	}
+
+	return toReturn
+}
+
+func (PropagateGlobalAggFuncMetricsMsg) Type() message.ID {
+	return propagateGlobalAggFuncMetricsMsgID
+}
+
+func (PropagateGlobalAggFuncMetricsMsg) Serializer() message.Serializer {
+	return propagateGlobalAggFuncMsgSerializerVar
+}
+
+func (PropagateGlobalAggFuncMetricsMsg) Deserializer() message.Deserializer {
+	return propagateGlobalAggFuncMsgSerializerVar
+}
+
+type propagateGlobalAggFuncMsgSerializer struct{}
+
+func (propagateGlobalAggFuncMsgSerializer) Serialize(m message.Message) []byte {
+	mConverted := m.(PropagateGlobalAggFuncMetricsMsg)
+	msgBytes, err := json.Marshal(mConverted)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return msgBytes
+}
+
+func (propagateGlobalAggFuncMsgSerializer) Deserialize(msgBytes []byte) message.Message {
+	toDeserialize := PropagateGlobalAggFuncMetricsMsg{}
+	err := json.Unmarshal(msgBytes, &toDeserialize)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return toDeserialize
+}
+
+const InstallGlobalAggFuncMsgID = 6005
+
+var installGlobalAggFuncMsgSerializerVar = installGlobalAggFuncMsgSerializer{}
+
+type InstallGlobalAggFuncMsg struct {
+	InterestSets map[int64]body_types.GlobalAggregationFunction
+}
+
+func NewInstallGlobalAggFuncMessage(interestSets map[int64]body_types.GlobalAggregationFunction) InstallGlobalAggFuncMsg {
+	return InstallGlobalAggFuncMsg{
+		InterestSets: interestSets,
+	}
+}
+
+func (InstallGlobalAggFuncMsg) Type() message.ID {
+	return InstallGlobalAggFuncMsgID
+}
+
+func (InstallGlobalAggFuncMsg) Serializer() message.Serializer {
+	return installGlobalAggFuncMsgSerializerVar
+}
+
+func (InstallGlobalAggFuncMsg) Deserializer() message.Deserializer {
+	return installGlobalAggFuncMsgSerializerVar
+}
+
+type installGlobalAggFuncMsgSerializer struct{}
+
+func (installGlobalAggFuncMsgSerializer) Serialize(m message.Message) []byte {
+	mConverted := m.(InstallGlobalAggFuncMsg)
+	msgBytes, err := json.Marshal(mConverted)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return msgBytes
+}
+
+func (installGlobalAggFuncMsgSerializer) Deserialize(msgBytes []byte) message.Message {
+	toDeserialize := InstallGlobalAggFuncMsg{}
 	err := json.Unmarshal(msgBytes, &toDeserialize)
 
 	if err != nil {

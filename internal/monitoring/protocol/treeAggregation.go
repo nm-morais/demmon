@@ -11,12 +11,27 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type treeAggSet struct {
+	nrRetries   int
+	AggSet      body_types.TreeAggregationSet
+	childValues map[string]map[string]interface{}
+	local       bool
+	sender      peer.Peer
+	lastRefresh time.Time
+}
+
+// REQUEST CREATORS
+
+func (m *Monitor) AddTreeAggregationFuncReq(key int64, interestSet body_types.TreeAggregationSet) {
+	m.babel.SendRequest(NewAddTreeAggregationFuncReq(key, interestSet), m.ID(), m.ID())
+}
+
 // BROADCAST TIMER
 
 func (m *Monitor) handleRebroadcastTreeInterestSetsTimer(t timer.Timer) {
 	m.babel.RegisterTimer(
 		m.ID(),
-		NewBroadcastTreeAggregationFuncsTimer(RebroadcastTreeInterestSetsTimerDuration),
+		NewBroadcastTreeAggregationFuncsTimer(RebroadcastTreeAggFuncTimerDuration),
 	)
 
 	treeAggFuncstoSend := make(map[int64]body_types.TreeAggregationSet)
@@ -36,9 +51,7 @@ func (m *Monitor) handleRebroadcastTreeInterestSetsTimer(t timer.Timer) {
 	if len(treeAggFuncstoSend) == 0 {
 		return
 	}
-
 	toSend := NewInstallTreeAggFuncMessage(treeAggFuncstoSend)
-
 	for _, child := range m.currView.Children {
 		m.babel.SendMessage(toSend, child, m.ID(), m.ID())
 	}
@@ -128,25 +141,24 @@ func (m *Monitor) handleExportTreeAggregationFuncTimer(t timer.Timer) {
 		if err != nil {
 			m.logger.Panic(err)
 		}
+		return
 	}
 
-	if treeAggFunc.parent {
-		toSendMsg := NewPropagateTreeAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: time.Now(), Fields: mergedVal})
+	toSendMsg := NewPropagateTreeAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: time.Now(), Fields: mergedVal})
 
-		if m.currView.Parent != nil {
-			m.logger.Infof(
-				"propagating metrics for tree aggregation function %d (%+v) to parent %s",
-				interestSetID,
-				mergedVal,
-				m.currView.Parent.String(),
-			)
-			m.babel.SendMessage(toSendMsg, m.currView.Parent, m.ID(), m.ID())
-		} else {
-			m.logger.Errorf(
-				"tree aggregation function %d could not propagate to parent due to not having parent",
-				interestSetID,
-			)
-		}
+	if peer.PeersEqual(m.currView.Parent, treeAggFunc.sender) {
+		m.logger.Infof(
+			"propagating metrics for tree aggregation function %d (%+v) to parent %s",
+			interestSetID,
+			mergedVal,
+			m.currView.Parent.String(),
+		)
+		m.babel.SendMessage(toSendMsg, m.currView.Parent, m.ID(), m.ID())
+	} else {
+		m.logger.Errorf(
+			"tree aggregation function %d could not propagate to parent due to not having parent",
+			interestSetID,
+		)
 	}
 
 	m.babel.RegisterTimer(
@@ -205,22 +217,12 @@ func (m *Monitor) handleInstallTreeAggFuncMetricsMessage(sender peer.Peer, msg m
 	)
 
 	for treeAggFuncID, treeAggFunc := range installTreeAggFuncMsg.InterestSets {
-
-		is, alreadyExists := m.treeAggFuncs[treeAggFuncID]
-
-		if alreadyExists {
-			is.parent = true
-
-			m.logger.Info("tree aggregation function already present")
-			continue
-		}
-
 		m.logger.Infof("installing tree aggregation function %d: %+v", treeAggFuncID, treeAggFunc)
 		m.treeAggFuncs[treeAggFuncID] = &treeAggSet{
 			nrRetries:   0,
 			childValues: make(map[string]map[string]interface{}),
 			local:       false,
-			parent:      true,
+			sender:      sender,
 			AggSet:      treeAggFunc,
 		}
 
@@ -237,7 +239,26 @@ func (m *Monitor) handleInstallTreeAggFuncMetricsMessage(sender peer.Peer, msg m
 // CLEANUP
 
 func (m *Monitor) cleanupTreeInterestSets() {
-	// TODO
+	for isID, is := range m.treeAggFuncs {
+		if time.Since(is.lastRefresh) > ExpireTreeAggFuncTimeout {
+			m.logger.Errorf(
+				"Removing tree agg func from peer %s because entry expired",
+				is.sender,
+				isID,
+			)
+			delete(m.treeAggFuncs, isID)
+			continue
+		}
+
+		if !peer.PeersEqual(m.currView.Parent, is.sender) {
+			m.logger.Errorf(
+				"Removing tree agg func from peer %s because peer is not my parent anymore",
+				is.sender,
+				isID,
+			)
+			delete(m.treeAggFuncs, isID)
+		}
+	}
 }
 
 // REQUEST HANDLERS
@@ -258,16 +279,10 @@ func (m *Monitor) handleAddTreeAggregationFuncRequest(req request.Request) reque
 		AggSet:      addTreeAggFuncSetReq.InterestSet,
 		childValues: make(map[string]map[string]interface{}),
 		local:       true,
-		parent:      false,
+		sender:      nil,
 	}
 	frequency := interestSet.OutputBucketOpts.Granularity.Granularity
 	m.logger.Infof("Installing local tree aggregation function %d: %+v", interestSetID, interestSet)
 	m.babel.RegisterTimer(m.ID(), NewExportTreeAggregationFuncTimer(frequency, interestSetID))
 	return nil
-}
-
-// REQUEST CREATORS
-
-func (m *Monitor) AddTreeAggregationFuncReq(key int64, interestSet body_types.TreeAggregationSet) {
-	m.babel.SendRequest(NewAddTreeAggregationFuncReq(key, interestSet), m.ID(), m.ID())
 }

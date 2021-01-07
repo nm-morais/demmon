@@ -13,6 +13,19 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type subWithTTL struct {
+	ttl         int
+	p           peer.Peer
+	lastRefresh time.Time
+}
+
+type neighInterestSet struct {
+	nrRetries   int
+	subscribers map[string]subWithTTL
+	TTL         int
+	IS          body_types.InterestSet
+}
+
 // REQUEST CREATOR
 
 func (m *Monitor) AddNeighborhoodInterestSetReq(key int64, interestSet body_types.NeighborhoodInterestSet) {
@@ -118,9 +131,13 @@ func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 	)
 
 	timeseriesDTOs := make([]body_types.TimeseriesDTO, 0, len(result))
-	for _, ts := range result {
-		ts.(*tsdb.StaticTimeseries).SetName(remoteInterestSet.IS.OutputBucketOpts.Name)
-		ts.(*tsdb.StaticTimeseries).SetTag("host", m.babel.SelfPeer().IP().String())
+	for _, tsGeneric := range result {
+
+		ts := tsGeneric.(*tsdb.StaticTimeseries)
+		ts.SetName(remoteInterestSet.IS.OutputBucketOpts.Name)
+		if _, ok := ts.Tag("host"); !ok {
+			ts.SetTag("host", m.babel.SelfPeer().IP().String())
+		}
 		tsDTO := ts.ToDTO()
 		timeseriesDTOs = append(timeseriesDTOs, tsDTO)
 	}
@@ -241,7 +258,7 @@ func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer
 	interestSet, ok := m.neighInterestSets[interestSetID]
 	if !ok {
 		m.logger.Errorf(
-			"received propagation of metric values for missing interest set %d: %s from %s",
+			"received propagation of metric values for missing neigh interest set %d: %s from %s",
 			interestSetID,
 			interestSet.IS.OutputBucketOpts.Name,
 			sender.String(),
@@ -306,7 +323,7 @@ func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer
 	}
 }
 
-// AUS FUNCTIONS
+// AUX FUNCTIONS
 
 func (m *Monitor) broadcastNeighInterestSetsToSiblings() {
 	for _, sibling := range m.currView.Siblings {

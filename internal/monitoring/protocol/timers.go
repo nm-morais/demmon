@@ -109,3 +109,47 @@ func (t *BroadcastTreeAggregationFuncsTimer) ID() timer.ID {
 func (t *BroadcastTreeAggregationFuncsTimer) Deadline() time.Time {
 	return t.deadline
 }
+
+// NewBroadcastGlobalAggregationFuncsTimer
+
+const ExportGlobalAggregationFuncTimerID = 6005
+
+type ExportGlobalAggregationFuncTimer struct {
+	deadline      time.Time
+	InterestSetID int64
+}
+
+func NewExportGlobalAggregationFuncTimer(duration time.Duration, interestSetID int64) timer.Timer {
+	return &ExportGlobalAggregationFuncTimer{
+		deadline:      time.Now().Add(duration),
+		InterestSetID: interestSetID,
+	}
+}
+
+func (t *ExportGlobalAggregationFuncTimer) ID() timer.ID {
+	return ExportGlobalAggregationFuncTimerID
+}
+
+func (t *ExportGlobalAggregationFuncTimer) Deadline() time.Time {
+	return t.deadline
+}
+
+const RebroadcastGlobalAggregationFuncsTimerID = 6006
+
+type BroadcastGlobalAggregationFuncsTimer struct {
+	deadline time.Time
+}
+
+func NewBroadcastGlobalAggregationFuncsTimer(duration time.Duration) timer.Timer {
+	return &BroadcastGlobalAggregationFuncsTimer{
+		deadline: time.Now().Add(duration),
+	}
+}
+
+func (t *BroadcastGlobalAggregationFuncsTimer) ID() timer.ID {
+	return RebroadcastGlobalAggregationFuncsTimerID
+}
+
+func (t *BroadcastGlobalAggregationFuncsTimer) Deadline() time.Time {
+	return t.deadline
+}

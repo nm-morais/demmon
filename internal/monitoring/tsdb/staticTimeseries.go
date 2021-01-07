@@ -12,6 +12,7 @@ import (
 type ReadOnlyTimeSeries interface {
 	Name() string
 	Tags() map[string]string
+	Tag(string) (string, bool)
 	All() []Observable
 	Range(start time.Time, end time.Time) ([]Observable, error)
 	Last() Observable
@@ -73,6 +74,17 @@ func (t *StaticTimeseries) SetTag(key, val string) {
 	}
 
 	t.TSTags[key] = val
+}
+
+func (t *StaticTimeseries) Tag(key string) (string, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.TSTags == nil {
+		return "", false
+	}
+	tag, ok := t.TSTags[key]
+	return tag, ok
 }
 
 func (t *StaticTimeseries) All() []Observable {

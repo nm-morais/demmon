@@ -75,3 +75,39 @@ func NewRemoveTreeAggregationFuncReq(key uint64) request.Request {
 		InterestSetID: key,
 	}
 }
+
+// GlobalAggregationFunction
+
+const AddGlobalAggregationFuncReqID = 2005
+
+type AddGlobalAggregationFuncReq struct {
+	Id          int64
+	InterestSet body_types.GlobalAggregationFunction
+}
+
+func (r AddGlobalAggregationFuncReq) ID() protocol.ID {
+	return AddGlobalAggregationFuncReqID
+}
+
+func NewAddGlobalAggregationFuncReq(id int64, interestSet body_types.GlobalAggregationFunction) request.Request {
+	return AddGlobalAggregationFuncReq{
+		Id:          id,
+		InterestSet: interestSet,
+	}
+}
+
+type RemoveGlobalAggregationFuncReq struct {
+	InterestSetID uint64
+}
+
+const RemoveGlobalAggregationFuncReqID = 2006
+
+func (r RemoveGlobalAggregationFuncReq) ID() protocol.ID {
+	return RemoveGlobalAggregationFuncReqID
+}
+
+func NewRemoveGlobalAggregationFuncReq(key uint64) request.Request {
+	return RemoveGlobalAggregationFuncReq{
+		InterestSetID: key,
+	}
+}

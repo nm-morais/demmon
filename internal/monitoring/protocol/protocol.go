@@ -3,7 +3,6 @@ package protocol
 import (
 	"time"
 
-	"github.com/nm-morais/demmon-common/body_types"
 	membershipProtocol "github.com/nm-morais/demmon/internal/membership/protocol"
 	"github.com/nm-morais/demmon/internal/monitoring/engine"
 	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
@@ -22,37 +21,25 @@ const (
 	MonitorProtoID = 6000
 	name           = "monitor_proto"
 
-	CleanupInterestSetTimerDuration           = 5 * time.Second
+	CleanupInterestSetTimerDuration = 5 * time.Second
+	// neigh sets
 	RebroadcastNeighInterestSetsTimerDuration = 5 * time.Second
-	RebroadcastTreeInterestSetsTimerDuration  = 5 * time.Second
 	ExpireNeighInterestSetTimeout             = 3 * RebroadcastNeighInterestSetsTimerDuration
+
+	// tree agg funcs
+	RebroadcastTreeAggFuncTimerDuration   = 5 * time.Second
+	RebroadcastGlobalAggFuncTimerDuration = 5 * time.Second
+
+	// global agg funcs
+	ExpireGlobalAggFuncTimeout = 3 * RebroadcastNeighInterestSetsTimerDuration
+	ExpireTreeAggFuncTimeout   = 3 * RebroadcastTreeAggFuncTimerDuration
 )
-
-type subWithTTL struct {
-	ttl         int
-	p           peer.Peer
-	lastRefresh time.Time
-}
-
-type neighInterestSet struct {
-	nrRetries   int
-	subscribers map[string]subWithTTL
-	TTL         int
-	IS          body_types.InterestSet
-}
-
-type treeAggSet struct {
-	nrRetries   int
-	AggSet      body_types.TreeAggregationSet
-	childValues map[string]map[string]interface{}
-	local       bool
-	parent      bool
-}
 
 type Monitor struct {
 	currID            membershipProtocol.PeerIDChain
 	neighInterestSets map[int64]*neighInterestSet
 	treeAggFuncs      map[int64]*treeAggSet
+	globalAggFuncs    map[int64]*globalAggFunc
 
 	currView membershipProtocol.InView
 	logger   *logrus.Logger
@@ -77,6 +64,7 @@ func New(babel protocolManager.ProtocolManager, db *tsdb.TSDB, me *engine.Metric
 // BOILERPLATE
 
 func (m *Monitor) MessageDelivered(msg message.Message, p peer.Peer) {
+	m.logger.Infof("Message %+v delivered to: %s", msg, p)
 }
 
 func (m *Monitor) MessageDeliveryErr(msg message.Message, p peer.Peer, err errors.Error) {
@@ -153,7 +141,7 @@ func (m *Monitor) Start() {
 
 	m.babel.RegisterTimer(
 		m.ID(),
-		NewBroadcastTreeAggregationFuncsTimer(RebroadcastTreeInterestSetsTimerDuration),
+		NewBroadcastTreeAggregationFuncsTimer(RebroadcastTreeAggFuncTimerDuration),
 	)
 
 	m.babel.RegisterTimer(
@@ -202,6 +190,12 @@ func (m *Monitor) handleNodeDown(n notification.Notification) {
 			}
 		}
 	}
+
+	// remove all child values from tree agg func
+	for _, treeAggFunc := range m.treeAggFuncs {
+		delete(treeAggFunc.childValues, nodeDown.String())
+	}
+
 }
 
 // UTILS

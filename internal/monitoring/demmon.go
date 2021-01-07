@@ -63,6 +63,7 @@ type broadcastMessageSubscribers struct {
 
 type customInterestSetWrapper struct {
 	nrRetries int
+	clients   map[string]*demmon_client.DemmonClient
 	is        body_types.CustomInterestSet
 	*sync.Mutex
 }
@@ -323,7 +324,6 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		)
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, ans)
 	case routes.InstallCustomInterestSet:
-
 		reqBody := body_types.CustomInterestSet{}
 		if !extractBody(r, &reqBody, d, resp) {
 			break
@@ -350,7 +350,9 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			nrRetries: 0,
 			is:        reqBody,
 			Mutex:     &sync.Mutex{},
+			clients:   make(map[string]*demmon_client.DemmonClient),
 		}
+
 		d.logger.Infof("Creating custom interest set %d func output bucket: %s", setID, reqBody.IS.OutputBucketOpts.Name)
 		d.customInterestSets.Store(setID, customIntSet)
 
@@ -363,6 +365,21 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			break
 		}
 		d.customInterestSets.Delete(reqBody.SetID)
+		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, nil)
+	case routes.UpdateCustomInterestSetHosts:
+		reqBody := body_types.UpdateCustomInterestSetReq{}
+		if !extractBody(r, &reqBody, d, resp) {
+			break
+		}
+		customISGeneric, ok := d.customInterestSets.Load(reqBody.SetID)
+		if !ok {
+			resp = body_types.NewResponse(r.ID, false, body_types.ErrCustomInterestSetNotFound, 404, r.Type, nil)
+			break
+		}
+		customIS := customISGeneric.(*customInterestSetWrapper)
+		customIS.Lock()
+		customIS.is.Hosts = reqBody.Hosts
+		customIS.Unlock()
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, nil)
 	case routes.InstallNeighborhoodInterestSet:
 		reqBody := body_types.NeighborhoodInterestSet{}
@@ -437,9 +454,11 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, nil)
 	case routes.InstallBroadcastMessageHandler:
 		reqBody := body_types.InstallMessageHandlerRequest{}
+
 		if !extractBody(r, &reqBody, d, resp) {
 			break
 		}
+
 		actualGeneric, loaded := d.broadcastMessageSubscribers.LoadOrStore(reqBody.ID, &broadcastMessageSubscribers{
 			Mutex: &sync.Mutex{},
 			subs: []*struct {
@@ -607,32 +626,6 @@ func (d *Demmon) handleCustomInterestSet(taskID int64, req *body_types.Request, 
 		return
 	}
 	customJobWrapper := jobGeneric.(*customInterestSetWrapper)
-	clients := make([]*demmon_client.DemmonClient, len(customJobWrapper.is.Hosts))
-
-	for idx, p := range customJobWrapper.is.Hosts { // TODO set ports on hosts instead
-
-		newCL := demmon_client.New(demmon_client.DemmonClientConf{
-			DemmonPort:     int(p.Port), // TODO remove this
-			DemmonHostAddr: p.IP.String(),
-			RequestTimeout: customJobWrapper.is.IS.Query.Timeout,
-		})
-
-		i := 0
-		for ; ; i++ {
-			err := newCL.ConnectTimeout(customJobWrapper.is.IS.Query.Timeout)
-			if err != nil {
-				if i == customJobWrapper.is.IS.MaxRetries {
-					d.logger.Errorf("Could not connect to custom interest set %d target: %s ", taskID, p.IP.String())
-					c.out <- body_types.NewResponse(req.ID, true, body_types.ErrCannotConnect, 500, routes.InstallCustomInterestSet, nil)
-					return
-				}
-				continue
-			}
-			clients[idx] = newCL
-			break
-		}
-	}
-
 	ticker := time.NewTicker(customJobWrapper.is.IS.OutputBucketOpts.Granularity.Granularity)
 
 	for range ticker.C {
@@ -644,25 +637,62 @@ func (d *Demmon) handleCustomInterestSet(taskID int64, req *body_types.Request, 
 		job := jobGeneric.(*customInterestSetWrapper)
 		query := job.is.IS.Query
 
-		for _, cl := range clients {
+		for _, p := range customJobWrapper.is.Hosts {
+			cl, ok := job.clients[p.IP.String()]
+			if !ok {
+				newCL := demmon_client.New(demmon_client.DemmonClientConf{
+					DemmonPort:     p.Port,
+					DemmonHostAddr: p.IP.String(),
+					RequestTimeout: customJobWrapper.is.IS.Query.Timeout,
+				})
+
+				for {
+					err := newCL.ConnectTimeout(customJobWrapper.is.IS.Query.Timeout)
+					if err != nil {
+						if job.nrRetries == customJobWrapper.is.IS.MaxRetries {
+							d.logger.Errorf("Could not connect to custom interest set %d target: %s ", taskID, p.IP.String())
+							c.out <- body_types.NewResponse(req.ID, true, body_types.ErrCannotConnect, 500, routes.InstallCustomInterestSet, nil)
+						}
+						job.nrRetries++
+						continue
+					}
+					break
+				}
+				cl = newCL
+				job.clients[p.IP.String()] = newCL
+			}
+
 			res, err := cl.Query(query.Expression, query.Timeout)
 			if err != nil {
-				c.out <- body_types.NewResponse(req.ID, true, nil, 500, routes.InstallCustomInterestSet, body_types.ErrCannotConnect)
-				return
+				c.out <- body_types.NewResponse(req.ID, true, nil, 500, routes.InstallCustomInterestSet, err)
+				continue
 			}
-			toAdd := []tsdb.ReadOnlyTimeSeries{}
 
+			toAdd := []tsdb.ReadOnlyTimeSeries{}
 			for _, ts := range res {
 				ts.MeasurementName = job.is.IS.OutputBucketOpts.Name
 				tmp := tsdb.StaticTimeseriesFromDTO(ts)
 				toAdd = append(toAdd, tmp)
 			}
 			d.logger.Info("Custom interest set %d adding to DB values: %+v", toAdd)
-
 			err = d.db.AddAll(toAdd)
 			if err != nil {
 				d.logger.Panicf("Unexpected err adding metric to db: %s", err.Error())
 				return
+			}
+		}
+
+		for host, cl := range job.clients {
+			found := false
+			for _, v := range job.is.Hosts {
+				if host == v.IP.String() {
+					found = true
+					break
+				}
+			}
+			if !found {
+				cl.Disconnect()
+				delete(job.clients, host)
 			}
 		}
 	}
