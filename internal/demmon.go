@@ -439,6 +439,34 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		d.monitorProto.AddTreeAggregationFuncReq(treeSetID, reqBody)
 		d.logger.Infof("Added new tree aggregation function: %+v", reqBody)
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, treeSetID)
+	case routes.InstallGlobalAggregationFunction:
+		reqBody := body_types.GlobalAggregationFunction{}
+		if !extractBody(r, &reqBody, d, resp) {
+			break
+		}
+
+		d.logger.Infof("Creating neigh interest set func output bucket: %s", reqBody.OutputBucketOpts.Name)
+
+		_, err := d.db.CreateBucket(
+			reqBody.OutputBucketOpts.Name,
+			reqBody.OutputBucketOpts.Granularity.Granularity,
+			reqBody.OutputBucketOpts.Granularity.Count,
+		)
+
+		if err != nil {
+			d.logger.Errorf("Got error installing neighborhood interest set: %s", err.Error())
+			if errors.Is(err, tsdb.ErrAlreadyExists) {
+				resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
+				break
+			}
+			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
+			break
+		}
+
+		neighSetID := Hash(reqBody)
+		d.monitorProto.AddGlobalAggregationFuncReq(int64(neighSetID), reqBody)
+		d.logger.Infof("Added new neighborhood interest set: %+v", reqBody)
+		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, neighSetID)
 
 	case routes.BroadcastMessage:
 		reqBody := body_types.Message{}

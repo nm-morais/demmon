@@ -298,7 +298,8 @@ func setupDemmonMetrics() {
 		}
 		break
 	}
-	testCustomInterestSet(cl)
+	// testCustomInterestSet(cl)
+	testGlobalAggFunc(cl)
 }
 
 func setupDemmonExporter(eConf *exporter.Conf) {
@@ -465,7 +466,7 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 	}
 }
 
-func testTreeFuncAggSet(cl *client.DemmonClient) {
+func testTreeAggFunc(cl *client.DemmonClient) {
 
 	// 	`neighRoutines = Select("nr_goroutines_neigh","*")
 	// 	result = Min(neighRoutines, "*")`,
@@ -531,6 +532,80 @@ func testTreeFuncAggSet(cl *client.DemmonClient) {
 		}
 
 		fmt.Println("Select('avg_nr_goroutines_tree','*') Query results :")
+
+		for idx, ts := range res {
+			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
+		}
+	}
+}
+
+func testGlobalAggFunc(cl *client.DemmonClient) {
+
+	const (
+		connectBackoffTime = 1 * time.Second
+		expressionTimeout  = 1 * time.Second
+		exportFrequency    = 5 * time.Second
+		defaultTTL         = 2
+		defaultMetricCount = 12
+		maxRetries         = 3
+		connectTimeout     = 3 * time.Second
+		tickerTimeout      = 5 * time.Second
+		requestTimeout     = 1 * time.Second
+	)
+
+	_, err := cl.InstallGlobalAggregationFunction(
+		&body_types.GlobalAggregationFunction{
+			MaxRetries: 3,
+			Query: body_types.RunnableExpression{
+				Timeout: expressionTimeout,
+				Expression: `point = SelectLast("nr_goroutines","*")[0].Last()
+							result = {"count":1, "value":point.Value().value}`,
+			},
+			OutputBucketOpts: body_types.BucketOptions{
+				Name: "avg_nr_goroutines_global",
+				Granularity: body_types.Granularity{
+					Granularity: exportFrequency,
+					Count:       defaultMetricCount,
+				},
+			},
+			MergeFunction: body_types.RunnableExpression{
+				Timeout: expressionTimeout,
+				Expression: `
+							aux = {"count":0, "value":0}
+							for (i = 0; i < args.length; i++) {
+								aux.count += args[i].count
+								aux.value += args[i].value					
+							}
+							result = aux
+							`,
+			},
+			DifferenceFunction: body_types.RunnableExpression{
+				Timeout: expressionTimeout,
+				Expression: `
+							toSubtractFrom = args[0]
+							for (i = 1; i < args.length; i++) {
+								toSubtractFrom.count -= args[i].count
+								toSubtractFrom.value -= args[i].value					
+							}
+							result = toSubtractFrom
+							`,
+			},
+		})
+
+	if err != nil {
+		panic(err)
+	}
+
+	for range time.NewTicker(tickerTimeout).C {
+		res, err := cl.Query(
+			"Select('avg_nr_goroutines_global','*')",
+			1*time.Second,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println("Select('avg_nr_goroutines_global','*') Query results :")
 
 		for idx, ts := range res {
 			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)

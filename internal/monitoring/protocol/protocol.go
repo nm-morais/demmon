@@ -50,14 +50,15 @@ type Monitor struct {
 
 func New(babel protocolManager.ProtocolManager, db *tsdb.TSDB, me *engine.MetricsEngine) *Monitor {
 	return &Monitor{
-		tsdb:              db,
-		me:                me,
 		currID:            make(membershipProtocol.PeerIDChain, 0),
-		treeAggFuncs:      make(map[int64]*treeAggSet),
 		neighInterestSets: make(map[int64]*neighInterestSet),
+		treeAggFuncs:      make(map[int64]*treeAggSet),
+		globalAggFuncs:    make(map[int64]*globalAggFunc),
 		currView:          membershipProtocol.InView{},
-		babel:             babel,
 		logger:            logs.NewLogger(name),
+		babel:             babel,
+		me:                me,
+		tsdb:              db,
 	}
 }
 
@@ -88,13 +89,13 @@ func (m *Monitor) Init() { // REPLY HANDLERS
 	m.babel.RegisterNotificationHandler(m.ID(), membershipProtocol.NodeDownNotification{}, m.handleNodeDown)
 	m.babel.RegisterNotificationHandler(m.ID(), membershipProtocol.IDChangeNotification{}, m.handlePeerIDChange)
 
-	// REQUEST HANDLERS
+	// NEIGH INT SETS
+
 	m.babel.RegisterRequestHandler(m.ID(), AddNeighborhoodInterestSetReqID, m.handleAddNeighInterestSetRequest)
 	m.babel.RegisterRequestHandler(m.ID(), RemoveNeighborhoodInterestSetReqID, m.handleRemoveNeighInterestSetRequest)
 
-	m.babel.RegisterRequestHandler(m.ID(), AddTreeAggregationFuncReqID, m.handleAddTreeAggregationFuncRequest)
+	m.babel.RegisterTimerHandler(m.ID(), RebroadcastInterestSetTimerID, m.handleRebroadcastInterestSetsTimer)
 
-	// MESSAGE HANDLERS
 	m.babel.RegisterMessageHandler(
 		m.ID(),
 		NewInstallNeighInterestSetMessage(nil),
@@ -105,6 +106,17 @@ func (m *Monitor) Init() { // REPLY HANDLERS
 		NewPropagateNeighInterestSetMetricsMessage(0, nil, 0),
 		m.handlePropagateNeighInterestSetMetricsMessage,
 	)
+	m.babel.RegisterTimerHandler(
+		m.ID(),
+		ExportNeighInterestSetMetricsTimerID,
+		m.handleExportNeighInterestSetMetricsTimer,
+	)
+
+	// TREE AGG FUNCS
+
+	m.babel.RegisterRequestHandler(m.ID(), AddTreeAggregationFuncReqID, m.handleAddTreeAggregationFuncRequest)
+
+	m.babel.RegisterTimerHandler(m.ID(), RebroadcastTreeAggregationFuncsTimerID, m.handleRebroadcastTreeInterestSetsTimer)
 
 	m.babel.RegisterMessageHandler(
 		m.ID(),
@@ -116,20 +128,38 @@ func (m *Monitor) Init() { // REPLY HANDLERS
 		NewPropagateTreeAggFuncMetricsMessage(0, nil),
 		m.handlePropagateTreeAggFuncMetricsMessage,
 	)
-
-	// TIMER HANDLERS
 	m.babel.RegisterTimerHandler(
 		m.ID(),
 		ExportTreeAggregationFuncTimerID,
 		m.handleExportTreeAggregationFuncTimer,
 	)
+
+	// GLOBAL AGG FUNCS
+
+	m.babel.RegisterRequestHandler(m.ID(), AddGlobalAggregationFuncReqID, m.handleAddGlobalAggFuncRequest)
+
+	m.babel.RegisterTimerHandler(m.ID(), RebroadcastGlobalAggregationFuncsTimerID, m.handleRebroadcastGlobalInterestSetsTimer)
+
 	m.babel.RegisterTimerHandler(
 		m.ID(),
-		ExportNeighInterestSetMetricsTimerID,
-		m.handleExportNeighInterestSetMetricsTimer,
+		ExportGlobalAggregationFuncTimerID,
+		m.handleExportGlobalAggFuncFuncTimer,
 	)
-	m.babel.RegisterTimerHandler(m.ID(), RebroadcastTreeAggregationFuncsTimerID, m.handleRebroadcastTreeInterestSetsTimer)
-	m.babel.RegisterTimerHandler(m.ID(), RebroadcastInterestSetTimerID, m.handleRebroadcastInterestSetsTimer)
+
+	m.babel.RegisterMessageHandler(
+		m.ID(),
+		NewInstallGlobalAggFuncMessage(nil),
+		m.handleInstallGlobalAggFuncMessage,
+	)
+
+	m.babel.RegisterMessageHandler(
+		m.ID(),
+		NewPropagateGlobalAggFuncMetricsMessage(0, nil),
+		m.handlePropagateGlobalAggFuncMetricsMessage,
+	)
+
+	// CLEANUP (SAME FOR ALL)
+
 	m.babel.RegisterTimerHandler(m.ID(), CleanupInsterestSetsTimerID, m.handleCleanupInterestSetsTimer)
 }
 
@@ -146,6 +176,11 @@ func (m *Monitor) Start() {
 
 	m.babel.RegisterTimer(
 		m.ID(),
+		NewBroadcastGlobalAggregationFuncsTimer(RebroadcastGlobalAggFuncTimerDuration),
+	)
+
+	m.babel.RegisterTimer(
+		m.ID(),
 		NewCleanupInterestSetsTimer(CleanupInterestSetTimerDuration),
 	)
 }
@@ -156,6 +191,7 @@ func (m *Monitor) handleCleanupInterestSetsTimer(t timer.Timer) {
 	m.babel.RegisterTimer(m.ID(), NewCleanupInterestSetsTimer(CleanupInterestSetTimerDuration))
 	m.cleanupNeighInterestSets()
 	m.cleanupTreeInterestSets()
+	m.cleanupGlobalAggFuncs()
 }
 
 // NOTIFICATION HANDLERS

@@ -284,7 +284,7 @@ func (installTreeAggFuncMsgSerializer) Deserialize(msgBytes []byte) message.Mess
 
 // GLOBAL AGG FUNCS
 
-const propagateGlobalAggFuncMetricsMsgID = 6004
+const propagateGlobalAggFuncMetricsMsgID = 6005
 
 var propagateGlobalAggFuncMsgSerializerVar = propagateGlobalAggFuncMsgSerializer{}
 
@@ -342,7 +342,7 @@ func (propagateGlobalAggFuncMsgSerializer) Deserialize(msgBytes []byte) message.
 	return toDeserialize
 }
 
-const InstallGlobalAggFuncMsgID = 6005
+const InstallGlobalAggFuncMsgID = 6006
 
 var installGlobalAggFuncMsgSerializerVar = installGlobalAggFuncMsgSerializer{}
 

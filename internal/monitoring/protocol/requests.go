@@ -81,8 +81,8 @@ func NewRemoveTreeAggregationFuncReq(key uint64) request.Request {
 const AddGlobalAggregationFuncReqID = 2005
 
 type AddGlobalAggregationFuncReq struct {
-	Id          int64
-	InterestSet body_types.GlobalAggregationFunction
+	Id      int64
+	AggFunc body_types.GlobalAggregationFunction
 }
 
 func (r AddGlobalAggregationFuncReq) ID() protocol.ID {
@@ -91,8 +91,8 @@ func (r AddGlobalAggregationFuncReq) ID() protocol.ID {
 
 func NewAddGlobalAggregationFuncReq(id int64, interestSet body_types.GlobalAggregationFunction) request.Request {
 	return AddGlobalAggregationFuncReq{
-		Id:          id,
-		InterestSet: interestSet,
+		Id:      id,
+		AggFunc: interestSet,
 	}
 }
 

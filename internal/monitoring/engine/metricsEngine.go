@@ -128,6 +128,35 @@ func (e *MetricsEngine) RunMergeFunc(expression string, timeoutDuration time.Dur
 	}
 }
 
+func (e *MetricsEngine) RunDifferenceFunc(expression string, timeoutDuration time.Duration, args []map[string]interface{}) (map[string]interface{}, error) {
+	vm := otto.New()
+	err := vm.Set("args", args)
+
+	if err != nil {
+		return nil, err
+	}
+
+	ottoVal, err := e.runWithTimeout(vm, expression, timeoutDuration)
+	if err != nil {
+		return nil, err
+	}
+
+	vGeneric, err := ottoVal.Export()
+	if err != nil {
+		return nil, err
+	}
+
+	e.logger.Infof("Merge function %s got result %+v", expression, vGeneric)
+
+	switch vConverted := vGeneric.(type) {
+	case map[string]interface{}:
+		return vConverted, nil
+	default:
+		e.logger.Panicf("Unsupported return type: %s, (%+v)", reflect.TypeOf(vConverted), vConverted)
+		return nil, errUnsuportedReturnType
+	}
+}
+
 func (e *MetricsEngine) runWithTimeout(vm *otto.Otto, expression string, timeoutDuration time.Duration) (*otto.Value, error) {
 	type returnType struct {
 		ans *otto.Value
