@@ -381,13 +381,7 @@ func extractSelectArgs(vm *otto.Otto, call *otto.FunctionCall) (name string, tag
 
 func (e *MetricsEngine) selectLast(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
 	name, tagFilters, isTagFilterAll := extractSelectArgs(vm, call)
-
-	e.logger.Infof("SelectLast query...")
-
 	var queryResult []tsdb.ReadOnlyTimeSeries
-
-	defer e.logger.Infof("SelectLast query result: : %+v", queryResult)
-
 	if isTagFilterAll {
 		b, ok := e.db.GetBucket(name)
 		if !ok {

@@ -1693,6 +1693,7 @@ func (d *DemmonTree) progressToNextStep() {
 
 	if d.joinLevel == 0 {
 		if lowestLatencyPeer.NrChildren() < d.config.MinGrpSize {
+			d.logger.Infof("Joining level %d because nodes in this level have not enough members", d.joinLevel)
 			d.myPendingParentInJoin = lowestLatencyPeer
 			d.sendJoinAsChildMsg(lowestLatencyPeer.PeerWithIDChain, lowestLatencyPeer.MeasuredLatency, false)
 			return
@@ -1703,13 +1704,14 @@ func (d *DemmonTree) progressToNextStep() {
 	}
 
 	lowestLatencyPeerParent := d.parents[lowestLatencyPeer.String()]
-	d.logger.Infof("Joining level %d because nodes in this level have not enough members", d.joinLevel)
 	info, err := d.nodeWatcher.GetNodeInfo(lowestLatencyPeerParent)
 	if err != nil {
 		d.logger.Panic(err.Reason())
 	}
+
 	parentLatency := info.LatencyCalc().CurrValue()
 	if parentLatency < lowestLatencyPeer.MeasuredLatency {
+		d.logger.Infof("Joining level %d because latency to parent is lower than to its children", d.joinLevel)
 		d.unwatchPeersInLevelDone(d.joinLevel-1, lowestLatencyPeerParent)
 		d.myPendingParentInJoin = NewMeasuredPeer(lowestLatencyPeerParent, parentLatency)
 		d.sendJoinAsChildMsg(lowestLatencyPeerParent, info.LatencyCalc().CurrValue(), false)
@@ -1722,6 +1724,7 @@ func (d *DemmonTree) progressToNextStep() {
 		return
 	}
 	if lowestLatencyPeerParent.NrChildren() >= d.config.MaxGrpSize {
+		d.logger.Infof("Joining level %d because ideal parent in level %d has too many children", d.joinLevel-1, d.joinLevel-1)
 		d.unwatchPeersInLevelDone(d.joinLevel-1, lowestLatencyPeerParent)
 		d.myPendingParentInJoin = lowestLatencyPeer
 		d.sendJoinAsChildMsg(lowestLatencyPeer.PeerWithIDChain, lowestLatencyPeer.MeasuredLatency, false)
@@ -1733,7 +1736,7 @@ func (d *DemmonTree) progressToNextStep() {
 }
 
 func (d *DemmonTree) progressToNextLevel(lowestLatencyPeer peer.Peer) {
-	d.logger.Infof("Progressing to next level (currLevel=%d), (nextLevel=%d) ", d.joinLevel, d.joinLevel+1)
+	d.logger.Infof("Progressing from level %d to level %d ", d.joinLevel, d.joinLevel+1)
 	d.joinLevel++
 	if int(d.joinLevel) < len(d.currLevelPeers) {
 		for _, c := range d.children[lowestLatencyPeer.String()] {

@@ -13,9 +13,9 @@ import (
 	client "github.com/nm-morais/demmon-client/pkg"
 	"github.com/nm-morais/demmon-common/body_types"
 	exporter "github.com/nm-morais/demmon-exporter"
+	"github.com/nm-morais/demmon/internal"
 	membershipFrontend "github.com/nm-morais/demmon/internal/membership/frontend"
 	membershipProtocol "github.com/nm-morais/demmon/internal/membership/protocol"
-	"github.com/nm-morais/demmon/internal/monitoring"
 	"github.com/nm-morais/demmon/internal/monitoring/engine"
 	monitoringProto "github.com/nm-morais/demmon/internal/monitoring/protocol"
 	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
@@ -176,7 +176,7 @@ func main() {
 		RequestTimeout:  3 * time.Second,
 	}
 
-	dConf := &monitoring.DemmonConf{
+	dConf := &internal.DemmonConf{
 		Silent:     silent,
 		LogFolder:  logFolder,
 		LogFile:    "metrics_frontend.log",
@@ -210,7 +210,7 @@ func main() {
 
 func start(
 	babelConf *pkg.Config, nwConf *pkg.NodeWatcherConf, eConf *exporter.Conf,
-	dConf *monitoring.DemmonConf, membershipConf *membershipProtocol.DemmonTreeConfig,
+	dConf *internal.DemmonConf, membershipConf *membershipProtocol.DemmonTreeConfig,
 	meConf *engine.Conf, dbConf *tsdb.Conf,
 ) {
 	babel := pkg.NewProtoManager(*babelConf)
@@ -229,7 +229,7 @@ func start(
 	me := engine.NewMetricsEngine(db, *meConf, true)
 	fm := membershipFrontend.New(babel)
 	monitorProto := monitoringProto.New(babel, db, me)
-	monitor := monitoring.New(*dConf, monitorProto, me, db, fm)
+	monitor := internal.New(*dConf, monitorProto, me, db, fm)
 
 	babel.RegisterProtocol(monitorProto)
 	babel.RegisterProtocol(membershipProtocol.New(membershipConf, babel, nw))
@@ -592,6 +592,8 @@ func testCustomInterestSet(cl *client.DemmonClient) {
 		expressionTimeout = 1 * time.Second
 	)
 	_, errChan, _, err := cl.InstallCustomInterestSet(body_types.CustomInterestSet{
+		DialTimeout:      3 * time.Second,
+		DialRetryBackoff: 5 * time.Second,
 		Hosts: []body_types.CustomInterestSetHost{
 			{
 				IP:   demmonTreeConf.Landmarks[0].Peer.IP(),
