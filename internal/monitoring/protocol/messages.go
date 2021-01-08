@@ -1,9 +1,10 @@
 package protocol
 
 import (
+	"encoding/json"
+
 	"github.com/nm-morais/demmon-common/body_types"
 	"github.com/nm-morais/go-babel/pkg/message"
-	"k8s.io/apimachinery/pkg/util/json"
 )
 
 // NEIGH INTEREST SETS
