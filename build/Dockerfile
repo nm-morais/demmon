@@ -11,13 +11,14 @@ COPY --from=nmmorais/go-babel:latest /src/github.com/nm-morais/go-babel ../go-ba
 COPY --from=nmmorais/demmon-common:latest /src/github.com/nm-morais/demmon-common ../demmon-common/
 COPY --from=nmmorais/demmon-client:latest /src/github.com/nm-morais/demmon-client ../demmon-client/
 COPY --from=nmmorais/demmon-exporter:latest /src/github.com/nm-morais/demmon-exporter ../demmon-exporter/
-RUN go get -d -v ./...
+# RUN go get -d -v ./...
+RUN go mod download
 
 #build
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build --race -ldflags="-w -s" -o /go/bin/demmon cmd/demmon/*
 
 # EXECUTABLE IMG
-FROM debian as demmon
+FROM debian-slim as demmon
 
 # RUN apk add iproute2-tc
 
