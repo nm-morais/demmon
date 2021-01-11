@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"os"
 	"runtime"
 	"time"
 
@@ -24,8 +25,9 @@ import (
 )
 
 const (
-	minProtosPort = 7000
-	maxProtosPort = 8000
+	NodeIPEnvVarName = "hostname"
+	minProtosPort    = 7000
+	maxProtosPort    = 8000
 
 	minAnalyticsPort = 8000
 	maxAnalyticsPort = 9000
@@ -205,13 +207,20 @@ func main() {
 	}
 
 	fmt.Println("Self peer: ", babelConf.Peer.String())
-	start(babelConf, nodeWatcherConf, exporterConfs, dConf, demmonTreeConf, meConf, dbConf)
+	isLandmark := false
+	for _, p := range landmarks {
+		if peer.PeersEqual(babelConf.Peer, p) {
+			isLandmark = true
+			break
+		}
+	}
+	start(babelConf, nodeWatcherConf, exporterConfs, dConf, demmonTreeConf, meConf, dbConf, isLandmark)
 }
 
 func start(
 	babelConf *pkg.Config, nwConf *pkg.NodeWatcherConf, eConf *exporter.Conf,
 	dConf *internal.DemmonConf, membershipConf *membershipProtocol.DemmonTreeConfig,
-	meConf *engine.Conf, dbConf *tsdb.Conf,
+	meConf *engine.Conf, dbConf *tsdb.Conf, isLandmark bool,
 ) {
 	babel := pkg.NewProtoManager(*babelConf)
 	nw := pkg.NewNodeWatcher(
@@ -235,12 +244,16 @@ func start(
 	babel.RegisterProtocol(membershipProtocol.New(membershipConf, babel, nw))
 
 	go monitor.Listen()
-	go setupDemmonExporter(eConf)
-	go setupDemmonMetrics()
+	go testDemmonMetrics(eConf, isLandmark)
 	babel.StartSync()
 }
 
 func GetLocalIP() net.IP {
+
+	if host, ok := GetHostFromEnvVar(); ok {
+		return net.ParseIP(host)
+	}
+
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		panic(err)
@@ -258,6 +271,14 @@ func GetLocalIP() net.IP {
 	panic("no available loopback interfaces")
 }
 
+func GetHostFromEnvVar() (string, bool) {
+	hostIP, ok := os.LookupEnv(NodeIPEnvVarName)
+	if !ok {
+		return "", false
+	}
+	return hostIP, true
+}
+
 func ParseFlags() {
 	flag.IntVar(&protosPortVar, "protos", 1200, "protos")
 	flag.BoolVar(&silent, "s", false, "s")
@@ -270,7 +291,8 @@ func ParseFlags() {
 	flag.Parse()
 }
 
-func setupDemmonMetrics() {
+func testDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
+	go exportMetrics(eConf)
 	const (
 		connectBackoffTime = 1 * time.Second
 		expressionTimeout  = 1 * time.Second
@@ -299,10 +321,12 @@ func setupDemmonMetrics() {
 		break
 	}
 	// testCustomInterestSet(cl)
-	testGlobalAggFunc(cl)
+	if isLandmark {
+		testGlobalAggFunc(cl)
+	}
 }
 
-func setupDemmonExporter(eConf *exporter.Conf) {
+func exportMetrics(eConf *exporter.Conf) {
 	e, err := exporter.New(eConf, GetLocalIP().String(), "demmon", nil)
 	if err != nil {
 		panic(err)
