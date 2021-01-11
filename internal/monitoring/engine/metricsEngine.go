@@ -101,7 +101,20 @@ func (e *MetricsEngine) MakeQuery(expression string, timeoutDuration time.Durati
 
 func (e *MetricsEngine) RunMergeFunc(expression string, timeoutDuration time.Duration, args []map[string]interface{}) (map[string]interface{}, error) {
 	vm := otto.New()
-	err := vm.Set("args", args)
+
+	// make copy of args
+	argsCopy := make([]map[string]interface{}, 0, len(args))
+	for _, arg := range args {
+
+		argCopy := map[string]interface{}{}
+		for k, v := range arg {
+			argCopy[k] = v
+		}
+
+		argsCopy = append(argsCopy, argCopy)
+	}
+
+	err := vm.Set("args", argsCopy)
 
 	if err != nil {
 		return nil, err
@@ -130,7 +143,20 @@ func (e *MetricsEngine) RunMergeFunc(expression string, timeoutDuration time.Dur
 
 func (e *MetricsEngine) RunDifferenceFunc(expression string, timeoutDuration time.Duration, args []map[string]interface{}) (map[string]interface{}, error) {
 	vm := otto.New()
-	err := vm.Set("args", args)
+
+	// make copy of args
+	argsCopy := make([]map[string]interface{}, 0, len(args))
+	for _, arg := range args {
+
+		argCopy := map[string]interface{}{}
+		for k, v := range arg {
+			argCopy[k] = v
+		}
+
+		argsCopy = append(argsCopy, argCopy)
+	}
+
+	err := vm.Set("args", argsCopy)
 
 	if err != nil {
 		return nil, err

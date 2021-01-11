@@ -87,6 +87,7 @@ func (m *Monitor) broadcastGlobalAggFuncsToChildren() {
 				globalIntSetstoSend[aggFuncID] = is.AF
 			}
 		}
+
 		if len(globalIntSetstoSend) > 0 {
 			toSend := NewInstallGlobalAggFuncMessage(globalIntSetstoSend)
 			m.babel.SendMessage(toSend, child, m.ID(), m.ID())
@@ -221,15 +222,15 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 	var mergedVal map[string]interface{}
 	if len(globalAggFunc.NeighValues) > 0 {
 
-		valuesToMerge := []map[string]interface{}{queryResult}
+		valuesToMerge := make([]map[string]interface{}, 0, len(globalAggFunc.NeighValues)+1)
+		valuesToMerge = append(valuesToMerge, queryResult)
+		for _, v := range globalAggFunc.NeighValues {
+			valuesToMerge = append(valuesToMerge, v)
+		}
 
 		m.logger.Infof(
-			"Neigh values: (%+v)",
-			globalAggFunc.NeighValues,
-		)
-
-		m.logger.Infof(
-			"Merging values: (%+v)",
+			"Merging value: (%+v) with (%+v)",
+			queryResult,
 			valuesToMerge,
 		)
 
@@ -242,6 +243,7 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 		mergedVal = queryResult
 	}
 
+	timeNow := time.Now()
 	m.logger.Infof("Merged values: %+v", mergedVal)
 
 	if isLocal {
@@ -250,7 +252,7 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 			globalAggFunc.AF.OutputBucketOpts.Name,
 			make(map[string]string), // TODO is this correct? merged points will have no tags
 			mergedVal,
-			time.Now(),
+			timeNow,
 		)
 		if err != nil {
 			m.logger.Panic(err)
@@ -268,30 +270,36 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 				"Propagating values (%+v) from global agg func without performing difference from incomming value",
 				mergedVal,
 			)
-			toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: time.Now(), Fields: mergedVal})
+			toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: timeNow, Fields: mergedVal})
 			m.babel.SendMessage(toSendMsg, sub.p, m.ID(), m.ID())
 			continue
 		}
 
-		args := []map[string]interface{}{}
-		args = append(args, mergedVal, subVal)
 		m.logger.Infof(
-			"Performing difference among values: (%+v)",
-			args,
+			"Performing difference between: (%+v) and: (%+v)",
+			queryResult,
+			subVal,
 		)
-		differenceResult, err := m.me.RunMergeFunc(globalAggFunc.AF.DifferenceFunction.Expression, globalAggFunc.AF.DifferenceFunction.Timeout, args)
+
+		differenceResult, err := m.me.RunMergeFunc(
+			globalAggFunc.AF.DifferenceFunction.Expression,
+			globalAggFunc.AF.DifferenceFunction.Timeout,
+			[]map[string]interface{}{mergedVal, subVal},
+		)
+
 		if err != nil {
 			panic(err)
 		}
+
 		m.logger.Infof(
 			"Difference result: (%+v)",
 			differenceResult,
 		)
-		toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: time.Now(), Fields: differenceResult})
+		toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: timeNow, Fields: differenceResult})
 		m.logger.Infof(
 			"propagating metrics for global aggregation function %d (%+v) to peer %s",
 			interestSetID,
-			mergedVal,
+			differenceResult,
 			sub.p.String(),
 		)
 		m.babel.SendMessage(toSendMsg, sub.p, m.ID(), m.ID())
@@ -346,6 +354,10 @@ func (m *Monitor) cleanupGlobalAggFuncs() {
 		}
 
 		if len(is.subscribers) == 0 {
+			m.logger.Errorf(
+				"Removing global agg func %d because it has no subscribers",
+				isID,
+			)
 			delete(m.globalAggFuncs, isID)
 		}
 	}
