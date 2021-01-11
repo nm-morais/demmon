@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	NodeIPEnvVarName = "hostname"
+	NodeIPEnvVarName = "NODE_IP"
 	minProtosPort    = 7000
 	maxProtosPort    = 8000
 
