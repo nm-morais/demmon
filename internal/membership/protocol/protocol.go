@@ -1055,14 +1055,12 @@ func (d *DemmonTree) handleJoinAsChildMessage(sender peer.Peer, m message.Messag
 		return
 	}
 
-	if !d.landmark {
-		if !jacMsg.Urgent {
-			if !jacMsg.ExpectedID.Equal(d.self.Chain()) {
-				d.logger.Info("denying joinAsChildReply because expected id does not match my id")
-				toSend := NewJoinAsChildMessageReply(false, PeerID{}, d.self.Chain().Level(), d.self, nil, nil)
-				d.sendMessageTmpTCPChan(toSend, sender)
-				return
-			}
+	if !jacMsg.Urgent {
+		if !jacMsg.ExpectedID.Equal(d.self.Chain()) {
+			d.logger.Info("denying joinAsChildReply because expected id does not match my id")
+			toSend := NewJoinAsChildMessageReply(false, PeerID{}, d.self.Chain().Level(), d.self, nil, nil)
+			d.sendMessageTmpTCPChan(toSend, sender)
+			return
 		}
 	}
 
@@ -1096,7 +1094,6 @@ func (d *DemmonTree) handleJoinAsChildMessageReply(sender peer.Peer, m message.M
 	d.logger.Infof("got JoinAsChildMessageReply %+v from %s", japrMsg, sender.String())
 
 	if japrMsg.Accepted {
-
 		myNewID := append(japrMsg.Parent.Chain(), japrMsg.ProposedID)
 
 		if d.myPendingParentInImprovement != nil && peer.PeersEqual(sender, d.myPendingParentInImprovement) {
@@ -1145,6 +1142,7 @@ func (d *DemmonTree) handleJoinAsChildMessageReply(sender peer.Peer, m message.M
 		return
 	}
 
+	// not accepted
 	// special case for parent in recovery
 	if d.myPendingParentInRecovery != nil && peer.PeersEqual(sender, d.myPendingParentInRecovery) {
 		d.logger.Warnf("Pending parent in recovery denied request")
@@ -1580,8 +1578,7 @@ func (d *DemmonTree) joinOverlay() {
 func (d *DemmonTree) sendJoinAsChildMsg(
 	newParent *PeerWithIDChain,
 	newParentLat time.Duration,
-	urgent bool,
-) {
+	urgent bool) {
 	d.logger.Infof("Pending parent: %s", newParent.String())
 	d.logger.Infof("Joining level %d", uint16(len(newParent.Chain())))
 	toSend := NewJoinAsChildMessage(d.self, newParentLat, newParent.Chain(), urgent)
@@ -1640,13 +1637,14 @@ func (d *DemmonTree) progressToNextStep() {
 	)
 	if len(currLevelPeersDone) == 0 {
 		if d.joinLevel > 0 {
+			d.joinLevel--
 			currLevelPeersDone = d.getPeersInLevelByLat(
-				d.joinLevel-1,
+				d.joinLevel,
 				d.lastLevelProgress.Add(d.config.MaxTimeToProgressToNextLevel),
 			)
 			lowestLatencyPeer := currLevelPeersDone[0]
 			d.myPendingParentInJoin = lowestLatencyPeer
-			d.sendJoinAsChildMsg(lowestLatencyPeer.PeerWithIDChain, lowestLatencyPeer.MeasuredLatency, true)
+			d.sendJoinAsChildMsg(lowestLatencyPeer.PeerWithIDChain, lowestLatencyPeer.MeasuredLatency, false)
 			return
 		}
 		d.joinOverlay()

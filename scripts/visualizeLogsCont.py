@@ -9,7 +9,6 @@ plot_filepath_local = "/Users/nunomorais/go/src/github.com/nm-morais/demmon/topo
 logs_folder = "/tmp/demmon_logs"
 wait = 3
 
-
 arguments = len(sys.argv) - 1
 if arguments == 0:
     print("Insufficient argumments, requires: <node-addr>")

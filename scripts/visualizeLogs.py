@@ -4,6 +4,7 @@ import argparse
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import networkx as nx
+import json
 import os
 
 
@@ -20,7 +21,6 @@ def parse_files(file_paths, output_folder):
     landmarks = 0
     G = nx.Graph()
     nodes = {}
-    attrs = {}
     max_level = -1
 
     parent_less_nodes = 0
@@ -41,23 +41,21 @@ def parse_files(file_paths, output_folder):
 
             if "I am landmark" in line:
                 landmark = True
-            if "Dialed parent with success" in line and parent_ip == "" and line != "":
-                if "from not my parent" in line:
-                    continue
+            if "My parent changed" in line and parent_ip == "" and line != "":
                 # print(line)
 
                 # print(line.split(" "))
-                # split = line.split(" ")
-                # for i, s in enumerate(split):
-                # print(i, s)
+                split = line.split(" ")
+                for i, s in enumerate(split):
+                    print(i, s)
                 split_line = line.split(" ")
                 # for i, s in enumerate(split_line):
                 #     print(i, s)
 
-                parent_name = str(split_line[11])
-                # print(parent_name)
+                parent_name = str(split_line[10])
                 parent_name = parent_name.split(":")[0]
                 parent_ip = parent_name[6:]
+                # print("Node {} has parent {}".format(node_name, parent_ip))
 
             if "My level" in line and node_level == -1:
                 # print(line)
@@ -66,7 +64,6 @@ def parse_files(file_paths, output_folder):
                 if node_level > max_level:
                     max_level = node_level
 
-            # print(line)
             if "Latency:" in line and "[NodeWatcher]" in line:
                 if "Lowest Latency Peer" in line:
                     continue
@@ -74,30 +71,34 @@ def parse_files(file_paths, output_folder):
                 split = line.split(" ")
                 # print(split)
 
-                ip_port = str(split[7
-                                    ])[:-1]
+                ip_port = str(split[6])[:-1]
                 ip = str(ip_port.split(":")[0])[6:]
 
-                for i, s in enumerate(split):
-                    print(i, s)
-                # print(ip)
+                # for i, s in enumerate(split):
+                #     print(i, s)
+                # print("ip:", ip)
 
                 # print(line)
-                latStr = split[11]
+                latStr = split[10]
                 latStr2 = latStr[:-1]
 
                 try:
                     added = latencies_added[(node_ip, ip)]
                 except KeyError:
-                    latencies.append(
-                        (node_ip, ip, (int(latStr2) / 1000000) / 2))
-                    latencies_added[(node_ip, ip)] = {}
+                    try:
+                        added = latencies_added[(ip, node_ip)]
+                    except KeyError:
+                        latencies.append(
+                            (node_ip, ip, (int(latStr2) / 1000000) / 2))
+                        latencies_added[(node_ip, ip)] = {}
 
         # print(latencies_added)
         # print(latencies)
 
         if landmark:
-            xPos = landmarks * level_width * 1.85
+            xPos = (landmarks + 1) * level_width / 2
+            print("landmark: {}".format(node_ip))
+            print("landmark xpos: {}".format(xPos))
             landmarks += 1
             yPos = 0
             nodes[node_ip] = {
@@ -147,7 +148,8 @@ def parse_files(file_paths, output_folder):
     nodeLabels = {}
 
     for node in sorted(nodes, key=lambda x: nodes[x]["node_level"], reverse=False):
-
+        if node.startswith("."):
+            continue
         for latencyPair in nodes[node]["latencies"]:
             # G.add_edge(node, latencyPair[0], weight=latencyPair[1],
             #           parent=False, latency=True, label=latencyPair[1])
@@ -162,22 +164,12 @@ def parse_files(file_paths, output_folder):
             except KeyError:
                 nChildren = 0
             landmark_list.append(node)
-
         else:
             nodeLabels[node] = node
             if nodes[node]["parent"] != "":
                 parentId = nodes[node]["parent"]
                 parent = nodes[parentId]
-                try:
-                    curr = currChildren[parentId]
-                    parentPos = parent["pos"]
-                except KeyError:
-                    curr = 0
-                    parentPos = (parent_less_nodes, -10)
-                    parent_less_nodes += 100
-                    print("err: {} has no parent, supposed to be: {}".format(
-                        node, parent))
-                    print("parent: {}".format(parent))
+                parentPos = parent["pos"]
 
                 parent_children = children[parentId]
                 lvl = nodes[node]["node_level"]
@@ -185,33 +177,46 @@ def parse_files(file_paths, output_folder):
                 # nodePos = [(parentPos[0] - parent_children * (200 / (lvl + 0.33)) +
                 #         curr * (200 / (lvl + 0.33))), parentPos[1] + 5]
 
+                try:
+                    curr = currChildren[parentId]
+                except KeyError:
+                    currChildren[parentId] = 0
+
                 if parent_children == 1:
                     nodePos = [parentPos[0], parentPos[1] + 5]
                     nodes[node]["pos"] = nodePos
                     pos[node] = nodePos
-                    currChildren[parentId] = curr + 1
+                    currChildren[parentId] = currChildren[parentId] + 1
                     parent_edges.append((parentId, node))
                     continue
 
                 thisLvlWidth = float(level_width) / float(lvl * lvl)
-                thisLvlStep = float(thisLvlWidth) / float(parent_children - 1)
+                thisLvlStep = float(thisLvlWidth) / float(parent_children)
 
-                print("level_width", level_width)
-                print("lvl", lvl)
+                # print("level_width", level_width)
+                # print("lvl", lvl)
+                print("node:", node)
                 print("thisLvlWidth", thisLvlWidth)
                 print("thisLvlStep", thisLvlStep)
 
+                # nodePos = (parentPos[0] - thisLvlWidth / 2 +
+                #            currChildren[parentId * thisLvlStep, parentPos[1] + 5])
+
+                # nodePos = [parentPos[0] - thisLvlWidth / 2 +
+                #            (currChildren[parentId]) * thisLvlStep, parentPos[1] + 5]
+
                 nodePos = [
-                    parentPos[0] - (thisLvlWidth / 2) + curr * thisLvlStep, parentPos[1] + 5]
+                    (parentPos[0] - (thisLvlStep * int(parent_children / 2)) + (currChildren[parentId]) * thisLvlStep), parentPos[1] + 5]
 
                 nodes[node]["pos"] = nodePos
                 pos[node] = nodePos
-                currChildren[parentId] = curr + 1
+                currChildren[parentId] = currChildren[parentId] + 1
                 parent_edges.append((parentId, node))
 
             else:
-                pos[node] = nodes[node]["pos"]
-
+                parentPos = (parent_less_nodes, -10)
+                parent_less_nodes += 100
+                print("err: {} has no parent".format(node))
     # print(latencyEdges)
 
     '''
@@ -240,14 +245,15 @@ def parse_files(file_paths, output_folder):
     edge_colors = [latencyEdges[l] for l in latencyEdges]
     # print()
 
-    for node in nodes:
-        print("{}:{}".format(node, nodes[node]))
+    print(json.dumps(nodes, indent=4, sort_keys=True))
+    # for node in nodes:
+    #     print("{}:{}".format(node, nodes[node]))
 
     parent_colors = []
-    print(latencyEdges)
+    # print(latencyEdges)
 
     for p in parent_edges:
-        print(p)
+        # print(p)
         try:
             parent_colors.append(latencyEdges[p])
             latencyEdgeLabels[p] = latencyEdges[p]
@@ -273,7 +279,7 @@ def parse_files(file_paths, output_folder):
             f.write("{} {}\n".format(parent_edge[0], parent_edge[1]))
 
     cmap = plt.cm.rainbow
-
+    print(pos)
     nx.draw_networkx_nodes(G, pos, nodelist=node_list,
                            node_size=300, ax=ax, node_shape="o")
     nx.draw_networkx_labels(G, pos, nodeLabels, font_size=6, ax=ax)
