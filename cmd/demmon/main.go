@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	client "github.com/nm-morais/demmon-client/pkg"
@@ -25,12 +26,16 @@ import (
 )
 
 const (
-	NodeIPEnvVarName = "NODE_IP"
-	minProtosPort    = 7000
-	maxProtosPort    = 8000
+	LandmarksEnvVarName = "LANDMARKS"
+	NodeIPEnvVarName    = "NODE_IP"
+	minProtosPort       = 7000
+	maxProtosPort       = 8000
 
 	minAnalyticsPort = 8000
 	maxAnalyticsPort = 9000
+
+	baseProtoPort     uint16 = 1200
+	baseAnalyticsPort uint16 = 1300
 )
 
 var (
@@ -109,46 +114,45 @@ var (
 )
 
 func main() {
-	const (
-		baseProtoPort     uint16 = 1200
-		baseAnalyticsPort uint16 = 1300
-	)
-
 	ParseFlags()
 
-	landmarks := []*membershipProtocol.PeerWithIDChain{
-		membershipProtocol.NewPeerWithIDChain(
-			membershipProtocol.PeerIDChain{membershipProtocol.PeerID{12}},
-			peer.NewPeer(net.ParseIP("10.10.1.16"), baseProtoPort, baseAnalyticsPort),
-			0,
-			0,
-			make(membershipProtocol.Coordinates, 4),
-		),
-		// membershipProtocol.NewPeerWithIDChain(
-		// 	membershipProtocol.PeerIDChain{membershipProtocol.PeerID{17}},
-		// 	peer.NewPeer(net.IPv4(10, 10, 50, 133),
-		// 		baseProtoPort,
-		// 		baseAnalyticsPort),
-		// 	0,
-		// 	0,
-		// 	make(membershipProtocol.Coordinates, 4)),
-		// membershipProtocol.NewPeerWithIDChain(
-		// 	membershipProtocol.PeerIDChain{membershipProtocol.PeerID{23}},
-		// 	peer.NewPeer(net.IPv4(10, 10, 29, 25),
-		// 		baseProtoPort,
-		// 		baseAnalyticsPort),
-		// 	0,
-		// 	0,
-		// 	make(membershipProtocol.Coordinates, 4)),
-		// membershipProtocol.NewPeerWithIDChain(
-		// 	membershipProtocol.PeerIDChain{membershipProtocol.PeerID{23}},
-		// 	peer.NewPeer(net.IPv4(10, 10, 1, 21),
-		// 		baseProtoPort,
-		// 		baseAnalyticsPort),
-		// 	0,
-		// 	0,
-		// 	make(membershipProtocol.Coordinates, 4)),
+	landmarks, ok := GetLandmarksEnv()
+	if !ok {
+		landmarks = []*membershipProtocol.PeerWithIDChain{
+			membershipProtocol.NewPeerWithIDChain(
+				membershipProtocol.PeerIDChain{membershipProtocol.PeerID{12}},
+				peer.NewPeer(net.ParseIP("10.10.1.16"), baseProtoPort, baseAnalyticsPort),
+				0,
+				0,
+				make(membershipProtocol.Coordinates, 4),
+			),
+			// membershipProtocol.NewPeerWithIDChain(
+			// 	membershipProtocol.PeerIDChain{membershipProtocol.PeerID{17}},
+			// 	peer.NewPeer(net.IPv4(10, 10, 50, 133),
+			// 		baseProtoPort,
+			// 		baseAnalyticsPort),
+			// 	0,
+			// 	0,
+			// 	make(membershipProtocol.Coordinates, 4)),
+			// membershipProtocol.NewPeerWithIDChain(
+			// 	membershipProtocol.PeerIDChain{membershipProtocol.PeerID{23}},
+			// 	peer.NewPeer(net.IPv4(10, 10, 29, 25),
+			// 		baseProtoPort,
+			// 		baseAnalyticsPort),
+			// 	0,
+			// 	0,
+			// 	make(membershipProtocol.Coordinates, 4)),
+			// membershipProtocol.NewPeerWithIDChain(
+			// 	membershipProtocol.PeerIDChain{membershipProtocol.PeerID{23}},
+			// 	peer.NewPeer(net.IPv4(10, 10, 1, 21),
+			// 		baseProtoPort,
+			// 		baseAnalyticsPort),
+			// 	0,
+			// 	0,
+			// 	make(membershipProtocol.Coordinates, 4)),
+		}
 	}
+
 	demmonTreeConf.Landmarks = landmarks
 
 	if logFolder == "" {
@@ -269,6 +273,28 @@ func GetLocalIP() net.IP {
 	}
 
 	panic("no available loopback interfaces")
+}
+
+func GetLandmarksEnv() ([]*membershipProtocol.PeerWithIDChain, bool) {
+	landmarksEnv, exists := os.LookupEnv(LandmarksEnvVarName)
+	if !exists {
+		return nil, false
+	}
+
+	landmarksSplitted := strings.Split(landmarksEnv, ";")
+	landmarks := make([]*membershipProtocol.PeerWithIDChain, len(landmarksSplitted))
+
+	for i, landmarkIP := range landmarksSplitted {
+		landmark := membershipProtocol.NewPeerWithIDChain(
+			membershipProtocol.PeerIDChain{membershipProtocol.PeerID{uint8(i)}},
+			peer.NewPeer(net.ParseIP(landmarkIP), baseProtoPort, baseAnalyticsPort),
+			0,
+			0,
+			make(membershipProtocol.Coordinates, 4),
+		)
+		landmarks[i] = landmark
+	}
+	return landmarks, true
 }
 
 func GetHostFromEnvVar() (string, bool) {
