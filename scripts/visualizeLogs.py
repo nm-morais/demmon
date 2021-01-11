@@ -191,7 +191,7 @@ def parse_files(file_paths, output_folder):
                     continue
 
                 thisLvlWidth = float(level_width) / float(lvl * lvl)
-                thisLvlStep = float(thisLvlWidth) / float(parent_children)
+                thisLvlStep = float(thisLvlWidth) / float(parent_children - 1)
 
                 # print("level_width", level_width)
                 # print("lvl", lvl)
@@ -204,9 +204,14 @@ def parse_files(file_paths, output_folder):
 
                 # nodePos = [parentPos[0] - thisLvlWidth / 2 +
                 #            (currChildren[parentId]) * thisLvlStep, parentPos[1] + 5]
+                # if parent_children % 2 == 0:
 
                 nodePos = [
-                    (parentPos[0] - (thisLvlStep * int(parent_children / 2)) + (currChildren[parentId]) * thisLvlStep), parentPos[1] + 5]
+                    (parentPos[0] - (thisLvlWidth / 2)) + (currChildren[parentId] * thisLvlStep), parentPos[1] + 5]
+
+                # else:
+                #     nodePos = [
+                #         (parentPos[0] - (thisLvlStep * int(parent_children / 2))) + (currChildren[parentId] * thisLvlStep), parentPos[1] + 5]
 
                 nodes[node]["pos"] = nodePos
                 pos[node] = nodePos
