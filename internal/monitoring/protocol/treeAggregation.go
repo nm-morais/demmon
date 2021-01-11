@@ -286,3 +286,12 @@ func (m *Monitor) handleAddTreeAggregationFuncRequest(req request.Request) reque
 	m.babel.RegisterTimer(m.ID(), NewExportTreeAggregationFuncTimer(frequency, interestSetID))
 	return nil
 }
+
+// HANDLE NODE DOWN
+
+func (m *Monitor) handleNodeDownTreeAggFunc(nodeDown peer.Peer) {
+	// remove all child values from tree agg func
+	for _, treeAggFunc := range m.treeAggFuncs {
+		delete(treeAggFunc.childValues, nodeDown.String())
+	}
+}

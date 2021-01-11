@@ -50,11 +50,11 @@ var (
 		MaxRetriesJoinMsg:             3,
 		Landmarks:                     nil,
 		MinGrpSize:                    2,
-		MaxGrpSize:                    9,
-		NrPeersToKickPerParent:        3,
-		NrPeersToBecomeParentInAbsorb: 3,
+		MaxGrpSize:                    5,
+		NrPeersToKickPerParent:        2,
+		NrPeersToBecomeParentInAbsorb: 2,
 		PhiLevelForNodeDown:           3,
-		SwitchProbability:             0.5,
+		// SwitchProbability:             0.5,
 
 		LimitFirstLevelGroupSize:      true,
 		CheckChildenSizeTimerDuration: 3 * time.Second,
@@ -62,11 +62,11 @@ var (
 		ChildrenRefreshTickDuration:   3 * time.Second,
 		RejoinTimerDuration:           10 * time.Second,
 
-		MinLatencyImprovementToImprovePosition: 20 * time.Millisecond,
+		MinLatencyImprovementToImprovePosition: 25 * time.Millisecond,
 		AttemptImprovePositionProbability:      0.2,
 		EvalMeasuredPeersRefreshTickDuration:   5 * time.Second,
 
-		EnableSwitch: false,
+		// EnableSwitch: false,
 
 		EmitWalkProbability:                0.33,
 		BiasedWalkProbability:              0.2,
@@ -82,8 +82,8 @@ var (
 		NrPeersToMeasureRandom:             1,
 		NrPeersToMergeInWalkSample:         5,
 
-		CheckSwitchOportunityTimeout:          7500 * time.Millisecond,
-		MinLatencyImprovementPerPeerForSwitch: 10 * time.Millisecond,
+		// CheckSwitchOportunityTimeout:          7500 * time.Millisecond,
+		MinLatencyImprovementPerPeerForSwitch: 25 * time.Millisecond,
 	}
 
 	nodeWatcherConf = &pkg.NodeWatcherConf{
@@ -124,7 +124,7 @@ func main() {
 			0,
 			make(membershipProtocol.Coordinates, 4),
 		),
-		// membershipProtocol.NewPeerWithIdChain(
+		// membershipProtocol.NewPeerWithIDChain(
 		// 	membershipProtocol.PeerIDChain{membershipProtocol.PeerID{17}},
 		// 	peer.NewPeer(net.IPv4(10, 10, 50, 133),
 		// 		baseProtoPort,
@@ -132,7 +132,7 @@ func main() {
 		// 	0,
 		// 	0,
 		// 	make(membershipProtocol.Coordinates, 4)),
-		// membershipProtocol.NewPeerWithIdChain(
+		// membershipProtocol.NewPeerWithIDChain(
 		// 	membershipProtocol.PeerIDChain{membershipProtocol.PeerID{23}},
 		// 	peer.NewPeer(net.IPv4(10, 10, 29, 25),
 		// 		baseProtoPort,
@@ -140,7 +140,7 @@ func main() {
 		// 	0,
 		// 	0,
 		// 	make(membershipProtocol.Coordinates, 4)),
-		// membershipProtocol.NewPeerWithIdChain(
+		// membershipProtocol.NewPeerWithIDChain(
 		// 	membershipProtocol.PeerIDChain{membershipProtocol.PeerID{23}},
 		// 	peer.NewPeer(net.IPv4(10, 10, 1, 21),
 		// 		baseProtoPort,

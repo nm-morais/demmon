@@ -471,3 +471,19 @@ func (m *Monitor) cleanupNeighInterestSets() {
 		}
 	}
 }
+
+// HANDLE NODE DOWN
+
+func (m *Monitor) handleNodeDownNeighInterestSet(nodeDown peer.Peer) {
+	// isSibling, isChildren, isParent := m.getPeerRelationshipType(nodeDown)
+	for intSetID, intSet := range m.neighInterestSets {
+		if _, ok := intSet.subscribers[nodeDown.String()]; ok {
+			// m.tsdb.DeleteBucket(intSet.interestSet.OutputBucketOpts.Name, map[string]string{"host": m.babel.SelfPeer().IP().String()})
+			delete(intSet.subscribers, nodeDown.String())
+			if len(intSet.subscribers) == 0 {
+				delete(m.neighInterestSets, intSetID)
+				m.logger.Infof("Deleting neigh int set: %d", intSetID)
+			}
+		}
+	}
+}

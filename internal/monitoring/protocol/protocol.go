@@ -215,23 +215,9 @@ func (m *Monitor) handleNodeDown(n notification.Notification) {
 	m.logger.Infof("Node down: %s", nodeDownNotification.PeerDown.String())
 	m.logger.Infof("Curr View: %+v", m.currView)
 
-	// isSibling, isChildren, isParent := m.getPeerRelationshipType(nodeDown)
-	for intSetID, intSet := range m.neighInterestSets {
-		if _, ok := intSet.subscribers[nodeDown.String()]; ok {
-			// m.tsdb.DeleteBucket(intSet.interestSet.OutputBucketOpts.Name, map[string]string{"host": m.babel.SelfPeer().IP().String()})
-			delete(intSet.subscribers, nodeDown.String())
-			if len(intSet.subscribers) == 0 {
-				delete(m.neighInterestSets, intSetID)
-				m.logger.Infof("Deleting neigh int set: %d", intSetID)
-			}
-		}
-	}
-
-	// remove all child values from tree agg func
-	for _, treeAggFunc := range m.treeAggFuncs {
-		delete(treeAggFunc.childValues, nodeDown.String())
-	}
-
+	m.handleNodeDownNeighInterestSet(nodeDown)
+	m.handleNodeDownTreeAggFunc(nodeDown)
+	m.handleNodeDownGlobalAggFunc(nodeDown)
 }
 
 // UTILS

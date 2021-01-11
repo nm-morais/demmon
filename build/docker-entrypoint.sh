@@ -3,7 +3,7 @@
 set -e
 
 if [ $3 -eq 0 ]; then
-    rm -rf /code/*
+    rm -rf /tmp/logs/*
 fi
 
 echo "Bootstraping TC, args: $1 $2 $3"

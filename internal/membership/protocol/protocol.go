@@ -50,17 +50,14 @@ type DemmonTreeConfig = struct {
 	EvalMeasuredPeersRefreshTickDuration   time.Duration
 	MinLatencyImprovementToImprovePosition time.Duration
 	CheckChildenSizeTimerDuration          time.Duration
-	CheckSwitchOportunityTimeout           time.Duration
 	MinLatencyImprovementPerPeerForSwitch  time.Duration
 	EmitWalkProbability                    float64
 	BiasedWalkProbability                  float64
 	AttemptImprovePositionProbability      float64
-	SwitchProbability                      float64
 	MinGrpSize                             uint16
 	MaxGrpSize                             uint16
 	NrPeersToKickPerParent                 uint16
 	LimitFirstLevelGroupSize               bool
-	EnableSwitch                           bool
 }
 
 type DemmonTree struct {
@@ -554,13 +551,17 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 			continue
 		}
 
-		if len(d.myChildren) > 0 {
-			// cannot join as child because due to having children
-			if measuredPeer.Chain().Level() >= d.self.Chain().Level() {
-				continue // TODO possibly send message for the other node to join me as child
-			}
-		}
+		// if len(d.myChildren) > 0 {
+		// 	// cannot join as child because due to having children
+		// 	if measuredPeer.Chain().Level() >= d.self.Chain().Level() {
+		// 		continue // TODO possibly send message for the other node to join me as child
+		// 	}
+		// }
+
 		d.logger.Infof("Improving position towards: %s", measuredPeer.String())
+		d.logger.Infof("self level: %d", d.self.Chain().Level())
+		d.logger.Infof("target peer level: %d", measuredPeer.Chain().Level())
+
 		d.logger.Infof("latencyImprovement: %s", latencyImprovement)
 		d.logger.Infof("parentLatency: %s", parentLatency)
 		d.logger.Infof("measuredPeer.MeasuredLatency: %s", measuredPeer.MeasuredLatency)
