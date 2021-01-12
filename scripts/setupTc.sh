@@ -5,6 +5,7 @@
 latencyMap=$1
 ipsMap=$2
 idx=$3
+nrIps=$4
 
 ips=""
 while read -r ip
@@ -31,6 +32,9 @@ function setuptc {
     cmd="tc filter add dev eth0 protocol ip parent 1:0 prio 1 u32 match ip dst ${targetIp} flowid 1:${j}1"
     echo "$cmd"
     eval $cmd
+    if [[ $j -eq $nrIps ]]; then
+      break
+    fi
     j=$((j+1))
   done
 
@@ -48,6 +52,9 @@ do
     break
   fi
   i=$((i+1))
+  if [[ $i -eq $nrIps ]]; then
+      break
+  fi
 done < "$latencyMap"
 
 echo "Done."

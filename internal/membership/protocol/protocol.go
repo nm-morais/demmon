@@ -1790,7 +1790,7 @@ func (d *DemmonTree) sendMessage(toSend message.Message, destPeer peer.Peer) {
 
 func (d *DemmonTree) sendMessageAndDisconnect(toSend message.Message, destPeer peer.Peer) {
 	// d.logger.Infof("Sending message type %s : %+v to: %s", reflect.TypeOf(toSend), toSend, destPeer.String())
-	d.babel.SendMessageAndDisconnect(toSend, destPeer, d.ID(), d.ID(), false)
+	d.babel.SendMessageAndDisconnect(toSend, destPeer, d.ID(), d.ID())
 }
 
 func (d *DemmonTree) getPeersInLevelByLat(level uint16, deadline time.Time) MeasuredPeersByLat {
