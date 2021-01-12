@@ -161,7 +161,6 @@ func main() {
 		FirstHeartbeatEstimate:    1500 * time.Millisecond,
 
 		AdvertiseListenAddr: nil,
-		AdvertiseListenPort: 1300,
 		ListenAddr:          GetLocalIP(),
 		ListenPort:          1300,
 	}
