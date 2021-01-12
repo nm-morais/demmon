@@ -29,5 +29,6 @@ ARG IPS_MAP=config/ips100.txt
 COPY ${LATENCY_MAP} /latencyMap.txt
 COPY ${IPS_MAP} /ips.txt
 RUN chmod +x /setupTc.sh /docker-entrypoint.sh /go/bin/demmon
+RUN mkdir /tmp/logs
 
 ENTRYPOINT ["/docker-entrypoint.sh", "/latencyMap.txt", "/ips.txt"]
