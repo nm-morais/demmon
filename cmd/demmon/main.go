@@ -90,27 +90,6 @@ var (
 		// CheckSwitchOportunityTimeout:          7500 * time.Millisecond,
 		MinLatencyImprovementPerPeerForSwitch: 25 * time.Millisecond,
 	}
-
-	nodeWatcherConf = &pkg.NodeWatcherConf{
-		PrintLatencyToInterval:    5 * time.Second,
-		MaxRedials:                2,
-		HbTickDuration:            1000 * time.Millisecond,
-		NrMessagesWithoutWait:     3,
-		NewLatencyWeight:          0.25,
-		NrTestMessagesToSend:      1,
-		NrTestMessagesToReceive:   1,
-		OldLatencyWeight:          0.75,
-		TcpTestTimeout:            3 * time.Second,
-		UdpTestTimeout:            3 * time.Second,
-		EvalConditionTickDuration: 1500 * time.Millisecond,
-		MinSamplesLatencyEstimate: 3,
-
-		WindowSize:             20,
-		AcceptableHbPause:      1500 * time.Millisecond,
-		FirstHeartbeatEstimate: 1500 * time.Millisecond,
-		MinStdDeviation:        500 * time.Millisecond,
-		PhiThreshold:           8.0,
-	}
 )
 
 func main() {
@@ -162,6 +141,31 @@ func main() {
 
 	logFolder = fmt.Sprintf("%s/%s:%d", logFolder, GetLocalIP(), uint16(protosPortVar))
 
+	nodeWatcherConf := &pkg.NodeWatcherConf{
+		PrintLatencyToInterval:    5 * time.Second,
+		EvalConditionTickDuration: 1500 * time.Millisecond,
+		MaxRedials:                2,
+		TcpTestTimeout:            3 * time.Second,
+		UdpTestTimeout:            3 * time.Second,
+		NrTestMessagesToSend:      1,
+		NrMessagesWithoutWait:     3,
+		NrTestMessagesToReceive:   1,
+		HbTickDuration:            1000 * time.Millisecond,
+		MinSamplesLatencyEstimate: 3,
+		OldLatencyWeight:          0.75,
+		NewLatencyWeight:          0.25,
+		PhiThreshold:              8.0,
+		WindowSize:                20,
+		MinStdDeviation:           500 * time.Millisecond,
+		AcceptableHbPause:         1500 * time.Millisecond,
+		FirstHeartbeatEstimate:    1500 * time.Millisecond,
+
+		AdvertiseListenAddr: nil,
+		AdvertiseListenPort: 1300,
+		ListenAddr:          GetLocalIP(),
+		ListenPort:          1300,
+	}
+
 	babelConf := &pkg.Config{
 		Silent:           silent,
 		Cpuprofile:       cpuprofile,
@@ -173,6 +177,7 @@ func main() {
 
 	advertiseListenAddr, ok := GetAdvertiseListenAddrVar()
 	if ok {
+		nodeWatcherConf.AdvertiseListenAddr = net.ParseIP(advertiseListenAddr)
 		babelConf.Peer = peer.NewPeer(net.ParseIP(advertiseListenAddr), uint16(protosPortVar), uint16(analyticsPortVar))
 	}
 
@@ -239,8 +244,16 @@ func start(
 	)
 
 	babel.RegisterNodeWatcher(nw)
-	babel.RegisterListenAddr(babelConf.Peer.ToTCPAddr())
-	babel.RegisterListenAddr(babelConf.Peer.ToUDPAddr())
+	babel.RegisterListenAddr(&net.TCPAddr{
+		IP:   GetLocalIP(),
+		Port: protosPortVar,
+		Zone: "",
+	})
+	babel.RegisterListenAddr(&net.UDPAddr{
+		IP:   GetLocalIP(),
+		Port: protosPortVar,
+		Zone: "",
+	})
 
 	fmt.Printf("Starting db with conf: %+v\n", dbConf)
 
