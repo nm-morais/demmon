@@ -1637,18 +1637,19 @@ func (d *DemmonTree) progressToNextStep() {
 		d.lastLevelProgress.Add(d.config.MaxTimeToProgressToNextLevel),
 	)
 	if len(currLevelPeersDone) == 0 {
-		if d.joinLevel > 0 {
-			d.joinLevel--
-			currLevelPeersDone = d.getPeersInLevelByLat(
-				d.joinLevel,
-				d.lastLevelProgress.Add(d.config.MaxTimeToProgressToNextLevel),
-			)
-			lowestLatencyPeer := currLevelPeersDone[0]
-			d.myPendingParentInJoin = lowestLatencyPeer
-			d.sendJoinAsChildMsg(lowestLatencyPeer.PeerWithIDChain, lowestLatencyPeer.MeasuredLatency, false)
+		if d.joinLevel == 0 {
+			d.joinOverlay()
 			return
 		}
-		d.joinOverlay()
+		d.joinLevel--
+		currLevelPeersDone = d.getPeersInLevelByLat(
+			d.joinLevel,
+			d.lastLevelProgress.Add(d.config.MaxTimeToProgressToNextLevel),
+		)
+		lowestLatencyPeer := currLevelPeersDone[0]
+		d.myPendingParentInJoin = lowestLatencyPeer
+		d.sendJoinAsChildMsg(lowestLatencyPeer.PeerWithIDChain, lowestLatencyPeer.MeasuredLatency, false)
+		return
 	}
 
 	if d.joinLevel == 0 { // fill in coordinates
