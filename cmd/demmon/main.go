@@ -247,12 +247,10 @@ func start(
 	babel.RegisterListenAddr(&net.TCPAddr{
 		IP:   GetLocalIP(),
 		Port: protosPortVar,
-		Zone: "",
 	})
 	babel.RegisterListenAddr(&net.UDPAddr{
 		IP:   GetLocalIP(),
 		Port: protosPortVar,
-		Zone: "",
 	})
 
 	fmt.Printf("Starting db with conf: %+v\n", dbConf)
@@ -272,10 +270,6 @@ func start(
 }
 
 func GetLocalIP() net.IP {
-
-	if host, ok := GetAdvertiseListenAddrVar(); ok {
-		return net.ParseIP(host)
-	}
 
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
