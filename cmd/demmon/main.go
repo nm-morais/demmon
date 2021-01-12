@@ -26,10 +26,10 @@ import (
 )
 
 const (
-	LandmarksEnvVarName = "LANDMARKS"
-	NodeIPEnvVarName    = "NODE_IP"
-	minProtosPort       = 7000
-	maxProtosPort       = 8000
+	LandmarksEnvVarName           = "LANDMARKS"
+	AdvertiseListenAddrEnvVarName = "NODE_IP"
+	minProtosPort                 = 7000
+	maxProtosPort                 = 8000
 
 	minAnalyticsPort = 8000
 	maxAnalyticsPort = 9000
@@ -117,6 +117,7 @@ func main() {
 	ParseFlags()
 
 	landmarks, ok := GetLandmarksEnv()
+
 	if !ok {
 		landmarks = []*membershipProtocol.PeerWithIDChain{
 			membershipProtocol.NewPeerWithIDChain(
@@ -168,6 +169,11 @@ func main() {
 		LogFolder:        logFolder,
 		HandshakeTimeout: 3 * time.Second,
 		Peer:             peer.NewPeer(GetLocalIP(), uint16(protosPortVar), uint16(analyticsPortVar)),
+	}
+
+	advertiseListenAddr, ok := GetAdvertiseListenAddrVar()
+	if ok {
+		babelConf.Peer = peer.NewPeer(net.ParseIP(advertiseListenAddr), uint16(protosPortVar), uint16(analyticsPortVar))
 	}
 
 	exporterConfs := &exporter.Conf{
@@ -254,7 +260,7 @@ func start(
 
 func GetLocalIP() net.IP {
 
-	if host, ok := GetHostFromEnvVar(); ok {
+	if host, ok := GetAdvertiseListenAddrVar(); ok {
 		return net.ParseIP(host)
 	}
 
@@ -273,6 +279,14 @@ func GetLocalIP() net.IP {
 	}
 
 	panic("no available loopback interfaces")
+}
+
+func GetAdvertiseListenAddrVar() (string, bool) {
+	hostIP, ok := os.LookupEnv(AdvertiseListenAddrEnvVarName)
+	if !ok {
+		return "", false
+	}
+	return hostIP, true
 }
 
 func GetLandmarksEnv() ([]*membershipProtocol.PeerWithIDChain, bool) {
@@ -295,14 +309,6 @@ func GetLandmarksEnv() ([]*membershipProtocol.PeerWithIDChain, bool) {
 		landmarks[i] = landmark
 	}
 	return landmarks, true
-}
-
-func GetHostFromEnvVar() (string, bool) {
-	hostIP, ok := os.LookupEnv(NodeIPEnvVarName)
-	if !ok {
-		return "", false
-	}
-	return hostIP, true
 }
 
 func ParseFlags() {

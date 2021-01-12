@@ -89,7 +89,7 @@ func (m *Monitor) broadcastGlobalAggFuncsToChildren() {
 
 		if len(globalIntSetstoSend) > 0 {
 			toSend := NewInstallGlobalAggFuncMessage(globalIntSetstoSend)
-			m.babel.SendMessage(toSend, child, m.ID(), m.ID())
+			m.babel.SendMessage(toSend, child, m.ID(), m.ID(), true)
 		}
 	}
 }
@@ -115,7 +115,7 @@ func (m *Monitor) broadcastGlobalAggFuncsToParent() {
 
 	if len(globalIntSetstoSend) > 0 {
 		toSend := NewInstallGlobalAggFuncMessage(globalIntSetstoSend)
-		m.babel.SendMessage(toSend, m.currView.Parent, m.ID(), m.ID())
+		m.babel.SendMessage(toSend, m.currView.Parent, m.ID(), m.ID(), true)
 	}
 }
 
@@ -272,7 +272,7 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 				mergedVal,
 			)
 			toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: timeNow, Fields: mergedVal})
-			m.babel.SendMessage(toSendMsg, sub.p, m.ID(), m.ID())
+			m.babel.SendMessage(toSendMsg, sub.p, m.ID(), m.ID(), true)
 			continue
 		}
 
@@ -303,7 +303,7 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 			differenceResult,
 			sub.p.String(),
 		)
-		m.babel.SendMessage(toSendMsg, sub.p, m.ID(), m.ID())
+		m.babel.SendMessage(toSendMsg, sub.p, m.ID(), m.ID(), true)
 	}
 
 	m.babel.RegisterTimer(
