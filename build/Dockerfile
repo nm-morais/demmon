@@ -18,9 +18,10 @@ RUN go mod download
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build --race -ldflags="-w -s" -o /go/bin/demmon cmd/demmon/*
 
 # EXECUTABLE IMG
-FROM debian-slim as demmon
+FROM debian:stable-slim as demmon
 
 # RUN apk add iproute2-tc
+RUN apt update; apt install iproute2 -y
 
 COPY scripts/setupTc.sh /setupTc.sh
 COPY build/docker-entrypoint.sh /docker-entrypoint.sh
