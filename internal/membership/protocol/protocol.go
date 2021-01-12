@@ -1784,12 +1784,12 @@ func (d *DemmonTree) sendMessageTmpUDPChan(toSend message.Message, destPeer peer
 
 func (d *DemmonTree) sendMessage(toSend message.Message, destPeer peer.Peer) {
 	// d.logger.Infof("Sending message type %s : %+v to: %s", reflect.TypeOf(toSend), toSend, destPeer.String())
-	d.babel.SendMessage(toSend, destPeer, d.ID(), d.ID())
+	d.babel.SendMessage(toSend, destPeer, d.ID(), d.ID(), false)
 }
 
 func (d *DemmonTree) sendMessageAndDisconnect(toSend message.Message, destPeer peer.Peer) {
 	// d.logger.Infof("Sending message type %s : %+v to: %s", reflect.TypeOf(toSend), toSend, destPeer.String())
-	d.babel.SendMessageAndDisconnect(toSend, destPeer, d.ID(), d.ID())
+	d.babel.SendMessageAndDisconnect(toSend, destPeer, d.ID(), d.ID(), false)
 }
 
 func (d *DemmonTree) getPeersInLevelByLat(level uint16, deadline time.Time) MeasuredPeersByLat {
@@ -2395,19 +2395,19 @@ func (d *DemmonTree) peerMapToArr(peers map[string]*PeerWithIDChain) []*PeerWith
 func (d *DemmonTree) broadcastMessage(msg message.Message, sendToSiblings, sendToChildren, sendToParent bool) {
 	if sendToSiblings {
 		for _, s := range d.mySiblings {
-			d.babel.SendMessage(msg, s, d.ID(), d.ID())
+			d.babel.SendMessage(msg, s, d.ID(), d.ID(), true)
 		}
 	}
 
 	if sendToChildren {
 		for _, s := range d.myChildren {
-			d.babel.SendMessage(msg, s, d.ID(), d.ID())
+			d.babel.SendMessage(msg, s, d.ID(), d.ID(), true)
 		}
 	}
 
 	if sendToParent {
 		if d.myParent != nil {
-			d.babel.SendMessage(msg, d.myParent, d.ID(), d.ID())
+			d.babel.SendMessage(msg, d.myParent, d.ID(), d.ID(), true)
 		}
 	}
 }
