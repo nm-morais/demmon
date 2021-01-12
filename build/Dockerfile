@@ -21,7 +21,7 @@ RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build --race -ldflags="-w -s" -o /g
 FROM debian:stable-slim as demmon
 
 # RUN apk add iproute2-tc
-RUN sudo apt update; sudo apt install iproute2 -y
+RUN apt update; apt install iproute2 -y
 
 COPY scripts/setupTc.sh /setupTc.sh
 COPY build/docker-entrypoint.sh /docker-entrypoint.sh
