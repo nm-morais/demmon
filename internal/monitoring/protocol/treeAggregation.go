@@ -53,7 +53,7 @@ func (m *Monitor) handleRebroadcastTreeInterestSetsTimer(t timer.Timer) {
 	}
 	toSend := NewInstallTreeAggFuncMessage(treeAggFuncstoSend)
 	for _, child := range m.currView.Children {
-		m.babel.SendMessage(toSend, child, m.ID(), m.ID(), true)
+		m.babel.SendMessage(toSend, child, m.ID(), m.ID(), false)
 	}
 }
 
@@ -153,7 +153,7 @@ func (m *Monitor) handleExportTreeAggregationFuncTimer(t timer.Timer) {
 			mergedVal,
 			m.currView.Parent.String(),
 		)
-		m.babel.SendMessage(toSendMsg, m.currView.Parent, m.ID(), m.ID(), true)
+		m.babel.SendMessage(toSendMsg, m.currView.Parent, m.ID(), m.ID(), false)
 	} else {
 		m.logger.Errorf(
 			"tree aggregation function %d could not propagate to parent due to not having parent",

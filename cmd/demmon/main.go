@@ -182,7 +182,7 @@ func main() {
 
 	advertiseListenAddr, ok := GetAdvertiseListenAddrVar()
 	if ok {
-		fmt.Println("Got advertise listen addr from env var:", advertiseListenAddr)
+		fmt.Println("Got advertise listen addr from env var: ", advertiseListenAddr)
 		nodeWatcherConf.AdvertiseListenAddr = net.ParseIP(advertiseListenAddr)
 		babelConf.Peer = peer.NewPeer(net.ParseIP(advertiseListenAddr), uint16(protosPortVar), uint16(analyticsPortVar))
 	}
