@@ -28,6 +28,6 @@ cd ..
 cd demmon || exit
 docker build --build-arg LATENCY_MAP --build-arg IPS_MAP -f build/Dockerfile -t "$DOCKER_IMAGE" .
 service="demmon"
-docker save brunoanjos/"$service":latest > "$BUILD_DIR"/dummy_node/images/"$service".tar
+docker save brunoanjos/"$service":latest > /tmp/images/"$service".tar
 
 cd "$curr_dir" || exit
