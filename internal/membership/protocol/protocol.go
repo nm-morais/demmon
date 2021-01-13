@@ -97,12 +97,13 @@ const (
 )
 
 func New(config *DemmonTreeConfig, babel protocolManager.ProtocolManager, nw nodeWatcher.NodeWatcher) protocol.Protocol {
+	logger := logs.NewLogger(ProtoName)
+	logger.Infof("Starting demmonTree with config: %+v", config)
 	return &DemmonTree{
 		nodeWatcher: nw,
 		babel:       babel,
-		logger:      logs.NewLogger(ProtoName),
 		config:      config,
-
+		logger:      logger,
 		// join state
 		joinLevel:          0,
 		parents:            make(map[string]*PeerWithIDChain),

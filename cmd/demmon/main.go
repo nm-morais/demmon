@@ -96,7 +96,6 @@ func main() {
 	ParseFlags()
 
 	landmarks, ok := GetLandmarksEnv()
-
 	if !ok {
 		landmarks = []*membershipProtocol.PeerWithIDChain{
 			membershipProtocol.NewPeerWithIDChain(
@@ -131,6 +130,8 @@ func main() {
 			// 	0,
 			// 	make(membershipProtocol.Coordinates, 4)),
 		}
+	} else {
+		fmt.Printf("Got landmarks from env var: %+v\n", landmarks)
 	}
 
 	demmonTreeConf.Landmarks = landmarks
@@ -166,6 +167,11 @@ func main() {
 	}
 
 	babelConf := &pkg.Config{
+		SmConf: pkg.StreamManagerConf{
+			BatchMaxSizeBytes: 1500,
+			BatchTimeout:      500 * time.Millisecond,
+			DialTimeout:       3 * time.Second,
+		},
 		Silent:           silent,
 		Cpuprofile:       cpuprofile,
 		Memprofile:       memprofile,
@@ -176,6 +182,7 @@ func main() {
 
 	advertiseListenAddr, ok := GetAdvertiseListenAddrVar()
 	if ok {
+		fmt.Println("Got advertise listen addr from env var:", advertiseListenAddr)
 		nodeWatcherConf.AdvertiseListenAddr = net.ParseIP(advertiseListenAddr)
 		babelConf.Peer = peer.NewPeer(net.ParseIP(advertiseListenAddr), uint16(protosPortVar), uint16(analyticsPortVar))
 	}
