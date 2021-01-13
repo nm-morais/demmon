@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"math"
 	"math/rand"
+	"reflect"
 	"sort"
 	"time"
 
@@ -359,11 +360,8 @@ func (d *DemmonTree) handleDebugTimer(joinTimer timer.Timer) {
 }
 
 func (d *DemmonTree) handleJoinTimer(joinTimer timer.Timer) {
-	// if d.joinLevel == 0 && len(d.currLevelPeers[d.joinLevel]) == 0 {
-	// 	d.logger.Info("-------------Rejoining overlay---------------")
-	// 	d.joinOverlay()
-	// }
-	d.babel.RegisterTimer(d.ID(), NewJoinTimer(d.config.RejoinTimerDuration))
+	d.logger.Info("-------------Rejoining overlay---------------")
+	d.joinOverlay()
 }
 
 func (d *DemmonTree) handleLandmarkRedialTimer(t timer.Timer) {
@@ -1507,7 +1505,7 @@ func (d *DemmonTree) MessageDelivered(msg message.Message, p peer.Peer) {
 }
 
 func (d *DemmonTree) MessageDeliveryErr(msg message.Message, p peer.Peer, err errors.Error) {
-	d.logger.Errorf("Message %+v failed to deliver to: %s because: %s", msg, p.String(), err.Reason())
+	d.logger.Errorf("Message of type %s (%+v) failed to deliver to: %s because: %s", reflect.TypeOf(msg), msg, p.String(), err.Reason())
 
 	switch msg := msg.(type) {
 	case JoinMessage:
@@ -1519,15 +1517,23 @@ func (d *DemmonTree) MessageDeliveryErr(msg message.Message, p peer.Peer, err er
 			// d.retries[p.String()]++
 			// if d.retries[p.String()] >= d.config.MaxRetriesJoinMsg {
 			d.logger.Warnf(
-				"Deleting peer %s from currLevelPeers because it exceeded max retries (%d)",
+				"Deleting peer %s from currLevelPeers because could not deliver join msg",
 				p.String(),
-				d.config.MaxRetriesJoinMsg,
 			)
 			delete(d.currLevelPeers[d.joinLevel], p.String())
-			// delete(d.retries, p.String())
 			d.nodeWatcher.Unwatch(p, d.ID())
 			if d.canProgressToNextStep() {
 				d.progressToNextStep()
+			}
+			if len(d.currLevelPeers[d.joinLevel]) == 0 {
+				if d.joinLevel == 0 {
+					d.babel.RegisterTimer(d.ID(), NewJoinTimer(d.config.RejoinTimerDuration))
+					return
+				}
+				d.joinLevel--
+				if d.canProgressToNextStep() {
+					d.progressToNextStep()
+				}
 			}
 			return
 		}
@@ -1564,6 +1570,14 @@ func (d *DemmonTree) MessageDeliveryErr(msg message.Message, p peer.Peer, err er
 
 func (d *DemmonTree) joinOverlay() {
 	nrLandmarks := len(d.config.Landmarks)
+
+	d.myPendingParentInAbsorb = nil
+	d.myPendingParentInImprovement = nil
+	d.myPendingParentInJoin = nil
+	d.myPendingParentInRecovery = nil
+	d.myPendingChildren = make(map[string]*PeerWithIDChain)
+	d.myPendingSiblings = make(map[string]*PeerWithIDChain)
+
 	d.currLevelPeersDone = []map[string]*MeasuredPeer{make(map[string]*MeasuredPeer, nrLandmarks)} // start level 1
 	d.currLevelPeers = []map[string]peer.Peer{make(map[string]peer.Peer, nrLandmarks)}             // start level 1
 	d.joinLevel = 0
