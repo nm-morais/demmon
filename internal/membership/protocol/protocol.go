@@ -89,7 +89,7 @@ type DemmonTree struct {
 	eView                        map[string]*PeerWithIDChain
 	myPendingParentInImprovement *MeasuredPeer
 	myPendingParentInAbsorb      *PeerWithIDChain
-	joinLevel                    uint16
+	joinLevel                    int
 	landmark                     bool
 }
 
@@ -957,6 +957,8 @@ func (d *DemmonTree) handleJoinReplyMessage(sender peer.Peer, msg message.Messag
 	if d.joinLevel == math.MaxUint16 {
 		d.logger.Errorf("Got joinReply: %+v but already joined... %s", replyMsg, sender.String())
 		return
+	} else {
+		d.logger.Errorf("Got joinReply: %+v, my join level:%d", replyMsg, d.joinLevel)
 	}
 
 	if _, ok := d.currLevelPeers[d.joinLevel][sender.String()]; ok {
@@ -1070,16 +1072,19 @@ func (d *DemmonTree) handleJoinAsChildMessage(sender peer.Peer, m message.Messag
 	if isSibling {
 		delete(d.mySiblings, sender.String())
 	}
+
 	_, isPendingSibling := d.myPendingSiblings[sender.String()]
 	if isPendingSibling {
 		delete(d.mySiblings, sender.String())
 	}
+
 	newChildID := d.addChild(jacMsg.Sender, !isSibling, jacMsg.MeasuredLatency)
 	childrenToSend := make([]*PeerWithIDChain, 0, d.self.NrChildren())
 
 	for _, child := range d.myChildren {
 		childrenToSend = append(childrenToSend, child)
 	}
+
 	toSend := NewJoinAsChildMessageReply(
 		true,
 		newChildID,
@@ -1605,7 +1610,7 @@ func (d *DemmonTree) sendJoinAsChildMsg(
 	d.sendMessageTmpTCPChan(toSend, newParent)
 }
 
-func (d *DemmonTree) unwatchPeersInLevelDone(level uint16, exclusions ...*PeerWithIDChain) {
+func (d *DemmonTree) unwatchPeersInLevelDone(level int, exclusions ...*PeerWithIDChain) {
 	for _, currPeer := range d.currLevelPeersDone[level] {
 		found := false
 
@@ -1812,7 +1817,7 @@ func (d *DemmonTree) sendMessageAndDisconnect(toSend message.Message, destPeer p
 	d.babel.SendMessageAndDisconnect(toSend, destPeer, d.ID(), d.ID())
 }
 
-func (d *DemmonTree) getPeersInLevelByLat(level uint16, deadline time.Time) MeasuredPeersByLat {
+func (d *DemmonTree) getPeersInLevelByLat(level int, deadline time.Time) MeasuredPeersByLat {
 	if len(d.currLevelPeersDone[level]) == 0 {
 		return MeasuredPeersByLat{}
 	}
@@ -2182,14 +2187,6 @@ func (d *DemmonTree) addParent(
 	parentLatency time.Duration,
 	disconnectFromParent, sendDisconnectMsg bool,
 ) {
-	d.logger.Warnf(
-		"My level changed: (%d -> %d)",
-		d.self.Chain().Level(),
-		newParent.Chain().Level()+1,
-	) // IMPORTANT FOR VISUALIZER
-	d.logger.Warnf("My chain changed: (%+v -> %+v)", d.self.Chain(), myNewChain)
-	d.logger.Warnf("My parent changed: (%+v -> %+v)", d.myParent, newParent)
-
 	if peer.PeersEqual(newParent, d.myPendingParentInRecovery) {
 		d.myPendingParentInRecovery = nil
 	}
@@ -2217,6 +2214,14 @@ func (d *DemmonTree) addParent(
 			d.nodeWatcher.Unwatch(tmp, d.ID())
 		}
 	}
+
+	d.logger.Infof(
+		"My level changed: (%d -> %d)",
+		d.self.Chain().Level(),
+		newParent.Chain().Level()+1,
+	) // IMPORTANT FOR VISUALIZER
+	d.logger.Infof("My chain changed: (%+v -> %+v)", d.self.Chain(), myNewChain)
+	d.logger.Infof("My parent changed: (%+v -> %+v)", d.myParent, newParent)
 
 	if !myNewChain.Equal(d.self.chain) {
 		d.babel.SendNotification(NewIDChangeNotification(myNewChain))
