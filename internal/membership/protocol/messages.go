@@ -394,7 +394,7 @@ type JoinAsChildMessageReply struct {
 func NewJoinAsChildMessageReply(
 	accepted bool,
 	proposedID PeerID,
-	level uint16,
+	level int,
 	parent *PeerWithIDChain,
 	siblings []*PeerWithIDChain,
 	grandparent *PeerWithIDChain,
@@ -404,7 +404,7 @@ func NewJoinAsChildMessageReply(
 
 		ProposedID:  proposedID,
 		Accepted:    accepted,
-		ParentLevel: level,
+		ParentLevel: uint16(level),
 		Siblings:    siblings,
 		GrandParent: grandparent,
 	}
