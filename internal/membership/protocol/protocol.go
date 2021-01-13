@@ -360,8 +360,10 @@ func (d *DemmonTree) handleDebugTimer(joinTimer timer.Timer) {
 }
 
 func (d *DemmonTree) handleJoinTimer(joinTimer timer.Timer) {
-	d.logger.Info("-------------Rejoining overlay---------------")
-	d.joinOverlay()
+	if d.joinLevel != math.MaxUint16 {
+		d.logger.Info("-------------Rejoining overlay---------------")
+		d.joinOverlay()
+	}
 }
 
 func (d *DemmonTree) handleLandmarkRedialTimer(t timer.Timer) {
@@ -1525,8 +1527,10 @@ func (d *DemmonTree) MessageDeliveryErr(msg message.Message, p peer.Peer, err er
 			if d.canProgressToNextStep() {
 				d.progressToNextStep()
 			}
+
 			if len(d.currLevelPeers[d.joinLevel]) == 0 {
 				if d.joinLevel == 0 {
+					d.logger.Warnf("Setting timer to rejoin overlay")
 					d.babel.RegisterTimer(d.ID(), NewJoinTimer(d.config.RejoinTimerDuration))
 					return
 				}
