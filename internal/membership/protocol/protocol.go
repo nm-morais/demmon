@@ -732,7 +732,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 					}
 
 					if _, isChild := d.myChildren[candidateToKick.String()]; !isChild {
-						d.logger.Errorf("Candidate %s to be absorbed is not a child", candidateToKick.String())
+						d.logger.Errorf("My children %s reports having sibling %s but %s is not my child", peerAbsorber.String(), candidateToKick.String(), candidateToKick.String())
 						continue
 					}
 
