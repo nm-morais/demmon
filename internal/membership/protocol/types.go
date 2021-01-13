@@ -64,8 +64,8 @@ func (c PeerID) String() string {
 
 type PeerIDChain []PeerID
 
-func (c PeerIDChain) Level() uint16 {
-	return uint16(len(c)) - 1
+func (c PeerIDChain) Level() int {
+	return len(c) - 1
 }
 
 // IsDescendant returns true if chain <c> is contained in chain <otherPeerChain>.
