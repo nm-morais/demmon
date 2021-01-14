@@ -26,6 +26,7 @@ import (
 )
 
 const (
+	WaitForStartEnvVar            = "WAIT_FOR_START"
 	LandmarksEnvVarName           = "LANDMARKS"
 	AdvertiseListenAddrEnvVarName = "NODE_IP"
 	minProtosPort                 = 7000
@@ -235,13 +236,14 @@ func main() {
 			break
 		}
 	}
-	start(babelConf, nodeWatcherConf, exporterConfs, dConf, demmonTreeConf, meConf, dbConf, isLandmark)
+	waitForStart := GetWaitForStartEnvVar()
+	start(babelConf, nodeWatcherConf, exporterConfs, dConf, demmonTreeConf, meConf, dbConf, isLandmark, waitForStart)
 }
 
 func start(
 	babelConf *pkg.Config, nwConf *pkg.NodeWatcherConf, eConf *exporter.Conf,
 	dConf *internal.DemmonConf, membershipConf *membershipProtocol.DemmonTreeConfig,
-	meConf *engine.Conf, dbConf *tsdb.Conf, isLandmark bool,
+	meConf *engine.Conf, dbConf *tsdb.Conf, isLandmark, waitForStart bool,
 ) {
 	babel := pkg.NewProtoManager(*babelConf)
 	nw := pkg.NewNodeWatcher(
@@ -265,14 +267,16 @@ func start(
 	me := engine.NewMetricsEngine(db, *meConf, true)
 	fm := membershipFrontend.New(babel)
 	monitorProto := monitoringProto.New(babel, db, me)
-	monitor := internal.New(*dConf, monitorProto, me, db, fm)
+	monitor := internal.New(*dConf, monitorProto, me, db, fm, babel)
 
 	babel.RegisterProtocol(monitorProto)
 	babel.RegisterProtocol(membershipProtocol.New(membershipConf, babel, nw))
 
-	go monitor.Listen()
+	if !waitForStart {
+		babel.StartAsync()
+	}
 	go testDemmonMetrics(eConf, isLandmark)
-	babel.StartSync()
+	monitor.Listen()
 }
 
 func GetLocalIP() net.IP {
@@ -300,6 +304,14 @@ func GetAdvertiseListenAddrVar() (string, bool) {
 		return "", false
 	}
 	return hostIP, true
+}
+
+func GetWaitForStartEnvVar() bool {
+	waitForStartEnvVarVal, exists := os.LookupEnv(WaitForStartEnvVar)
+	if !exists {
+		return false
+	}
+	return waitForStartEnvVarVal == "true"
 }
 
 func GetLandmarksEnv() ([]*membershipProtocol.PeerWithIDChain, bool) {
