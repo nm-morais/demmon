@@ -957,8 +957,6 @@ func (d *DemmonTree) handleJoinReplyMessage(sender peer.Peer, msg message.Messag
 	if d.joinLevel == math.MaxUint16 {
 		d.logger.Errorf("Got joinReply: %+v but already joined... %s", replyMsg, sender.String())
 		return
-	} else {
-		d.logger.Errorf("Got joinReply: %+v, my join level:%d", replyMsg, d.joinLevel)
 	}
 
 	if _, ok := d.currLevelPeers[d.joinLevel][sender.String()]; ok {
