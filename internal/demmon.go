@@ -24,6 +24,7 @@ import (
 	monitoringProto "github.com/nm-morais/demmon/internal/monitoring/protocol"
 	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
 	"github.com/nm-morais/demmon/internal/utils"
+	"github.com/nm-morais/go-babel/pkg/protocolManager"
 	"github.com/reugn/go-quartz/quartz"
 	"github.com/sirupsen/logrus"
 )
@@ -111,6 +112,7 @@ type Demmon struct {
 	monitorProto                    *monitoringProto.Monitor
 	fm                              *membershipFrontend.MembershipFrontend
 	me                              *engine.MetricsEngine
+	babel                           protocolManager.ProtocolManager
 }
 
 func New(
@@ -119,6 +121,7 @@ func New(
 	me *engine.MetricsEngine,
 	db *tsdb.TSDB,
 	fm *membershipFrontend.MembershipFrontend,
+	babel protocolManager.ProtocolManager,
 ) *Demmon {
 	d := &Demmon{
 		continuousQueries:               &sync.Map{},
@@ -136,6 +139,7 @@ func New(
 		db:                              db,
 		fm:                              fm,
 		me:                              me,
+		babel:                           babel,
 	}
 	d.scheduler.Start()
 
@@ -508,6 +512,8 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			actual.Unlock()
 		}
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, nil)
+	case routes.StartBabel:
+		d.babel.StartAsync()
 	case routes.AlarmTrigger:
 		d.logger.Panic("not yet implemented")
 	default:
