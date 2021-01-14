@@ -514,6 +514,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, nil)
 	case routes.StartBabel:
 		d.babel.StartAsync()
+		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, nil)
 	case routes.AlarmTrigger:
 		d.logger.Panic("not yet implemented")
 	default:
