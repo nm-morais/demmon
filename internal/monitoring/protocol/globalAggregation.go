@@ -77,6 +77,12 @@ func (m *Monitor) broadcastGlobalAggFuncsToChildren() {
 		globalIntSetstoSend := make(map[int64]body_types.GlobalAggregationFunction)
 		for aggFuncID, is := range m.globalAggFuncs {
 
+			_, selfIsSubscriber := is.subscribers[m.babel.SelfPeer().String()]
+			if selfIsSubscriber {
+				globalIntSetstoSend[aggFuncID] = is.AF
+				continue
+			}
+
 			if _, ok := is.subscribers[child.String()]; ok {
 				m.logger.Warnf("Not Broadcasting global interest set %d to %s because node is a subscriber",
 					aggFuncID,
@@ -84,12 +90,13 @@ func (m *Monitor) broadcastGlobalAggFuncsToChildren() {
 
 				continue
 			}
+
 			globalIntSetstoSend[aggFuncID] = is.AF
 		}
 
 		if len(globalIntSetstoSend) > 0 {
 			toSend := NewInstallGlobalAggFuncMessage(globalIntSetstoSend)
-			m.babel.SendMessage(toSend, child, m.ID(), m.ID(), true)
+			m.SendMessage(toSend, child)
 		}
 	}
 }
@@ -104,6 +111,12 @@ func (m *Monitor) broadcastGlobalAggFuncsToParent() {
 	globalIntSetstoSend := make(map[int64]body_types.GlobalAggregationFunction)
 	for aggFuncID, is := range m.globalAggFuncs {
 
+		_, selfIsSubscriber := is.subscribers[m.babel.SelfPeer().String()]
+		if selfIsSubscriber {
+			globalIntSetstoSend[aggFuncID] = is.AF
+			continue
+		}
+
 		if _, ok := is.subscribers[m.currView.Parent.String()]; ok {
 			m.logger.Warnf("Not Broadcasting global interest set %d to %s because node is a subscriber",
 				aggFuncID,
@@ -115,7 +128,7 @@ func (m *Monitor) broadcastGlobalAggFuncsToParent() {
 
 	if len(globalIntSetstoSend) > 0 {
 		toSend := NewInstallGlobalAggFuncMessage(globalIntSetstoSend)
-		m.babel.SendMessage(toSend, m.currView.Parent, m.ID(), m.ID(), true)
+		m.SendMessage(toSend, m.currView.Parent)
 	}
 }
 
@@ -272,7 +285,7 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 				mergedVal,
 			)
 			toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: timeNow, Fields: mergedVal})
-			m.babel.SendMessage(toSendMsg, sub.p, m.ID(), m.ID(), true)
+			m.SendMessage(toSendMsg, sub.p)
 			continue
 		}
 
@@ -296,6 +309,7 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 			"Difference result: (%+v)",
 			differenceResult,
 		)
+
 		toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: timeNow, Fields: differenceResult})
 		m.logger.Infof(
 			"propagating metrics for global aggregation function %d (%+v) to peer %s",
@@ -303,7 +317,7 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 			differenceResult,
 			sub.p.String(),
 		)
-		m.babel.SendMessage(toSendMsg, sub.p, m.ID(), m.ID(), true)
+		m.SendMessage(toSendMsg, sub.p)
 	}
 
 	m.babel.RegisterTimer(
