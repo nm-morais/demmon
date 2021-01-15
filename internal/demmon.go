@@ -549,7 +549,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		}
 		d.addAlarm(alarm)
 		d.logger.Infof("Added new alarm: %+v", reqBody)
-		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, alarmID)
+		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, body_types.InstallAlarmReply{ID: alarmID})
 	default:
 		resp = body_types.NewResponse(r.ID, false, body_types.ErrNonRecognizedOp, 400, r.Type, nil)
 	}
@@ -659,6 +659,7 @@ func (d *Demmon) handleAlarmTrigger(alarm *alarmControl) {
 		alarm.lastTimeTriggered = time.Now()
 		alarm.Unlock()
 	}
+
 }
 
 func (d *Demmon) handleAlarmTriggers() {
@@ -710,8 +711,8 @@ func (d *Demmon) handleAlarmTriggers() {
 
 		alarm := getNextFromQueue()
 		if alarm == nil {
-			newAlarm := <-d.addAlarmChan
-			addAlarmToQueue(newAlarm, time.Now().Add(newAlarm.alarm.CheckPeriodicity))
+			alarm = <-d.addAlarmChan
+			addAlarmToQueue(alarm, time.Now().Add(alarm.alarm.CheckPeriodicity))
 		}
 
 		// control loop
@@ -719,6 +720,7 @@ func (d *Demmon) handleAlarmTriggers() {
 		select {
 		case newAlarm := <-d.addAlarmChan:
 			addAlarmToQueue(newAlarm, time.Now().Add(alarm.alarm.CheckPeriodicity))
+			addAlarmToQueue(alarm, alarm.nextCheckDeadline)
 		case <-t.C:
 			alarmInt, stillActive := d.alarms.Load(alarm.id)
 			if !stillActive {
