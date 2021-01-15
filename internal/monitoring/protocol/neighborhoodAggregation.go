@@ -171,7 +171,6 @@ func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 				"Continuing because peer is not in view: %s",
 				sub.p.String(),
 			)
-
 			continue
 		}
 		m.babel.SendMessage(toSendMsg, sub.p, m.ID(), m.ID(), true)
@@ -257,7 +256,7 @@ func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer
 
 	interestSet, ok := m.neighInterestSets[interestSetID]
 	if !ok {
-		m.logger.Errorf(
+		m.logger.Warnf(
 			"received propagation of metric values for missing neigh interest set %d: %s from %s",
 			interestSetID,
 			interestSet.IS.OutputBucketOpts.Name,
@@ -267,7 +266,7 @@ func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer
 	}
 
 	if !m.isPeerInView(sender) {
-		m.logger.Errorf("received interest set propagation message but target (%s) is not in view", sender)
+		m.logger.Warnf("received interest set propagation message but target (%s) is not in view", sender)
 		return
 	}
 
@@ -302,22 +301,22 @@ func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer
 		}
 
 		if msgConverted.TTL > sub.ttl {
-			m.logger.WithFields(logrus.Fields{"metric_values": msgConverted.Metrics, "msg_ttl": msgConverted.TTL, "sub_ttl": sub.ttl}).Warnf(
-				"not relaying metric values for interest set %d: %s from %s to %s because msgConverted.TTL <= sub.ttl",
-				interestSetID,
-				interestSet.IS.OutputBucketOpts.Name,
-				sender.String(),
-				sub.p.String(),
-			)
+			// m.logger.WithFields(logrus.Fields{"metric_values": msgConverted.Metrics, "msg_ttl": msgConverted.TTL, "sub_ttl": sub.ttl}).Warnf(
+			// 	"not relaying metric values for interest set %d: %s from %s to %s because msgConverted.TTL <= sub.ttl",
+			// 	interestSetID,
+			// 	interestSet.IS.OutputBucketOpts.Name,
+			// 	sender.String(),
+			// 	sub.p.String(),
+			// )
 			continue
 		}
-		m.logger.WithFields(logrus.Fields{"metric_values": msgConverted.Metrics, "msg_ttl": msgConverted.TTL, "sub_ttl": sub.ttl}).Infof(
-			"relaying metric values for interest set %d: %s from %s to %s",
-			interestSetID,
-			interestSet.IS.OutputBucketOpts.Name,
-			sender.String(),
-			sub.p.String(),
-		)
+		// m.logger.WithFields(logrus.Fields{"metric_values": msgConverted.Metrics, "msg_ttl": msgConverted.TTL, "sub_ttl": sub.ttl}).Infof(
+		// 	"relaying metric values for interest set %d: %s from %s to %s",
+		// 	interestSetID,
+		// 	interestSet.IS.OutputBucketOpts.Name,
+		// 	sender.String(),
+		// 	sub.p.String(),
+		// )
 		msgConverted.TTL++
 		m.babel.SendMessage(msgConverted, sub.p, m.ID(), m.ID(), true)
 	}
