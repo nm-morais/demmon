@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"reflect"
 	"time"
 
 	membershipProtocol "github.com/nm-morais/demmon/internal/membership/protocol"
@@ -65,11 +66,11 @@ func New(babel protocolManager.ProtocolManager, db *tsdb.TSDB, me *engine.Metric
 // BOILERPLATE
 
 func (m *Monitor) MessageDelivered(msg message.Message, p peer.Peer) {
-	m.logger.Infof("Message %+v delivered to: %s", msg, p)
+	m.logger.Infof("Message of %s delivered to: %s", reflect.TypeOf(msg), p)
 }
 
 func (m *Monitor) MessageDeliveryErr(msg message.Message, p peer.Peer, err errors.Error) {
-	m.logger.Errorf("Message %+v failed to deliver to: %s", msg, p)
+	m.logger.Errorf("Message of %s : %+v failed to deliver to: %s", reflect.TypeOf(msg), msg, p)
 }
 
 func (m *Monitor) ID() protocol.ID {
