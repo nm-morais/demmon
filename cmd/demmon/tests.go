@@ -228,7 +228,6 @@ func testGlobalAggFunc(cl *client.DemmonClient) {
 		connectBackoffTime = 1 * time.Second
 		expressionTimeout  = 1 * time.Second
 		exportFrequency    = 5 * time.Second
-		defaultTTL         = 2
 		defaultMetricCount = 12
 		maxRetries         = 3
 		connectTimeout     = 3 * time.Second
@@ -283,7 +282,7 @@ func testGlobalAggFunc(cl *client.DemmonClient) {
 	for range time.NewTicker(tickerTimeout).C {
 		cl.Lock()
 		res, err := cl.Query(
-			"Select('avg_nr_goroutines_global','*')",
+			"SelectLast('avg_nr_goroutines_global','*')",
 			1*time.Second,
 		)
 		cl.Unlock()
@@ -291,7 +290,7 @@ func testGlobalAggFunc(cl *client.DemmonClient) {
 			panic(err)
 		}
 
-		fmt.Println("Select('avg_nr_goroutines_global','*') Query results :")
+		fmt.Println("SelectLast('avg_nr_goroutines_global','*') Query results :")
 
 		for idx, ts := range res {
 			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
