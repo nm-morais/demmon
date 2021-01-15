@@ -1,12 +1,11 @@
 package internal
 
 import (
+	"container/heap"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
-	"os"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -14,8 +13,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
-	"github.com/mitchellh/hashstructure/v2"
-	"github.com/mitchellh/mapstructure"
 	demmon_client "github.com/nm-morais/demmon-client/pkg"
 	"github.com/nm-morais/demmon-common/body_types"
 	"github.com/nm-morais/demmon-common/routes"
@@ -24,6 +21,7 @@ import (
 	monitoringProto "github.com/nm-morais/demmon/internal/monitoring/protocol"
 	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
 	"github.com/nm-morais/demmon/internal/utils"
+	priorityqueue "github.com/nm-morais/go-babel/pkg/dataStructures/priorityQueue"
 	"github.com/nm-morais/go-babel/pkg/protocolManager"
 	"github.com/reugn/go-quartz/quartz"
 	"github.com/sirupsen/logrus"
@@ -70,6 +68,20 @@ type customInterestSetWrapper struct {
 	*sync.Mutex
 }
 
+type alarmControl struct {
+	id                 int64
+	subId              uint64
+	err                error
+	nrRetries          int
+	resetChan          chan time.Time
+	alarm              body_types.InstallAlarmRequest
+	nextCheckDeadline  time.Time
+	TriggerBackoffTime time.Duration
+	lastTimeTriggered  time.Time
+	client             *client
+	*sync.Mutex
+}
+
 type continuousQueryJobWrapper struct {
 	id int
 	d  *Demmon
@@ -97,6 +109,8 @@ type client struct {
 }
 
 type Demmon struct {
+	alarms                          *sync.Map
+	addAlarmChan                    chan *alarmControl
 	schedulerMu                     *sync.Mutex
 	scheduler                       quartz.Scheduler
 	customInterestSets              *sync.Map
@@ -124,19 +138,21 @@ func New(
 	babel protocolManager.ProtocolManager,
 ) *Demmon {
 	d := &Demmon{
-		continuousQueries:               &sync.Map{},
+		alarms:                          &sync.Map{},
+		addAlarmChan:                    make(chan *alarmControl),
 		schedulerMu:                     &sync.Mutex{},
 		scheduler:                       quartz.NewStdScheduler(),
+		customInterestSets:              &sync.Map{},
+		continuousQueries:               &sync.Map{},
 		continuousQueriesCounter:        new(uint64),
-		counter:                         new(uint64),
 		logger:                          logrus.New(),
+		counter:                         new(uint64),
+		conf:                            dConf,
+		db:                              db,
 		nodeUpdatesSubscribers:          &sync.Map{},
 		broadcastMessageSubscribersLock: &sync.Mutex{},
 		broadcastMessageSubscribers:     &sync.Map{},
-		customInterestSets:              &sync.Map{},
-		conf:                            dConf,
 		monitorProto:                    monitorProto,
-		db:                              db,
 		fm:                              fm,
 		me:                              me,
 		babel:                           babel,
@@ -145,6 +161,7 @@ func New(
 
 	go d.handleNodeUpdates()
 	go d.handleBroadcastMessages()
+	go d.handleAlarmTriggers()
 
 	setupLogger(d.logger, d.conf.LogFolder, d.conf.LogFile, d.conf.Silent)
 	return d
@@ -184,7 +201,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 
 	switch r.Type {
 	case routes.GetInView:
-		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, d.getInView())
+		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, d.fm.GetInView())
 	case routes.MembershipUpdates:
 		ans := d.subscribeNodeEvents(r, c)
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, ans)
@@ -192,7 +209,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, d.db.GetRegisteredBuckets())
 	case routes.InstallBucket:
 		reqBody := body_types.BucketOptions{}
-		if !extractBody(r, &reqBody, d, resp) {
+		if !d.extractBody(r, &reqBody, resp) {
 			break
 		}
 
@@ -212,7 +229,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 	case routes.PushMetricBlob:
 		reqBody := []body_types.TimeseriesDTO{}
 
-		if !extractBody(r, &reqBody, d, resp) {
+		if !d.extractBody(r, &reqBody, resp) {
 			break
 		}
 
@@ -235,7 +252,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, nil)
 	case routes.Query:
 		reqBody := body_types.QueryRequest{}
-		if !extractBody(r, &reqBody, d, resp) {
+		if !d.extractBody(r, &reqBody, resp) {
 			break
 		}
 
@@ -252,7 +269,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, toReturn)
 	case routes.InstallContinuousQuery:
 		reqBody := body_types.InstallContinuousQueryRequest{}
-		if !extractBody(r, &reqBody, d, resp) {
+		if !d.extractBody(r, &reqBody, resp) {
 			break
 		}
 
@@ -330,7 +347,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, ans)
 	case routes.InstallCustomInterestSet:
 		reqBody := body_types.CustomInterestSet{}
-		if !extractBody(r, &reqBody, d, resp) {
+		if !d.extractBody(r, &reqBody, resp) {
 			break
 		}
 
@@ -366,14 +383,14 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 
 	case routes.RemoveCustomInterestSet:
 		reqBody := body_types.RemoveInterestSetReq{}
-		if !extractBody(r, &reqBody, d, resp) {
+		if !d.extractBody(r, &reqBody, resp) {
 			break
 		}
 		d.customInterestSets.Delete(reqBody.SetID)
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, nil)
 	case routes.UpdateCustomInterestSetHosts:
 		reqBody := body_types.UpdateCustomInterestSetReq{}
-		if !extractBody(r, &reqBody, d, resp) {
+		if !d.extractBody(r, &reqBody, resp) {
 			break
 		}
 		customISGeneric, ok := d.customInterestSets.Load(reqBody.SetID)
@@ -388,7 +405,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, nil)
 	case routes.InstallNeighborhoodInterestSet:
 		reqBody := body_types.NeighborhoodInterestSet{}
-		if !extractBody(r, &reqBody, d, resp) {
+		if !d.extractBody(r, &reqBody, resp) {
 			break
 		}
 
@@ -417,7 +434,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 
 	case routes.InstallTreeAggregationFunction:
 		reqBody := body_types.TreeAggregationSet{}
-		if !extractBody(r, &reqBody, d, resp) {
+		if !d.extractBody(r, &reqBody, resp) {
 			break
 		}
 
@@ -445,7 +462,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, treeSetID)
 	case routes.InstallGlobalAggregationFunction:
 		reqBody := body_types.GlobalAggregationFunction{}
-		if !extractBody(r, &reqBody, d, resp) {
+		if !d.extractBody(r, &reqBody, resp) {
 			break
 		}
 
@@ -471,10 +488,9 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		d.monitorProto.AddGlobalAggregationFuncReq(int64(neighSetID), reqBody)
 		d.logger.Infof("Added new neighborhood interest set: %+v", reqBody)
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, neighSetID)
-
 	case routes.BroadcastMessage:
 		reqBody := body_types.Message{}
-		if !extractBody(r, &reqBody, d, resp) {
+		if !d.extractBody(r, &reqBody, resp) {
 			break
 		}
 
@@ -488,7 +504,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 	case routes.InstallBroadcastMessageHandler:
 		reqBody := body_types.InstallMessageHandlerRequest{}
 
-		if !extractBody(r, &reqBody, d, resp) {
+		if !d.extractBody(r, &reqBody, resp) {
 			break
 		}
 
@@ -515,8 +531,25 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 	case routes.StartBabel:
 		d.babel.StartAsync()
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, nil)
-	case routes.AlarmTrigger:
-		d.logger.Panic("not yet implemented")
+	case routes.InstallAlarm:
+		reqBody := &body_types.InstallAlarmRequest{}
+		if !d.extractBody(r, reqBody, resp) {
+			break
+		}
+		d.logger.Infof("Installing new alarm")
+		alarmID := utils.GetRandInt(math.MaxInt64)
+		alarm := &alarmControl{
+			id:        alarmID,
+			err:       nil,
+			nrRetries: 0,
+			resetChan: make(chan time.Time),
+			alarm:     *reqBody,
+			Mutex:     &sync.Mutex{},
+			subId:     r.ID,
+		}
+		d.addAlarm(alarm)
+		d.logger.Infof("Added new alarm: %+v", reqBody)
+		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, alarmID)
 	default:
 		resp = body_types.NewResponse(r.ID, false, body_types.ErrNonRecognizedOp, 400, r.Type, nil)
 	}
@@ -532,22 +565,6 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 	case <-time.After(DeliverRequestResponseTimeout):
 		d.logger.Panic("TIMEOUT: Could not deliver response")
 	}
-}
-
-func extractBody(r *body_types.Request, reqBody interface{}, d *Demmon, resp *body_types.Response) bool {
-	err := decode(r.Message, reqBody)
-	if err != nil {
-		d.logger.Error(err)
-		resp.Code = 400
-		resp.ID = r.ID
-		resp.Error = true
-		resp.Type = r.Type
-		resp.Message = body_types.ErrBadBodyType
-
-		return false
-	}
-
-	return true
 }
 
 func (d *Demmon) subscribeNodeEvents(r *body_types.Request, c *client) body_types.NodeUpdateSubscriptionResponse {
@@ -583,7 +600,6 @@ func (d *Demmon) handleBroadcastMessages() {
 
 func (d *Demmon) handleNodeUpdates() {
 	nodeUps, nodeDowns := d.fm.MembershipUpdates()
-
 	for {
 		select {
 		case nodeUp := <-nodeUps:
@@ -606,62 +622,132 @@ func (d *Demmon) handleNodeUpdates() {
 	}
 }
 
-func (d *Demmon) getInView() body_types.View {
-	return d.fm.GetInView()
+func (d *Demmon) addAlarm(alarm *alarmControl) {
+	d.addAlarmChan <- alarm
 }
 
-func (d *Demmon) readPump(c *client) {
-	defer func() {
-		err := c.conn.Close()
-		if err != nil {
-			d.logger.Errorf("error closing connection: %s", err.Error())
-		}
-	}()
+func (d *Demmon) handleAlarmTrigger(alarm *alarmControl) {
+	d.logger.Infof("alarm %s triggered", alarm.id)
 
-	for {
-		req := &body_types.Request{}
-		err := c.conn.ReadJSON(req)
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(
-				err,
-				websocket.CloseMessage,
-				websocket.CloseGoingAway,
-				websocket.CloseAbnormalClosure,
-			) {
-				d.logger.Errorf("error: %v reading from connection", err)
-				break
-			}
-			d.logger.Errorf("error: %v reading from connection", err)
-			return
+	res, err := d.me.MakeBoolQuery(alarm.alarm.Query.Expression, alarm.alarm.Query.Timeout)
+	if err != nil {
+		d.logger.Errorf("alarm %d failed with error: %s", alarm.id, err)
+		alarm.Lock()
+		alarm.nrRetries++
+		if alarm.nrRetries == alarm.alarm.MaxRetries {
+			alarm.Unlock()
+			alarm.client.out <- body_types.NewResponse(alarm.subId, true, err, 500, routes.InstallAlarm, body_types.AlarmUpdate{
+				ID:       alarm.id,
+				Error:    true,
+				Trigger:  false,
+				ErrorMsg: err.Error(),
+			})
+			d.alarms.Delete(alarm.id)
 		}
-		d.handleRequest(req, c)
+		alarm.Unlock()
+		return
+	}
+
+	if res == true && time.Since(alarm.lastTimeTriggered) > alarm.TriggerBackoffTime {
+		alarm.client.out <- body_types.NewResponse(alarm.subId, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
+			ID:       alarm.id,
+			Error:    false,
+			Trigger:  true,
+			ErrorMsg: "",
+		})
+		alarm.Lock()
+		alarm.lastTimeTriggered = time.Now()
+		alarm.Unlock()
 	}
 }
 
-func (d *Demmon) writePump(c *client) {
-	defer func() {
-		err := c.conn.Close()
-		if err != nil {
-			d.logger.Errorf("error closing the connection: %s", err.Error())
-		}
-	}()
+func (d *Demmon) handleAlarmTriggers() {
+	var t *time.Timer
+	pq := priorityqueue.PriorityQueue{}
 
-	for message := range c.out {
-		err := c.conn.WriteJSON(message)
-		if err != nil {
-			d.logger.Errorf("error: %v writing to connection", err)
-			return
+	addAlarmToQueue := func(alarm *alarmControl, nextTrigger time.Time) {
+		d.logger.Infof("added alarm control %d to pq", alarm.id)
+		alarm.Lock()
+		alarm.nextCheckDeadline = nextTrigger
+		alarm.Unlock()
+		pqItem := &priorityqueue.Item{
+			Value:    alarm,
+			Priority: nextTrigger.UnixNano(),
 		}
+		heap.Push(&pq, pqItem)
+		heap.Init(&pq)
+	}
+
+	getNextFromQueue := func() *alarmControl {
+		for len(pq) > 0 {
+			nextItem := heap.Pop(&pq).(*priorityqueue.Item).Value.(*alarmControl)
+			alarmInt, stillActive := d.alarms.Load(nextItem.id)
+			if !stillActive {
+				d.logger.Warnf("alarm deleted: %d", nextItem.id)
+				continue
+			}
+			// drain reset channel
+			alarm := alarmInt.(*alarmControl)
+			select {
+			case triggerTime := <-alarm.resetChan:
+				alarm.Lock()
+				if triggerTime.Add(alarm.alarm.CheckPeriodicity).After(nextItem.nextCheckDeadline) {
+					alarm.Unlock()
+					d.logger.Infof("alarm %s was reset while wating for other alarm, adjusting next trigger", nextItem.nextCheckDeadline)
+					addAlarmToQueue(nextItem, triggerTime.Add(alarm.alarm.CheckPeriodicity))
+				} else {
+					alarm.Unlock()
+					return alarm
+				}
+			default:
+				return alarm
+			}
+		}
+		return nil
+	}
+
+	for {
+
+		alarm := getNextFromQueue()
+		if alarm == nil {
+			newAlarm := <-d.addAlarmChan
+			addAlarmToQueue(newAlarm, time.Now().Add(newAlarm.alarm.CheckPeriodicity))
+		}
+
+		// control loop
+		t = time.NewTimer(time.Until(alarm.nextCheckDeadline))
+		select {
+		case newAlarm := <-d.addAlarmChan:
+			addAlarmToQueue(newAlarm, time.Now().Add(alarm.alarm.CheckPeriodicity))
+		case <-t.C:
+			alarmInt, stillActive := d.alarms.Load(alarm.id)
+			if !stillActive {
+				d.logger.Infof("alarm deleted meanwhile: %s", alarm.id)
+				break
+			}
+			alarm := alarmInt.(*alarmControl)
+			addAlarmToQueue(alarm, time.Now().Add(alarm.alarm.CheckPeriodicity))
+			go d.handleAlarmTrigger(alarm)
+		case triggerTime := <-alarm.resetChan:
+			_, stillActive := d.alarms.Load(alarm.id)
+			if !stillActive {
+				d.logger.Infof("alarm deleted: %s", alarm.id)
+				break
+			}
+			d.logger.Infof("alarm %s was triggered while wating for nextTrigger", alarm.id)
+			addAlarmToQueue(alarm, triggerTime.Add(alarm.alarm.CheckPeriodicity))
+		}
+		t.Stop()
 	}
 }
 
 func (d *Demmon) handleCustomInterestSet(taskID int64, req *body_types.Request, c *client) {
-
 	defer d.logger.Warnf("Custom interest set %d returning", taskID)
 	jobGeneric, ok := d.customInterestSets.Load(taskID)
 	if !ok {
 		return
 	}
+
 	customJobWrapper := jobGeneric.(*customInterestSetWrapper)
 	ticker := time.NewTicker(customJobWrapper.is.IS.OutputBucketOpts.Granularity.Granularity)
 	wg := &sync.WaitGroup{}
@@ -788,6 +874,7 @@ func (d *Demmon) handleCustomInterestSet(taskID int64, req *body_types.Request, 
 			c.out <- body_types.NewResponse(req.ID, true, body_types.ErrQuerying, 500, routes.InstallCustomInterestSet, nil)
 			return
 		}
+
 		for host, cl := range job.clients {
 			found := false
 			for _, h := range job.is.Hosts {
@@ -862,114 +949,4 @@ func (d *Demmon) handleContinuousQueryTrigger(taskID int) {
 
 	job.triedNr = 0
 	job.lastRan = time.Now()
-}
-
-type formatter struct {
-	owner string
-	lf    logrus.Formatter
-}
-
-func (f *formatter) Format(e *logrus.Entry) ([]byte, error) {
-	e.Message = fmt.Sprintf("[%s] %s", f.owner, e.Message)
-	return f.lf.Format(e)
-}
-
-func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) {
-	logger.SetFormatter(
-		&formatter{
-			owner: "Demmon_Frontend",
-			lf: &logrus.TextFormatter{
-				DisableColors:   true,
-				ForceColors:     false,
-				FullTimestamp:   true,
-				TimestampFormat: time.StampMilli,
-			},
-		},
-	)
-
-	if logFolder == "" {
-		logger.Panicf("Invalid logFolder '%s'", logFolder)
-	}
-
-	if logFile == "" {
-		logger.Panicf("Invalid logFile '%s'", logFile)
-	}
-
-	filePath := fmt.Sprintf("%s/%s", logFolder, logFile)
-	err := os.MkdirAll(logFolder, 0777)
-	if err != nil {
-		logger.Panic(err)
-	}
-	file, err := os.Create(filePath)
-	if os.IsExist(err) {
-		var err = os.Remove(filePath)
-		if err != nil {
-			logger.Panic(err)
-		}
-		file, err = os.Create(filePath)
-		if err != nil {
-			logger.Panic(err)
-		}
-	}
-	var out io.Writer = file
-	if !silent {
-		out = io.MultiWriter(os.Stdout, file)
-
-		fmt.Println("Setting metrics_frontend non-silently")
-	}
-	logger.SetOutput(out)
-}
-
-func decode(input, result interface{}) error {
-	decoder, err := mapstructure.NewDecoder(
-		&mapstructure.DecoderConfig{
-			Metadata: nil,
-			TagName:  "json",
-			DecodeHook: mapstructure.ComposeDecodeHookFunc(
-				toTimeHookFunc(),
-				mapstructure.StringToIPHookFunc(),
-			),
-			Result: result,
-		},
-	)
-	if err != nil {
-		return err
-	}
-	err = decoder.Decode(input)
-	if err != nil {
-		return err
-	}
-	return err
-}
-
-func toTimeHookFunc() mapstructure.DecodeHookFunc {
-	return func(
-		f reflect.Type,
-		t reflect.Type,
-		data interface{},
-	) (interface{}, error) {
-		if t != reflect.TypeOf(time.Time{}) {
-			return data, nil
-		}
-
-		switch f.Kind() {
-		case reflect.String:
-			return time.Parse(time.RFC3339, data.(string))
-		case reflect.Float64:
-			return time.Unix(0, int64(data.(float64))*int64(time.Millisecond)), nil
-		case reflect.Int64:
-			return time.Unix(0, data.(int64)*int64(time.Millisecond)), nil
-		default:
-			return data, nil
-		}
-		// Convert it by parsing
-	}
-}
-
-func Hash(v interface{}) uint64 {
-	hash, err := hashstructure.Hash(v, hashstructure.FormatV2, nil)
-	if err != nil {
-		panic(err)
-	}
-	return hash
 }

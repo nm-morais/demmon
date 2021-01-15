@@ -1,7 +1,6 @@
 package protocol
 
 import (
-	"encoding/binary"
 	"math"
 	"math/rand"
 	"reflect"
@@ -1586,6 +1585,8 @@ func (d *DemmonTree) joinOverlay() {
 	d.myPendingParentInRecovery = nil
 	d.myPendingChildren = make(map[string]*PeerWithIDChain)
 	d.myPendingSiblings = make(map[string]*PeerWithIDChain)
+	d.children = make(map[string]map[string]*PeerWithIDChain)
+	d.parents = make(map[string]*PeerWithIDChain)
 
 	d.currLevelPeersDone = []map[string]*MeasuredPeer{make(map[string]*MeasuredPeer, nrLandmarks)} // start level 1
 	d.currLevelPeers = []map[string]peer.Peer{make(map[string]peer.Peer, nrLandmarks)}             // start level 1
@@ -1839,24 +1840,31 @@ func (d *DemmonTree) getPeersInLevelByLat(level int, deadline time.Time) Measure
 }
 
 func (d *DemmonTree) generateChildID() PeerID {
-	var peerID PeerID
-	occupiedIds := make(map[PeerID]bool, d.self.NrChildren())
-	for _, child := range d.myChildren {
-		childID := child.Chain()[len(child.Chain())-1]
-		occupiedIds[childID] = true
-	}
-
-	maxID := int(math.Exp2(IDSegmentLen))
-	for i := 0; i < maxID; i++ {
-		binary.BigEndian.PutUint64(peerID[:], uint64(i))
-		_, ok := occupiedIds[peerID]
-		if !ok {
-			d.logger.Infof("Generated peerID: %+v", peerID)
-			return peerID
+	i := 0
+outer:
+	for {
+		i++
+		if i == 5 { // for safety
+			panic("could not generate child ID in 5 iterations")
 		}
+		var peerID PeerID
+		n, err := rand.Read(peerID[:])
+		if err != nil {
+			panic(err)
+		}
+		if n != len(peerID) {
+			panic("rand did not write all peerID array")
+		}
+
+		for _, c := range d.myChildren {
+			if peerID.String() == c.chain[len(c.chain)-1].String() {
+				continue outer
+			}
+		}
+
+		d.logger.Infof("Generated peerID: %+v", peerID)
+		return peerID
 	}
-	d.logger.Panic("Could not generate children ID")
-	return PeerID{}
 }
 
 func (d *DemmonTree) fallbackToParentInJoin(node peer.Peer) {

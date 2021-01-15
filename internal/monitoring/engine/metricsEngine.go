@@ -50,6 +50,31 @@ var (
 	errEmptyResult          = errors.New("query did not return any values")
 )
 
+func (e *MetricsEngine) MakeBoolQuery(expression string, timeoutDuration time.Duration) (bool, error) {
+	vm := otto.New()
+	e.setVMFunctions(vm)
+	ottoVal, err := e.runWithTimeout(vm, expression, timeoutDuration)
+
+	if err != nil {
+		return false, err
+	}
+
+	vGeneric, err := ottoVal.Export()
+	if err != nil {
+		return false, err
+	}
+
+	e.logger.Infof("Query %s got result %+v", expression, vGeneric)
+
+	switch vConverted := vGeneric.(type) {
+	case bool:
+		return vConverted, nil
+	default:
+		e.logger.Panicf("Unsupported return type: %s, (%+v)", reflect.TypeOf(vConverted), vConverted)
+		return false, errUnsuportedReturnType
+	}
+}
+
 func (e *MetricsEngine) MakeQuerySingleReturn(expression string, timeoutDuration time.Duration) (map[string]interface{}, error) {
 	vm := otto.New()
 	e.setVMFunctions(vm)
@@ -100,48 +125,6 @@ func (e *MetricsEngine) MakeQuery(expression string, timeoutDuration time.Durati
 }
 
 func (e *MetricsEngine) RunMergeFunc(expression string, timeoutDuration time.Duration, args []map[string]interface{}) (map[string]interface{}, error) {
-	vm := otto.New()
-
-	// make copy of args
-	argsCopy := make([]map[string]interface{}, 0, len(args))
-	for _, arg := range args {
-
-		argCopy := map[string]interface{}{}
-		for k, v := range arg {
-			argCopy[k] = v
-		}
-
-		argsCopy = append(argsCopy, argCopy)
-	}
-
-	err := vm.Set("args", argsCopy)
-
-	if err != nil {
-		return nil, err
-	}
-
-	ottoVal, err := e.runWithTimeout(vm, expression, timeoutDuration)
-	if err != nil {
-		return nil, err
-	}
-
-	vGeneric, err := ottoVal.Export()
-	if err != nil {
-		return nil, err
-	}
-
-	e.logger.Infof("Merge function %s got result %+v", expression, vGeneric)
-
-	switch vConverted := vGeneric.(type) {
-	case map[string]interface{}:
-		return vConverted, nil
-	default:
-		e.logger.Panicf("Unsupported return type: %s, (%+v)", reflect.TypeOf(vConverted), vConverted)
-		return nil, errUnsuportedReturnType
-	}
-}
-
-func (e *MetricsEngine) RunDifferenceFunc(expression string, timeoutDuration time.Duration, args []map[string]interface{}) (map[string]interface{}, error) {
 	vm := otto.New()
 
 	// make copy of args
@@ -304,70 +287,7 @@ func (e *MetricsEngine) setVMFunctions(vm *otto.Otto) {
 	if err != nil {
 		panic(err)
 	}
-
-	// TODO
-	// err = vm.Set(
-	// 	"NewTimeseries", func(call otto.FunctionCall) otto.Value {
-	// 		return e.newTs(vm, call)
-	// 	},
-	// )
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// err = vm.Set("AddPoint", func(call otto.FunctionCall) otto.Value {
-	// 	return e.addPoint(vm, call)
-	// })
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// err = vm.Set(
-	// 	"Drop", func(call otto.FunctionCall) otto.Value {
-	// 		e.drop(vm, call)
-	// 		return otto.UndefinedValue()
-	// 	},
-	// )
-	// if err != nil {
-	// 	panic(err)
-	// }
 }
-
-// func (e *MetricsEngine) newTs(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
-// 	name, err := call.Argument(0).ToString()
-// 	if err != nil {
-// 		throw(vm, "Invalid arg: Name is not a string")
-// 	}
-
-// 	tagsGeneric := call.Argument(1).Object()
-// 	tagKeys := tagsGeneric.Keys()
-// 	tags := map[string]string{}
-// 	for _, tagKey := range tagKeys {
-// 		tagVal, err := tagsGeneric.Get(tagKey)
-// 		if err != nil {
-// 			throw(vm, "Invalid arg: tag filters is not a map[string]string")
-// 		}
-// 		tags[tagKey] = tagVal.String()
-// 	}
-
-// 	valuesGeneric := call.Argument(1).Object()
-// 	valuesKeys := valuesGeneric.Keys()
-// 	values := map[string]interface{}{}
-// 	for _, valKey := range valuesKeys {
-// 		valVal, err := valuesGeneric.Get(valKey)
-// 		if err != nil {
-// 			throw(vm, "Invalid arg: values is not a map[string]Observable{}")
-// 		}
-// 		values[valKey] = tsdb.NewObservable(valVal.Object().Get(""))
-// 	}
-
-// 	res, err := vm.ToValue(tsdb.NewStaticTimeSeries(name, tags, values))
-// 	if err != nil {
-// 		throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
-// 		return otto.Value{}
-// 	}
-// 	return res
-// }
 
 func (e *MetricsEngine) selectTs(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
 
@@ -536,52 +456,6 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call *otto.FunctionCall) otto
 	}
 	return res
 }
-
-// func (e *MetricsEngine) addPoint(vm *otto.Otto, call otto.FunctionCall) otto.Value {
-// 	name, err := call.Argument(0).ToString()
-// 	if err != nil {
-// 		throw(vm, "AddPoint: Invalid arg: Name is not a string")
-// 	}
-
-// 	tagsObj := call.Argument(1).Object()
-// 	if err != nil {
-// 		throw(vm, "AddPoint: Invalid arg: tag filters is not defined")
-// 	}
-
-// 	tags := map[string]string{}
-// 	tagKeys := tagsObj.Keys()
-// 	for _, tagKey := range tagKeys {
-// 		tagVal, err := tagsObj.Get(tagKey)
-// 		if err != nil {
-// 			throw(vm, "AddPoint: Invalid arg: tags is not a map[string]string")
-// 		}
-// 		tags[tagKey] = tagVal.String()
-// 	}
-
-// 	fieldsObj, err := call.Argument(2).Export()
-// 	if err != nil {
-// 		throw(vm, "AddPoint: Invalid arg (2): fields are not defined")
-// 	}
-// 	switch point := fieldsObj.(type) {
-// 	case (map[string]interface{}):
-// 		ts, ok := e.db.GetTimeseries(name, tags)
-// 		if !ok {
-// 			throw(vm, "Destination bucket %s does not exist")
-// 		}
-// 		pv := tsdb.NewObservable(point, time.Now())
-// 		ts.AddPoint(pv)
-// 	case (tsdb.Observable):
-// 		ts, ok := e.db.GetTimeseries(name, tags)
-// 		if !ok {
-// 			throw(vm, "Destination bucket does not exist")
-// 		}
-// 		pv := tsdb.NewObservable(point.Value(), point.TS())
-// 		ts.AddPoint(pv)
-// 	default:
-// 		throw(vm, fmt.Sprintf("AddPoint: Invalid arg (2): unsupported type %s", reflect.TypeOf(fieldsObj)))
-// 	}
-// 	return otto.Value{}
-// }
 
 func (e *MetricsEngine) max(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
 
@@ -1287,4 +1161,86 @@ func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) 
 // 		}
 // 	}
 // 	return
+// }
+
+// func (e *MetricsEngine) newTs(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
+// 	name, err := call.Argument(0).ToString()
+// 	if err != nil {
+// 		throw(vm, "Invalid arg: Name is not a string")
+// 	}
+
+// 	tagsGeneric := call.Argument(1).Object()
+// 	tagKeys := tagsGeneric.Keys()
+// 	tags := map[string]string{}
+// 	for _, tagKey := range tagKeys {
+// 		tagVal, err := tagsGeneric.Get(tagKey)
+// 		if err != nil {
+// 			throw(vm, "Invalid arg: tag filters is not a map[string]string")
+// 		}
+// 		tags[tagKey] = tagVal.String()
+// 	}
+
+// 	valuesGeneric := call.Argument(1).Object()
+// 	valuesKeys := valuesGeneric.Keys()
+// 	values := map[string]interface{}{}
+// 	for _, valKey := range valuesKeys {
+// 		valVal, err := valuesGeneric.Get(valKey)
+// 		if err != nil {
+// 			throw(vm, "Invalid arg: values is not a map[string]Observable{}")
+// 		}
+// 		values[valKey] = tsdb.NewObservable(valVal.Object().Get(""))
+// 	}
+
+// 	res, err := vm.ToValue(tsdb.NewStaticTimeSeries(name, tags, values))
+// 	if err != nil {
+// 		throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
+// 		return otto.Value{}
+// 	}
+// 	return res
+// }
+
+// func (e *MetricsEngine) addPoint(vm *otto.Otto, call otto.FunctionCall) otto.Value {
+// 	name, err := call.Argument(0).ToString()
+// 	if err != nil {
+// 		throw(vm, "AddPoint: Invalid arg: Name is not a string")
+// 	}
+
+// 	tagsObj := call.Argument(1).Object()
+// 	if err != nil {
+// 		throw(vm, "AddPoint: Invalid arg: tag filters is not defined")
+// 	}
+
+// 	tags := map[string]string{}
+// 	tagKeys := tagsObj.Keys()
+// 	for _, tagKey := range tagKeys {
+// 		tagVal, err := tagsObj.Get(tagKey)
+// 		if err != nil {
+// 			throw(vm, "AddPoint: Invalid arg: tags is not a map[string]string")
+// 		}
+// 		tags[tagKey] = tagVal.String()
+// 	}
+
+// 	fieldsObj, err := call.Argument(2).Export()
+// 	if err != nil {
+// 		throw(vm, "AddPoint: Invalid arg (2): fields are not defined")
+// 	}
+// 	switch point := fieldsObj.(type) {
+// 	case (map[string]interface{}):
+// 		ts, ok := e.db.GetTimeseries(name, tags)
+// 		if !ok {
+// 			throw(vm, "Destination bucket %s does not exist")
+// 		}
+// 		pv := tsdb.NewObservable(point, time.Now())
+// 		ts.AddPoint(pv)
+// 	case (tsdb.Observable):
+// 		ts, ok := e.db.GetTimeseries(name, tags)
+// 		if !ok {
+// 			throw(vm, "Destination bucket does not exist")
+// 		}
+// 		pv := tsdb.NewObservable(point.Value(), point.TS())
+// 		ts.AddPoint(pv)
+// 	default:
+// 		throw(vm, fmt.Sprintf("AddPoint: Invalid arg (2): unsupported type %s", reflect.TypeOf(fieldsObj)))
+// 	}
+// 	return otto.Value{}
 // }
