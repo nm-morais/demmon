@@ -236,6 +236,7 @@ func testGlobalAggFunc(cl *client.DemmonClient) {
 		requestTimeout     = 1 * time.Second
 	)
 
+	cl.Lock()
 	_, err := cl.InstallGlobalAggregationFunction(
 		&body_types.GlobalAggregationFunction{
 			MaxRetries: 3,
@@ -274,16 +275,18 @@ func testGlobalAggFunc(cl *client.DemmonClient) {
 							`,
 			},
 		})
-
+	cl.Unlock()
 	if err != nil {
 		panic(err)
 	}
 
 	for range time.NewTicker(tickerTimeout).C {
+		cl.Lock()
 		res, err := cl.Query(
 			"Select('avg_nr_goroutines_global','*')",
 			1*time.Second,
 		)
+		cl.Unlock()
 		if err != nil {
 			panic(err)
 		}
@@ -298,7 +301,9 @@ func testGlobalAggFunc(cl *client.DemmonClient) {
 
 func testNodeUpdates(cl *client.DemmonClient) {
 
+	cl.Lock()
 	res, err, _, updateChan := cl.SubscribeNodeUpdates()
+	cl.Unlock()
 
 	if err != nil {
 		panic(err)
@@ -316,7 +321,9 @@ func testNodeUpdates(cl *client.DemmonClient) {
 func testMsgBroadcast(cl *client.DemmonClient) {
 	const tickerTimeout = 5 * time.Second
 
+	cl.Lock()
 	msgChan, _, err := cl.InstallBroadcastMessageHandler(1)
+	cl.Unlock()
 
 	if err != nil {
 		panic(err)
@@ -324,12 +331,14 @@ func testMsgBroadcast(cl *client.DemmonClient) {
 
 	go func() {
 		for range time.NewTicker(tickerTimeout).C {
+			cl.Lock()
 			err := cl.BroadcastMessage(
 				body_types.Message{
 					ID:      1,
 					TTL:     2,
 					Content: struct{ Message string }{Message: "hey"}},
 			)
+			cl.Unlock()
 			if err != nil {
 				panic(err)
 			}
@@ -396,6 +405,7 @@ func testCustomInterestSets(cl *client.DemmonClient) {
 		exportFrequency   = 5 * time.Second
 		expressionTimeout = 1 * time.Second
 	)
+	cl.Lock()
 	_, errChan, _, err := cl.InstallCustomInterestSet(body_types.CustomInterestSet{
 		DialTimeout:      3 * time.Second,
 		DialRetryBackoff: 5 * time.Second,
@@ -419,6 +429,7 @@ func testCustomInterestSets(cl *client.DemmonClient) {
 			},
 		},
 	})
+	cl.Unlock()
 
 	if err != nil {
 		panic(err)
@@ -469,16 +480,19 @@ func testDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 	cl := client.New(clientConf)
 
 	for i := 0; i < 3; i++ {
+		cl.Lock()
 		err := cl.ConnectTimeout(connectTimeout)
+		cl.Unlock()
 		if err != nil {
 			time.Sleep(connectBackoffTime)
 			continue
 		}
 		break
 	}
+
 	go testExporter(eConf)
-	go testGlobalAggFunc(cl)
-	go testAlarms(cl)
+	// go testGlobalAggFunc(cl)
+	// go testAlarms(cl)
 
 	// if isLandmark {
 	// 	testGlobalAggFunc(cl)
