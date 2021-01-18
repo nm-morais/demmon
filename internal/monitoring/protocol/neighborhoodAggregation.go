@@ -10,7 +10,6 @@ import (
 	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/request"
 	"github.com/nm-morais/go-babel/pkg/timer"
-	"github.com/sirupsen/logrus"
 )
 
 type subWithTTL struct {
@@ -85,18 +84,18 @@ func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 	tConverted := t.(*exportNeighInterestSetMetricsTimer)
 	interestSetID := tConverted.InterestSetID
 	remoteInterestSet, ok := m.neighInterestSets[interestSetID]
-	m.logger.Infof("Export timer for neigh interest set %d triggered", interestSetID)
+	// m.logger.Infof("Export timer for neigh interest set %d triggered", interestSetID)
 
 	if !ok {
 		m.logger.Warnf("Canceling export timer for remote interest set %d", interestSetID)
 		return
 	}
 
-	m.logger.Infof(
-		"Exporting metric values for remote interest set %d: %s",
-		interestSetID,
-		remoteInterestSet.IS.OutputBucketOpts.Name,
-	)
+	// m.logger.Infof(
+	// 	"Exporting metric values for remote interest set %d: %s",
+	// 	interestSetID,
+	// 	remoteInterestSet.IS.OutputBucketOpts.Name,
+	// )
 
 	query := remoteInterestSet.IS.Query
 	result, err := m.me.MakeQuery(query.Expression, query.Timeout)
@@ -125,10 +124,10 @@ func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 		return
 	}
 
-	m.logger.Infof(
-		"Remote neigh interest set query result: (%+v)",
-		result,
-	)
+	// m.logger.Infof(
+	// 	"Remote neigh interest set query result: (%+v)",
+	// 	result,
+	// )
 
 	timeseriesDTOs := make([]body_types.TimeseriesDTO, 0, len(result))
 	for _, tsGeneric := range result {
@@ -207,14 +206,13 @@ func (m *Monitor) handleInstallNeighInterestSetMessage(sender peer.Peer, msg mes
 		return
 	}
 
-	m.logger.Infof(
-		"received message to install neigh interest sets from %s (%+v)",
-		sender.String(),
-		installNeighIntSetMsg,
-	)
+	// m.logger.Infof(
+	// 	"received message to install neigh interest sets from %s (%+v)",
+	// 	sender.String(),
+	// 	installNeighIntSetMsg,
+	// )
 
 	for interestSetID, interestSet := range installNeighIntSetMsg.InterestSets {
-		m.logger.Infof("installing neigh interest set %d: %+v", interestSetID, interestSet)
 
 		is, alreadyExists := m.neighInterestSets[interestSetID]
 
@@ -229,6 +227,7 @@ func (m *Monitor) handleInstallNeighInterestSetMessage(sender peer.Peer, msg mes
 			continue
 		}
 
+		m.logger.Infof("installing neigh interest set %d: %+v", interestSetID, interestSet)
 		m.neighInterestSets[interestSetID] = &neighInterestSet{
 			nrRetries: 0,
 			subscribers: map[string]subWithTTL{
@@ -270,12 +269,12 @@ func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer
 		return
 	}
 
-	m.logger.WithFields(logrus.Fields{"metric_values": msgConverted.Metrics}).Infof(
-		"received propagation of metric values for interest set %d: %s from %s",
-		interestSetID,
-		interestSet.IS.OutputBucketOpts.Name,
-		sender.String(),
-	)
+	// m.logger.WithFields(logrus.Fields{"metric_values": msgConverted.Metrics}).Infof(
+	// 	"received propagation of metric values for interest set %d: %s from %s",
+	// 	interestSetID,
+	// 	interestSet.IS.OutputBucketOpts.Name,
+	// 	sender.String(),
+	// )
 
 	for _, sub := range interestSet.subscribers {
 

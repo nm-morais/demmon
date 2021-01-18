@@ -374,9 +374,10 @@ func testAlarms(cl *client.DemmonClient) {
 								result = True
 							}`,
 			},
-			CheckOnlyOnChange: false,
-			MaxRetries:        maxRetries,
-			CheckPeriodicity:  checkFrequency,
+			CheckPeriodic:      true,
+			MaxRetries:         maxRetries,
+			TriggerBackoffTime: checkFrequency,
+			CheckPeriodicity:   checkFrequency,
 		})
 	cl.Unlock()
 

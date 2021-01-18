@@ -536,18 +536,27 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		if !d.extractBody(r, reqBody, resp) {
 			break
 		}
-		d.logger.Infof("Installing new alarm")
 		alarmID := utils.GetRandInt(math.MaxInt64)
-		alarm := &alarmControl{
+		_ = &alarmControl{
 			id:        alarmID,
 			err:       nil,
 			nrRetries: 0,
 			resetChan: make(chan time.Time),
 			alarm:     *reqBody,
 			Mutex:     &sync.Mutex{},
-			subId:     r.ID,
+			// d:                 d,
+			nextCheckDeadline: time.Now(),
+			lastTimeTriggered: time.Now().Add(-reqBody.CheckPeriodicity),
+			client:            c,
+			subId:             r.ID,
 		}
-		d.addAlarm(alarm)
+
+		// d.installAlarmWatchlist(alarm, reqBody.WatchList)
+
+		// if !alarm.alarm.CheckPeriodic {
+		// 	d.addAlarmToEvalPeriodic(alarm)
+		// }
+
 		d.logger.Infof("Added new alarm: %+v", reqBody)
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, body_types.InstallAlarmReply{ID: alarmID})
 	default:
@@ -556,9 +565,11 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 
 	if resp.Error {
 		d.logger.Errorf("Got request %s, response: status: %d, err: %s", r.Type.String(), resp.Code, resp.GetMsgAsErr().Error())
-	} else {
-		d.logger.Infof("Got request %s, response: status:% d, response: %+v", r.Type.String(), resp.Code, resp.Message)
 	}
+
+	// else {
+	// 	d.logger.Infof("Got request %s, response: status:% d, response: %+v", r.Type.String(), resp.Code, resp.Message)
+	// }
 
 	select {
 	case c.out <- resp:
