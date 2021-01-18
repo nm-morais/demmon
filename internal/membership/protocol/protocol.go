@@ -1197,6 +1197,7 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 			"Received UpdateParentMessage from not my parent (parent:<nil> sender:%s)",
 			upMsg.Parent.StringWithFields(),
 		)
+		return
 	}
 
 	if !peer.PeersEqual(sender, d.myParent) {
