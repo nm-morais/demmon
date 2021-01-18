@@ -537,25 +537,25 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			break
 		}
 		alarmID := utils.GetRandInt(math.MaxInt64)
-		alarm := &alarmControl{
-			id:                alarmID,
-			err:               nil,
-			nrRetries:         0,
-			resetChan:         make(chan time.Time),
-			alarm:             *reqBody,
-			Mutex:             &sync.Mutex{},
-			d:                 d,
+		_ = &alarmControl{
+			id:        alarmID,
+			err:       nil,
+			nrRetries: 0,
+			resetChan: make(chan time.Time),
+			alarm:     *reqBody,
+			Mutex:     &sync.Mutex{},
+			// d:                 d,
 			nextCheckDeadline: time.Now(),
 			lastTimeTriggered: time.Now().Add(-reqBody.CheckPeriodicity),
 			client:            c,
 			subId:             r.ID,
 		}
 
-		d.installAlarmWatchlist(alarm, reqBody.WatchList)
+		// d.installAlarmWatchlist(alarm, reqBody.WatchList)
 
-		if !alarm.alarm.CheckPeriodic {
-			d.addAlarmToEvalPeriodic(alarm)
-		}
+		// if !alarm.alarm.CheckPeriodic {
+		// 	d.addAlarmToEvalPeriodic(alarm)
+		// }
 
 		d.logger.Infof("Added new alarm: %+v", reqBody)
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, body_types.InstallAlarmReply{ID: alarmID})
