@@ -1,12 +1,23 @@
 package utils
 
-type subject interface {
-	register(Observer observer)
-	deregister(Observer observer)
-	notifyAll()
+type Subject interface {
+	Register(Observer Observer)
+	Deregister(Observer Observer)
+	NotifyAll()
 }
 
-type observer interface {
-	update(string)
-	getID() string
+type Observer interface {
+	Notify(interface{})
+	GetID() string
+}
+
+func RemoveFromslice(observerList []Observer, observerToRemove Observer) []Observer {
+	observerListLength := len(observerList)
+	for i, observer := range observerList {
+		if observerToRemove.GetID() == observer.GetID() {
+			observerList[observerListLength-1], observerList[i] = observerList[i], observerList[observerListLength-1]
+			return observerList[:observerListLength-1]
+		}
+	}
+	return observerList
 }

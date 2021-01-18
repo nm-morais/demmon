@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nm-morais/demmon/internal/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -48,17 +49,18 @@ func (defaultClock) Time() time.Time { return time.Now() }
 // interval equal to the resolution of the level. New observations are added
 // to the last bucket.
 type timeSeries struct {
-	mu          sync.Mutex
-	numBuckets  int        // number of buckets in each level
-	level       *tsLevel   // levels of bucketed Observable
-	lastAdd     time.Time  // time of last Observable tracked
-	clock       Clock      // Clock for getting current time
-	pending     Observable // observations not yet bucketed
-	pendingTime time.Time  // what time are we keeping in pending
-	dirty       bool       // if there are pending observations
-	tags        map[string]string
-	name        string
-	logger      *logrus.Entry
+	mu           sync.Mutex
+	numBuckets   int        // number of buckets in each level
+	level        *tsLevel   // levels of bucketed Observable
+	lastAdd      time.Time  // time of last Observable tracked
+	clock        Clock      // Clock for getting current time
+	pending      Observable // observations not yet bucketed
+	pendingTime  time.Time  // what time are we keeping in pending
+	dirty        bool       // if there are pending observations
+	tags         map[string]string
+	name         string
+	logger       *logrus.Entry
+	observerList []utils.Observer
 }
 
 // NewTimeSeries creates a new TimeSeries using the function provided for creating new Observable.
@@ -79,6 +81,24 @@ func NewTimeSeriesWithClock(
 	ts := new(timeSeries)
 	ts.init(name, tags, timeSeriesResolution, tsLength, clock, logger)
 	return ts
+}
+
+func (ts *timeSeries) RegisterObserver(o utils.Observer) {
+	ts.mu.Lock()
+	ts.observerList = append(ts.observerList, o)
+	ts.mu.Unlock()
+}
+
+func (ts *timeSeries) DeregisterObserver(o utils.Observer) {
+	ts.mu.Lock()
+	ts.observerList = utils.RemoveFromslice(ts.observerList, o)
+	ts.mu.Unlock()
+}
+
+func (ts *timeSeries) notifyAll() {
+	for _, observer := range ts.observerList {
+		observer.Notify(nil)
+	}
 }
 
 // Clear removes all observations from the time series.
@@ -307,6 +327,7 @@ func (ts *timeSeries) mergeValue(observation Observable, t time.Time) {
 			ts.level.bucket[bucketNumber] = observation.Clone()
 		}
 		ts.level.bucket[bucketNumber] = observation.Clone()
+		ts.notifyAll()
 	}
 }
 

@@ -69,16 +69,16 @@ type customInterestSetWrapper struct {
 }
 
 type alarmControl struct {
-	id                 int64
-	subId              uint64
-	err                error
-	nrRetries          int
-	resetChan          chan time.Time
-	alarm              body_types.InstallAlarmRequest
-	nextCheckDeadline  time.Time
-	TriggerBackoffTime time.Duration
-	lastTimeTriggered  time.Time
-	client             *client
+	id                int64
+	subId             uint64
+	err               error
+	nrRetries         int
+	resetChan         chan time.Time
+	alarm             body_types.InstallAlarmRequest
+	nextCheckDeadline time.Time
+	lastTimeTriggered time.Time
+	client            *client
+	d                 *Demmon
 	*sync.Mutex
 }
 
@@ -158,10 +158,9 @@ func New(
 		babel:                           babel,
 	}
 	d.scheduler.Start()
-
 	go d.handleNodeUpdates()
 	go d.handleBroadcastMessages()
-	go d.handleAlarmTriggers()
+	go d.evalAlarmsPeriodic()
 
 	setupLogger(d.logger, d.conf.LogFolder, d.conf.LogFile, d.conf.Silent)
 	return d
@@ -585,6 +584,15 @@ func (d *Demmon) subscribeNodeEvents(r *body_types.Request, c *client) body_type
 	}
 }
 
+func (d *Demmon) installAlarmWatchlist(observer utils.Observer, watchList []body_types.TimeseriesFilter) {
+	for _, toWatch := range watchList {
+		bucket, ok := d.db.GetBucket(toWatch.MeasurementName)
+		if !ok {
+			bucket.RegisterObserver(observer, watchList)
+		}
+	}
+}
+
 func (d *Demmon) handleBroadcastMessages() {
 	msgChan := d.fm.GetBroadcastChan()
 	for bcastMsg := range msgChan {
@@ -633,13 +641,26 @@ func (d *Demmon) handleNodeUpdates() {
 	}
 }
 
-func (d *Demmon) addAlarm(alarm *alarmControl) {
+func (ac *alarmControl) GetID() string {
+	return fmt.Sprintf("%d", ac.id)
+}
+
+func (ac *alarmControl) Notify(interface{}) {
+	ac.d.logger.Info("alarm control got notified of insertion in watched timeseries.")
+	ac.Lock()
+	timeSinceLastTrigger := time.Since(ac.lastTimeTriggered)
+	ac.Unlock()
+	if timeSinceLastTrigger > ac.alarm.CheckPeriodicity {
+		ac.d.evalAlarm(ac)
+	}
+}
+
+func (d *Demmon) addAlarmToEvalPeriodic(alarm *alarmControl) {
 	d.addAlarmChan <- alarm
 }
 
-func (d *Demmon) handleAlarmTrigger(alarm *alarmControl) {
-	d.logger.Infof("alarm %s triggered", alarm.id)
-
+func (d *Demmon) evalAlarm(alarm *alarmControl) {
+	d.logger.Infof("alarm %d triggered", alarm.id)
 	res, err := d.me.MakeBoolQuery(alarm.alarm.Query.Expression, alarm.alarm.Query.Timeout)
 	if err != nil {
 		d.logger.Errorf("alarm %d failed with error: %s", alarm.id, err)
@@ -659,7 +680,7 @@ func (d *Demmon) handleAlarmTrigger(alarm *alarmControl) {
 		return
 	}
 
-	if res == true && time.Since(alarm.lastTimeTriggered) > alarm.TriggerBackoffTime {
+	if res == true && time.Since(alarm.lastTimeTriggered) > alarm.alarm.TriggerBackoffTime {
 		alarm.client.out <- body_types.NewResponse(alarm.subId, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
 			ID:       alarm.id,
 			Error:    false,
@@ -673,7 +694,7 @@ func (d *Demmon) handleAlarmTrigger(alarm *alarmControl) {
 
 }
 
-func (d *Demmon) handleAlarmTriggers() {
+func (d *Demmon) evalAlarmsPeriodic() {
 	var t *time.Timer
 	pq := priorityqueue.PriorityQueue{}
 
@@ -740,7 +761,7 @@ func (d *Demmon) handleAlarmTriggers() {
 			}
 			alarm := alarmInt.(*alarmControl)
 			addAlarmToQueue(alarm, time.Now().Add(alarm.alarm.CheckPeriodicity))
-			go d.handleAlarmTrigger(alarm)
+			go d.evalAlarm(alarm)
 		case triggerTime := <-alarm.resetChan:
 			_, stillActive := d.alarms.Load(alarm.id)
 			if !stillActive {

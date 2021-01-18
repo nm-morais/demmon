@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nm-morais/demmon-common/body_types"
+	"github.com/nm-morais/demmon/internal/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -105,29 +107,33 @@ func (b *Bucket) GetAllTimeseriesRange(start, end time.Time) []ReadOnlyTimeSerie
 	return toReturn
 }
 
+func filterMatchesTs(tagsToMatch map[string]string, ts TimeSeries) bool {
+	tsTags := ts.Tags()
+	allMatching := true
+	for tagKey, tagVal := range tagsToMatch {
+		timeseriesTag, hasKey := tsTags[tagKey]
+		if !hasKey {
+			break
+		}
+		matched, err := regexp.MatchString(tagVal, timeseriesTag)
+		if err != nil {
+			break
+		}
+		if !matched {
+			allMatching = false
+			break
+		}
+	}
+	return allMatching
+}
+
 func (b *Bucket) getTimeseriesRegex(tagsToMatch map[string]string) []TimeSeries {
 	matchingTimeseries := make([]TimeSeries, 0)
 
 	b.timeseries.Range(
 		func(key, value interface{}) bool {
 			ts := value.(TimeSeries)
-			tsTags := ts.Tags()
-			allMatching := true
-			for tagKey, tagVal := range tagsToMatch {
-				timeseriesTag, hasKey := tsTags[tagKey]
-				if !hasKey {
-					break
-				}
-				matched, err := regexp.MatchString(tagVal, timeseriesTag)
-				if err != nil {
-					break
-				}
-				if !matched {
-					allMatching = false
-					break
-				}
-			}
-			if allMatching {
+			if filterMatchesTs(tagsToMatch, ts) {
 				matchingTimeseries = append(matchingTimeseries, ts)
 			}
 			return true
@@ -180,6 +186,13 @@ func (b *Bucket) GetTimeseriesRegexLastVal(tagsToMatch map[string]string) []Read
 	return toReturn
 }
 
+func (b *Bucket) RegisterObserver(o utils.Observer, watchList []body_types.TimeseriesFilter) {
+	b.timeseries.Range(func(key, value interface{}) bool {
+
+		return true
+	})
+}
+
 func (b *Bucket) DropAll() {
 	b.timeseries.Range(
 		func(key, value interface{}) bool {
@@ -198,7 +211,10 @@ func (b *Bucket) DropTimeseriesRegex(tagsToMatch map[string]string) {
 
 func (b *Bucket) GetOrCreateTimeseries(tags map[string]string) TimeSeries {
 	tsKey := convertTagsToTSKey(tags)
-	ts, _ := b.timeseries.LoadOrStore(tsKey, NewTimeSeries(b.name, tags, b.granularity, b.count, b.createLoggerForTimeseries(tags)))
+	ts, loaded := b.timeseries.LoadOrStore(tsKey, NewTimeSeries(b.name, tags, b.granularity, b.count, b.createLoggerForTimeseries(tags)))
+	if !loaded {
+		// b.notifyAll(ts.(TimeSeries))
+	}
 	return ts.(TimeSeries)
 }
 

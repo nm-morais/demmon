@@ -374,9 +374,9 @@ func testAlarms(cl *client.DemmonClient) {
 								result = True
 							}`,
 			},
-			CheckOnlyOnChange: false,
-			MaxRetries:        maxRetries,
-			CheckPeriodicity:  checkFrequency,
+			CheckPeriodic:    true,
+			MaxRetries:       maxRetries,
+			CheckPeriodicity: checkFrequency,
 		})
 	cl.Unlock()
 
@@ -493,9 +493,9 @@ func testDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 	// go testGlobalAggFunc(cl)
 	// go testAlarms(cl)
 
-	// if isLandmark {
-	// 	testGlobalAggFunc(cl)
-	// }
+	if isLandmark {
+		testGlobalAggFunc(cl)
+	}
 }
 
 func testExporter(eConf *exporter.Conf) {
