@@ -1194,15 +1194,14 @@ func (d *DemmonTree) handleJoinAsChildMessageReply(sender peer.Peer, m message.M
 func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Message) {
 	upMsg := m.(UpdateParentMessage)
 	d.logger.Infof("got UpdateParentMessage %+v from %s", upMsg, sender.String())
-	if d.myParent == nil || !peer.PeersEqual(sender, d.myParent) {
-		if d.myParent != nil {
-			d.logger.Errorf(
-				"Received UpdateParentMessage from not my parent (parent:%s sender:%s)",
-				d.myParent.StringWithFields(),
-				upMsg.Parent.StringWithFields(),
-			)
-			return
-		}
+	if d.myParent == nil {
+		d.logger.Errorf(
+			"Received UpdateParentMessage from not my parent (parent:<nil> sender:%s)",
+			upMsg.Parent.StringWithFields(),
+		)
+	}
+
+	if !peer.PeersEqual(sender, d.myParent) {
 		d.logger.Errorf(
 			"Received UpdateParentMessage from not my parent (parent:%s sender:%s)",
 			d.myParent.StringWithFields(),
