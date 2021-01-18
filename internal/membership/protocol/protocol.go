@@ -1202,7 +1202,7 @@ func (d *DemmonTree) handleJoinAsChildMessageReply(sender peer.Peer, m message.M
 
 func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Message) {
 	upMsg := m.(UpdateParentMessage)
-	d.logger.Infof("got UpdateParentMessage %+v from %s", upMsg, sender.String())
+	// d.logger.Infof("got UpdateParentMessage %+v from %s", upMsg, sender.String())
 	if d.myParent == nil {
 		d.logger.Errorf(
 			"Received UpdateParentMessage from not my parent (parent:<nil> sender:%s)",
@@ -1284,7 +1284,7 @@ func (d *DemmonTree) handleUpdateChildMessage(sender peer.Peer, m message.Messag
 
 func (d *DemmonTree) handleBroadcastMessage(sender peer.Peer, m message.Message) {
 	bcastMsg := m.(BroadcastMessage)
-	d.logger.Infof("got broadcastMessage %+v from %s", m, sender.String())
+	// d.logger.Infof("got broadcastMessage %+v from %s", m, sender.String())
 	d.babel.SendNotification(NewBroadcastMessageReceivedNotification(bcastMsg.Message))
 	if bcastMsg.Message.TTL > 0 { // propagate
 		bcastMsg.Message.TTL--
@@ -2325,13 +2325,14 @@ func (d *DemmonTree) addChild(newChild *PeerWithIDChain, connect bool, childrenL
 			d.self.Coordinates,
 		)
 	}
+	d.logger.Infof("added children: %s", newChildWithID.String())
 	d.removeFromMeasuredPeers(newChild)
 	d.resetImproveTimer()
 	return proposedID
 }
 
 func (d *DemmonTree) removeChild(toRemove peer.Peer, disconnect, unwatch bool) {
-
+	d.logger.Infof("removing child: %s", toRemove.String())
 	if child, ok := d.myPendingChildren[toRemove.String()]; ok {
 		delete(d.myPendingChildren, toRemove.String())
 		if disconnect {
@@ -2368,6 +2369,7 @@ func (d *DemmonTree) removeChild(toRemove peer.Peer, disconnect, unwatch bool) {
 }
 
 func (d *DemmonTree) addSibling(newSibling *PeerWithIDChain, connect bool) {
+	d.logger.Infof("Adding sibling: %s", newSibling.String())
 	if _, ok := d.myPendingSiblings[newSibling.String()]; !ok {
 		if connect {
 			d.myPendingSiblings[newSibling.String()] = newSibling
@@ -2381,6 +2383,7 @@ func (d *DemmonTree) addSibling(newSibling *PeerWithIDChain, connect bool) {
 }
 
 func (d *DemmonTree) removeSibling(toRemove peer.Peer, disconnect bool) {
+	d.logger.Infof("Removing sibling: %s", toRemove.String())
 	if sibling, ok := d.myPendingSiblings[toRemove.String()]; ok {
 		delete(d.myPendingSiblings, toRemove.String())
 		if disconnect {

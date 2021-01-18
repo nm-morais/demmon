@@ -8,7 +8,6 @@ import (
 	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/request"
 	"github.com/nm-morais/go-babel/pkg/timer"
-	"github.com/sirupsen/logrus"
 )
 
 type sub struct {
@@ -67,7 +66,7 @@ func (m *Monitor) handleRebroadcastGlobalInterestSetsTimer(t timer.Timer) {
 		m.ID(),
 		NewBroadcastGlobalAggregationFuncsTimer(RebroadcastGlobalAggFuncTimerDuration),
 	)
-	m.logger.Infof("Broadcasting global interest sets...")
+	// m.logger.Infof("Broadcasting global interest sets...")
 	m.broadcastGlobalAggFuncsToChildren()
 	m.broadcastGlobalAggFuncsToParent()
 }
@@ -168,12 +167,12 @@ func (m *Monitor) handlePropagateGlobalAggFuncMetricsMessage(sender peer.Peer, m
 		return
 	}
 
-	m.logger.WithFields(logrus.Fields{"value": msgConverted.Value}).Infof(
-		"received propagation of metric value for global agg func %d: %s from %s",
-		interestSetID,
-		globalAggFunc.AF.OutputBucketOpts.Name,
-		sender.String(),
-	)
+	// m.logger.WithFields(logrus.Fields{"value": msgConverted.Value}).Infof(
+	// 	"received propagation of metric value for global agg func %d: %s from %s",
+	// 	interestSetID,
+	// 	globalAggFunc.AF.OutputBucketOpts.Name,
+	// 	sender.String(),
+	// )
 	globalAggFunc.NeighValues[sender.String()] = msgConverted.Value.Fields
 }
 
@@ -183,18 +182,18 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 	tConverted := t.(*ExportGlobalAggregationFuncTimer)
 	interestSetID := tConverted.InterestSetID
 	globalAggFunc, ok := m.globalAggFuncs[interestSetID]
-	m.logger.Infof("Export timer for global aggregation func %d triggered", interestSetID)
+	// m.logger.Infof("Export timer for global aggregation func %d triggered", interestSetID)
 
 	if !ok {
 		m.logger.Warnf("Canceling export timer for global aggregation func %d", interestSetID)
 		return
 	}
 
-	m.logger.Infof(
-		"Exporting metric values for global aggregation func %d: %s",
-		interestSetID,
-		globalAggFunc.AF.OutputBucketOpts.Name,
-	)
+	// m.logger.Infof(
+	// 	"Exporting metric values for global aggregation func %d: %s",
+	// 	interestSetID,
+	// 	globalAggFunc.AF.OutputBucketOpts.Name,
+	// )
 
 	query := globalAggFunc.AF.Query
 	queryResult, err := m.me.MakeQuerySingleReturn(query.Expression, query.Timeout)
@@ -223,10 +222,10 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 		return
 	}
 
-	m.logger.Infof(
-		"global aggregation function query result: (%+v)",
-		queryResult,
-	)
+	// m.logger.Infof(
+	// 	"global aggregation function query result: (%+v)",
+	// 	queryResult,
+	// )
 
 	var isLocal bool
 	if _, ok := globalAggFunc.subscribers[m.babel.SelfPeer().String()]; ok {
@@ -242,26 +241,26 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 			valuesToMerge = append(valuesToMerge, v)
 		}
 
-		m.logger.Infof(
-			"Merging value: (%+v) with (%+v)",
-			queryResult,
-			globalAggFunc.NeighValues,
-		)
+		// m.logger.Infof(
+		// 	"Merging value: (%+v) with (%+v)",
+		// 	queryResult,
+		// 	globalAggFunc.NeighValues,
+		// )
 
 		mergedVal, err = m.me.RunMergeFunc(globalAggFunc.AF.MergeFunction.Expression, globalAggFunc.AF.MergeFunction.Timeout, valuesToMerge)
 		if err != nil {
 			panic(err)
 		}
 	} else {
-		m.logger.Warn("Not merging values due to not having neigh values")
+		// m.logger.Warn("Not merging values due to not having neigh values")
 		mergedVal = queryResult
 	}
 
 	timeNow := time.Now()
-	m.logger.Infof("Merged values: %+v", mergedVal)
+	// m.logger.Infof("Merged values: %+v", mergedVal)
 
 	if isLocal {
-		m.logger.Infof("Inserting into db values: %+v", mergedVal)
+		// m.logger.Infof("Inserting into db values: %+v", mergedVal)
 		err := m.tsdb.AddMetric(
 			globalAggFunc.AF.OutputBucketOpts.Name,
 			make(map[string]string), // TODO is this correct? merged points will have no tags
@@ -280,20 +279,20 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 
 		subVal, ok := globalAggFunc.NeighValues[subID]
 		if !ok {
-			m.logger.Warnf(
-				"Propagating values (%+v) from global agg func without performing difference from incomming value",
-				mergedVal,
-			)
+			// m.logger.Warnf(
+			// 	"Propagating values (%+v) from global agg func without performing difference from incomming value",
+			// 	mergedVal,
+			// )
 			toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: timeNow, Fields: mergedVal})
 			m.SendMessage(toSendMsg, sub.p)
 			continue
 		}
 
-		m.logger.Infof(
-			"Performing difference between: (%+v) and: (%+v)",
-			mergedVal,
-			subVal,
-		)
+		// m.logger.Infof(
+		// 	"Performing difference between: (%+v) and: (%+v)",
+		// 	mergedVal,
+		// 	subVal,
+		// )
 
 		differenceResult, err := m.me.RunMergeFunc(
 			globalAggFunc.AF.DifferenceFunction.Expression,
@@ -305,18 +304,18 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 			panic(err)
 		}
 
-		m.logger.Infof(
-			"Difference result: (%+v)",
-			differenceResult,
-		)
+		// m.logger.Infof(
+		// 	"Difference result: (%+v)",
+		// 	differenceResult,
+		// )
 
 		toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: timeNow, Fields: differenceResult})
-		m.logger.Infof(
-			"propagating metrics for global aggregation function %d (%+v) to peer %s",
-			interestSetID,
-			differenceResult,
-			sub.p.String(),
-		)
+		// m.logger.Infof(
+		// 	"propagating metrics for global aggregation function %d (%+v) to peer %s",
+		// 	interestSetID,
+		// 	differenceResult,
+		// 	sub.p.String(),
+		// )
 		m.SendMessage(toSendMsg, sub.p)
 	}
 
@@ -388,14 +387,13 @@ func (m *Monitor) handleInstallGlobalAggFuncMessage(sender peer.Peer, msg messag
 		return
 	}
 
-	m.logger.Infof(
-		"received message to install global interest sets from %s (%+v)",
-		sender.String(),
-		installGlobalAggFuncMsg,
-	)
+	// m.logger.Infof(
+	// 	"received message to install global interest sets from %s (%+v)",
+	// 	sender.String(),
+	// 	installGlobalAggFuncMsg,
+	// )
 
 	for interestSetID, interestSet := range installGlobalAggFuncMsg.InterestSets {
-		m.logger.Infof("installing global interest set %d: %+v", interestSetID, interestSet)
 
 		is, alreadyExists := m.globalAggFuncs[interestSetID]
 
@@ -408,6 +406,7 @@ func (m *Monitor) handleInstallGlobalAggFuncMessage(sender peer.Peer, msg messag
 			continue
 		}
 
+		m.logger.Infof("installed global interest set %d: %+v", interestSetID, interestSet)
 		m.globalAggFuncs[interestSetID] = &globalAggFunc{
 			nrRetries: 0,
 			subscribers: map[string]sub{
