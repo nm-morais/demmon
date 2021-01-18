@@ -883,6 +883,15 @@ func (d *DemmonTree) handleAbsorbMessage(sender peer.Peer, m message.Message) {
 	d.logger.Infof("Got absorbMessage: %+v from %s", m, sender.String())
 
 	if !peer.PeersEqual(d.myParent, sender) {
+		if d.myParent == nil {
+			d.logger.Warnf(
+				"Got absorbMessage: %+v from not my parent %s (my parent: <nil>)",
+				m,
+				sender.String(),
+				d.myParent.String(),
+			)
+			return
+		}
 		d.logger.Warnf(
 			"Got absorbMessage: %+v from not my parent %s (my parent: %s)",
 			m,
