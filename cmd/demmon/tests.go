@@ -274,6 +274,7 @@ func testGlobalAggFunc(cl *client.DemmonClient) {
 							`,
 			},
 		})
+
 	cl.Unlock()
 	if err != nil {
 		panic(err)
@@ -368,34 +369,35 @@ func testAlarms(cl *client.DemmonClient) {
 			Query: body_types.RunnableExpression{
 				Timeout: expressionTimeout,
 				Expression: `
-							lastPt = SelectLast("avg_nr_goroutines_global")[0].Last()
-							retult = False
-							if (lastPt.Count >= 13){
-								result = True
+							lastPt = SelectLast("avg_nr_goroutines_global", "*")[0].Last()
+							result = false
+							if (lastPt.Value().count >= 12){
+								result = true
 							}`,
 			},
-			CheckPeriodic:    true,
-			MaxRetries:       maxRetries,
-			CheckPeriodicity: checkFrequency,
+			CheckPeriodic:      true,
+			MaxRetries:         maxRetries,
+			CheckPeriodicity:   checkFrequency,
+			TriggerBackoffTime: 1 * time.Minute,
 		})
 	cl.Unlock()
+
+	if err != nil {
+		panic(err)
+	}
 
 	go func() {
 		for {
 			select {
 			case <-triggerChan:
 				fmt.Print("------------ALARM TRIGGERED------------")
-			case <-errChan:
-				panic(fmt.Sprintf("alarm err: %s", err))
+			case err := <-errChan:
+				panic(fmt.Sprintf("alarm err: %s", err.Error()))
 			case <-finishChan:
 				panic("alarm finished channel was closed")
 			}
 		}
 	}()
-
-	if err != nil {
-		panic(err)
-	}
 }
 
 func testCustomInterestSets(cl *client.DemmonClient) {
@@ -404,6 +406,7 @@ func testCustomInterestSets(cl *client.DemmonClient) {
 		exportFrequency   = 5 * time.Second
 		expressionTimeout = 1 * time.Second
 	)
+
 	cl.Lock()
 	_, errChan, _, err := cl.InstallCustomInterestSet(body_types.CustomInterestSet{
 		DialTimeout:      3 * time.Second,
@@ -468,7 +471,7 @@ func testDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 		maxRetries         = 3
 		connectTimeout     = 3 * time.Second
 		tickerTimeout      = 5 * time.Second
-		requestTimeout     = 1 * time.Second
+		requestTimeout     = 3 * time.Second
 	)
 
 	clientConf := client.DemmonClientConf{
@@ -491,9 +494,9 @@ func testDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 
 	go testExporter(eConf)
 	// go testGlobalAggFunc(cl)
-	// go testAlarms(cl)
 
 	if isLandmark {
+		go testAlarms(cl)
 		testGlobalAggFunc(cl)
 	}
 }

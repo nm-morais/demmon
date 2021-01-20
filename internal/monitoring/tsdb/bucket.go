@@ -1,6 +1,7 @@
 package tsdb
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -12,12 +13,20 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var (
+	ErrWatchListNotFound = errors.New("ErrWatchListNotFound")
+)
+
 type Bucket struct {
 	name        string
 	granularity time.Duration
 	count       int
 	timeseries  *sync.Map
 	logger      *logrus.Entry
+	watchLists  map[string]struct {
+		filter   body_types.TimeseriesFilter
+		observer utils.Observer
+	}
 }
 
 func NewBucket(name string, g time.Duration, count int, logger *logrus.Entry) *Bucket {
@@ -27,6 +36,10 @@ func NewBucket(name string, g time.Duration, count int, logger *logrus.Entry) *B
 		timeseries:  &sync.Map{},
 		granularity: g,
 		count:       count,
+		watchLists: make(map[string]struct {
+			filter   body_types.TimeseriesFilter
+			observer utils.Observer
+		}),
 	}
 }
 
@@ -186,11 +199,42 @@ func (b *Bucket) GetTimeseriesRegexLastVal(tagsToMatch map[string]string) []Read
 	return toReturn
 }
 
-func (b *Bucket) RegisterObserver(o utils.Observer, watchList []body_types.TimeseriesFilter) {
+func (b *Bucket) RegisterWatchlist(o utils.Observer, watchList body_types.TimeseriesFilter) {
+	b.logger.Infof("Registered watchlist: %+v", watchList)
 	b.timeseries.Range(func(key, value interface{}) bool {
-
+		ts := value.(TimeSeries)
+		if filterMatchesTs(watchList.TagFilters, ts) {
+			ts.RegisterObserver(o)
+		}
 		return true
 	})
+	b.watchLists[o.GetID()] = struct {
+		filter   body_types.TimeseriesFilter
+		observer utils.Observer
+	}{
+		filter:   watchList,
+		observer: o,
+	}
+}
+
+func (b *Bucket) RemoveWatchlist(o utils.Observer) error {
+
+	watchList, ok := b.watchLists[o.GetID()]
+	if !ok {
+		return ErrWatchListNotFound
+	}
+	delete(b.watchLists, o.GetID())
+
+	b.timeseries.Range(func(key, value interface{}) bool {
+		ts := value.(TimeSeries)
+		if filterMatchesTs(watchList.filter.TagFilters, ts) {
+			b.logger.Infof("Removing watchlist: %+v", watchList)
+			ts.DeregisterObserver(o)
+		}
+		return true
+	})
+
+	return nil
 }
 
 func (b *Bucket) DropAll() {
@@ -211,26 +255,37 @@ func (b *Bucket) DropTimeseriesRegex(tagsToMatch map[string]string) {
 
 func (b *Bucket) GetOrCreateTimeseries(tags map[string]string) TimeSeries {
 	tsKey := convertTagsToTSKey(tags)
-	ts, loaded := b.timeseries.LoadOrStore(tsKey, NewTimeSeries(b.name, tags, b.granularity, b.count, b.createLoggerForTimeseries(tags)))
+	tsGeneric, loaded := b.timeseries.LoadOrStore(tsKey, NewTimeSeries(b.name, tags, b.granularity, b.count, b.createLoggerForTimeseries(tags)))
+	ts := tsGeneric.(TimeSeries)
 	if !loaded {
-		// b.notifyAll(ts.(TimeSeries))
+		for _, watchList := range b.watchLists {
+			if filterMatchesTs(watchList.filter.TagFilters, ts) {
+				ts.RegisterObserver(watchList.observer)
+			}
+		}
 	}
 	return ts.(TimeSeries)
-}
-
-func (b *Bucket) createLoggerForTimeseries(tags map[string]string) *logrus.Entry {
-	return b.logger.WithField("tags", tags)
 }
 
 func (b *Bucket) GetOrCreateTimeseriesWithClock(tags map[string]string, c Clock) TimeSeries {
 	tsKey := convertTagsToTSKey(tags)
 	b.logger.Infof("Creating timeseries with: name: %s, tags: %s, count:%d\n", b.name, tags, b.count)
 	newTS := NewTimeSeriesWithClock(b.name, tags, b.granularity, b.count, c, b.createLoggerForTimeseries(tags))
-	ts, loaded := b.timeseries.LoadOrStore(tsKey, newTS)
+	tsGeneric, loaded := b.timeseries.LoadOrStore(tsKey, newTS)
+	ts := tsGeneric.(TimeSeries)
 	if !loaded {
 		b.logger.Infof("Created timeseries: %s\n", ts)
+		for _, watchList := range b.watchLists {
+			if filterMatchesTs(watchList.filter.TagFilters, ts) {
+				ts.RegisterObserver(watchList.observer)
+			}
+		}
 	}
-	return ts.(TimeSeries)
+	return ts
+}
+
+func (b *Bucket) createLoggerForTimeseries(tags map[string]string) *logrus.Entry {
+	return b.logger.WithField("tags", tags)
 }
 
 func (b *Bucket) DeleteTimeseries(tags map[string]string) error {

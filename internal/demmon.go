@@ -73,9 +73,9 @@ type alarmControl struct {
 	subId             uint64
 	err               error
 	nrRetries         int
-	resetChan         chan time.Time
+	resetChan         chan bool
 	alarm             body_types.InstallAlarmRequest
-	nextCheckDeadline time.Time
+	lastTimeEvaluated time.Time
 	lastTimeTriggered time.Time
 	client            *client
 	d                 *Demmon
@@ -157,6 +157,7 @@ func New(
 		me:                              me,
 		babel:                           babel,
 	}
+
 	d.scheduler.Start()
 	go d.handleNodeUpdates()
 	go d.handleBroadcastMessages()
@@ -381,11 +382,11 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, body_types.InstallInterestSetReply{SetID: setID})
 
 	case routes.RemoveCustomInterestSet:
-		reqBody := body_types.RemoveInterestSetReq{}
+		reqBody := body_types.RemoveResourceRequest{}
 		if !d.extractBody(r, &reqBody, resp) {
 			break
 		}
-		d.customInterestSets.Delete(reqBody.SetID)
+		d.customInterestSets.Delete(reqBody.ResourceID)
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, nil)
 	case routes.UpdateCustomInterestSetHosts:
 		reqBody := body_types.UpdateCustomInterestSetReq{}
@@ -540,24 +541,44 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			id:                alarmID,
 			err:               nil,
 			nrRetries:         0,
-			resetChan:         make(chan time.Time),
+			resetChan:         make(chan bool, 1),
 			alarm:             *reqBody,
 			Mutex:             &sync.Mutex{},
 			d:                 d,
-			nextCheckDeadline: time.Now(),
-			lastTimeTriggered: time.Now().Add(-reqBody.CheckPeriodicity),
+			lastTimeEvaluated: time.Time{},
+			lastTimeTriggered: time.Time{},
 			client:            c,
 			subId:             r.ID,
 		}
 
-		d.installAlarmWatchlist(alarm, reqBody.WatchList)
+		d.alarms.Store(alarmID, alarm)
 
-		if !alarm.alarm.CheckPeriodic {
+		err := d.installAlarmWatchlist(alarm, reqBody.WatchList)
+		if err != nil {
+			resp = body_types.NewResponse(r.ID, false, err, 404, r.Type, nil)
+			break
+		}
+
+		if alarm.alarm.CheckPeriodic {
 			d.addAlarmToEvalPeriodic(alarm)
 		}
 
 		d.logger.Infof("Added new alarm: %+v", reqBody)
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, body_types.InstallAlarmReply{ID: alarmID})
+	case routes.RemoveAlarm:
+		reqBody := &body_types.RemoveResourceRequest{}
+		if !d.extractBody(r, reqBody, resp) {
+			break
+		}
+		alarmID := reqBody.ResourceID
+		alarm, ok := d.alarms.LoadAndDelete(alarmID)
+		if ok {
+			err := d.removeAlarmWatchlist(alarm.(*alarmControl))
+			if err != nil {
+				panic(err)
+			}
+		}
+
 	default:
 		resp = body_types.NewResponse(r.ID, false, body_types.ErrNonRecognizedOp, 400, r.Type, nil)
 	}
@@ -581,15 +602,6 @@ func (d *Demmon) subscribeNodeEvents(r *body_types.Request, c *client) body_type
 	d.nodeUpdatesSubscribers.Store(r.ID, c)
 	return body_types.NodeUpdateSubscriptionResponse{
 		View: d.fm.GetInView(),
-	}
-}
-
-func (d *Demmon) installAlarmWatchlist(observer utils.Observer, watchList []body_types.TimeseriesFilter) {
-	for _, toWatch := range watchList {
-		bucket, ok := d.db.GetBucket(toWatch.MeasurementName)
-		if !ok {
-			bucket.RegisterObserver(observer, watchList)
-		}
 	}
 }
 
@@ -645,13 +657,48 @@ func (ac *alarmControl) GetID() string {
 	return fmt.Sprintf("%d", ac.id)
 }
 
+func (d *Demmon) installAlarmWatchlist(observer utils.Observer, watchList []body_types.TimeseriesFilter) error {
+	for _, toWatch := range watchList {
+		_, ok := d.db.GetBucket(toWatch.MeasurementName)
+		if !ok {
+			return body_types.ErrBucketNotFound
+		}
+	}
+
+	for _, toWatch := range watchList {
+		b, _ := d.db.GetBucket(toWatch.MeasurementName)
+		b.RegisterWatchlist(observer, toWatch)
+	}
+
+	return nil
+}
+
+func (d *Demmon) removeAlarmWatchlist(alarm *alarmControl) error {
+	for _, toWatch := range alarm.alarm.WatchList {
+		b, ok := d.db.GetBucket(toWatch.MeasurementName)
+		if ok {
+			b.RemoveWatchlist(alarm)
+		}
+	}
+	return nil
+}
+
 func (ac *alarmControl) Notify(interface{}) {
 	ac.d.logger.Info("alarm control got notified of insertion in watched timeseries.")
 	ac.Lock()
-	timeSinceLastTrigger := time.Since(ac.lastTimeTriggered)
-	ac.Unlock()
-	if timeSinceLastTrigger > ac.alarm.CheckPeriodicity {
-		ac.d.evalAlarm(ac)
+	defer ac.Unlock()
+	if time.Since(ac.lastTimeTriggered) > ac.alarm.TriggerBackoffTime &&
+		time.Since(ac.lastTimeEvaluated) > ac.alarm.CheckPeriodicity {
+		ac.lastTimeEvaluated = time.Now()
+		go ac.d.evalAlarm(ac)
+		if ac.alarm.CheckPeriodic {
+			select {
+			case ac.resetChan <- true:
+			default:
+			}
+		}
+	} else {
+		ac.d.logger.Info("alarm not evaluating because time since last evaluation is less than the alarm's minimum periodicity")
 	}
 }
 
@@ -660,38 +707,39 @@ func (d *Demmon) addAlarmToEvalPeriodic(alarm *alarmControl) {
 }
 
 func (d *Demmon) evalAlarm(alarm *alarmControl) {
-	d.logger.Infof("alarm %d triggered", alarm.id)
+	alarm.Lock()
+	defer alarm.Unlock()
+	d.logger.Infof("evaluating alarm %d", alarm.id)
 	res, err := d.me.MakeBoolQuery(alarm.alarm.Query.Expression, alarm.alarm.Query.Timeout)
 	if err != nil {
 		d.logger.Errorf("alarm %d failed with error: %s", alarm.id, err)
-		alarm.Lock()
 		alarm.nrRetries++
 		if alarm.nrRetries == alarm.alarm.MaxRetries {
-			alarm.Unlock()
-			alarm.client.out <- body_types.NewResponse(alarm.subId, true, err, 500, routes.InstallAlarm, body_types.AlarmUpdate{
+			d.logger.Errorf("alarm %d has exceeded maxRetries (%d), sending err msg and deleting alarm", alarm.id, alarm.nrRetries)
+			alarm.client.out <- body_types.NewResponse(alarm.subId, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
 				ID:       alarm.id,
 				Error:    true,
 				Trigger:  false,
 				ErrorMsg: err.Error(),
 			})
-			d.alarms.Delete(alarm.id)
+			alarm, ok := d.alarms.LoadAndDelete(alarm.id)
+			if ok {
+				d.removeAlarmWatchlist(alarm.(*alarmControl))
+			}
 		}
-		alarm.Unlock()
 		return
 	}
 
-	if res == true && time.Since(alarm.lastTimeTriggered) > alarm.alarm.TriggerBackoffTime {
+	if res == true {
 		alarm.client.out <- body_types.NewResponse(alarm.subId, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
 			ID:       alarm.id,
 			Error:    false,
 			Trigger:  true,
 			ErrorMsg: "",
 		})
-		alarm.Lock()
 		alarm.lastTimeTriggered = time.Now()
-		alarm.Unlock()
+		return
 	}
-
 }
 
 func (d *Demmon) evalAlarmsPeriodic() {
@@ -700,9 +748,6 @@ func (d *Demmon) evalAlarmsPeriodic() {
 
 	addAlarmToQueue := func(alarm *alarmControl, nextTrigger time.Time) {
 		d.logger.Infof("added alarm control %d to pq", alarm.id)
-		alarm.Lock()
-		alarm.nextCheckDeadline = nextTrigger
-		alarm.Unlock()
 		pqItem := &priorityqueue.Item{
 			Value:    alarm,
 			Priority: nextTrigger.UnixNano(),
@@ -722,16 +767,8 @@ func (d *Demmon) evalAlarmsPeriodic() {
 			// drain reset channel
 			alarm := alarmInt.(*alarmControl)
 			select {
-			case triggerTime := <-alarm.resetChan:
-				alarm.Lock()
-				if triggerTime.Add(alarm.alarm.CheckPeriodicity).After(nextItem.nextCheckDeadline) {
-					alarm.Unlock()
-					d.logger.Infof("alarm %s was reset while wating for other alarm, adjusting next trigger", nextItem.nextCheckDeadline)
-					addAlarmToQueue(nextItem, triggerTime.Add(alarm.alarm.CheckPeriodicity))
-				} else {
-					alarm.Unlock()
-					return alarm
-				}
+			case <-alarm.resetChan:
+				addAlarmToQueue(nextItem, alarm.lastTimeEvaluated.Add(alarm.alarm.CheckPeriodicity))
 			default:
 				return alarm
 			}
@@ -745,31 +782,38 @@ func (d *Demmon) evalAlarmsPeriodic() {
 		if alarm == nil {
 			alarm = <-d.addAlarmChan
 			addAlarmToQueue(alarm, time.Now().Add(alarm.alarm.CheckPeriodicity))
+			continue
 		}
 
 		// control loop
-		t = time.NewTimer(time.Until(alarm.nextCheckDeadline))
+		t = time.NewTimer(time.Until(alarm.lastTimeEvaluated.Add(alarm.alarm.CheckPeriodicity)))
 		select {
 		case newAlarm := <-d.addAlarmChan:
-			addAlarmToQueue(newAlarm, time.Now().Add(alarm.alarm.CheckPeriodicity))
-			addAlarmToQueue(alarm, alarm.nextCheckDeadline)
+			addAlarmToQueue(newAlarm, time.Now().Add(newAlarm.alarm.CheckPeriodicity))
+			addAlarmToQueue(alarm, alarm.lastTimeEvaluated.Add(alarm.alarm.CheckPeriodicity))
 		case <-t.C:
 			alarmInt, stillActive := d.alarms.Load(alarm.id)
 			if !stillActive {
-				d.logger.Infof("alarm deleted meanwhile: %s", alarm.id)
+				d.logger.Infof("alarm deleted meanwhile: %d", alarm.id)
 				break
 			}
 			alarm := alarmInt.(*alarmControl)
-			addAlarmToQueue(alarm, time.Now().Add(alarm.alarm.CheckPeriodicity))
-			go d.evalAlarm(alarm)
-		case triggerTime := <-alarm.resetChan:
+			alarm.Lock()
+			alarm.lastTimeEvaluated = time.Now()
+			if time.Since(alarm.lastTimeTriggered) > alarm.alarm.TriggerBackoffTime {
+				go d.evalAlarm(alarm)
+			}
+			addAlarmToQueue(alarm, alarm.lastTimeEvaluated.Add(alarm.alarm.CheckPeriodicity))
+			alarm.Unlock()
+		case <-alarm.resetChan:
 			_, stillActive := d.alarms.Load(alarm.id)
 			if !stillActive {
-				d.logger.Infof("alarm deleted: %s", alarm.id)
+				d.logger.Infof("alarm deleted: %d", alarm.id)
 				break
 			}
-			d.logger.Infof("alarm %s was triggered while wating for nextTrigger", alarm.id)
-			addAlarmToQueue(alarm, triggerTime.Add(alarm.alarm.CheckPeriodicity))
+			alarm.Lock()
+			addAlarmToQueue(alarm, alarm.lastTimeEvaluated.Add(alarm.alarm.CheckPeriodicity))
+			alarm.Unlock()
 		}
 		t.Stop()
 	}

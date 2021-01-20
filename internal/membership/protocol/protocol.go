@@ -777,7 +777,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 
 func (d *DemmonTree) handleRandomWalkMessage(sender peer.Peer, m message.Message) {
 	randWalkMsg := m.(RandomWalkMessage)
-	d.logger.Infof("Got randomWalkMessage: %+v from %s", randWalkMsg, sender.String())
+	// d.logger.Infof("Got randomWalkMessage: %+v from %s", randWalkMsg, sender.String())
 	// toPrint := ""
 	// for _, peer := range randWalkMsg.Sample {
 	// 	toPrint = toPrint + "; " + peer.String()
@@ -872,16 +872,13 @@ func (d *DemmonTree) handleRandomWalkMessage(sender peer.Peer, m message.Message
 
 func (d *DemmonTree) handleWalkReplyMessage(sender peer.Peer, m message.Message) {
 	walkReply := m.(WalkReplyMessage)
-	d.logger.Infof("Got walkReplyMessage: %+v from %s", walkReply, sender.String())
+	// d.logger.Infof("Got walkReplyMessage: %+v from %s", walkReply, sender.String())
 	sample := walkReply.Sample
 	d.updateAndMergeSampleEntriesWithEView(sample, d.config.NrPeersToMergeInWalkSample)
 }
 
 func (d *DemmonTree) handleAbsorbMessage(sender peer.Peer, m message.Message) {
 	absorbMessage := m.(AbsorbMessage)
-
-	d.logger.Infof("Got absorbMessage: %+v from %s", m, sender.String())
-
 	if !peer.PeersEqual(d.myParent, sender) {
 		if d.myParent == nil {
 			d.logger.Warnf(
@@ -908,6 +905,8 @@ func (d *DemmonTree) handleAbsorbMessage(sender peer.Peer, m message.Message) {
 		d.logger.Errorf("Got absorbMessage but already have pending parent")
 		return
 	}
+
+	d.logger.Infof("Got absorbMessage: %+v from %s", m, sender.String())
 
 	if sibling, ok := d.mySiblings[absorbMessage.PeerAbsorber.String()]; ok {
 		d.removeSibling(sibling, false)
@@ -1266,7 +1265,7 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 
 func (d *DemmonTree) handleUpdateChildMessage(sender peer.Peer, m message.Message) {
 	upMsg := m.(UpdateChildMessage)
-	d.logger.Infof("got updateChildMessage %+v from %s", m, sender.String())
+	// d.logger.Infof("got updateChildMessage %+v from %s", m, sender.String())
 	child, ok := d.myChildren[sender.String()]
 	if !ok {
 		d.logger.Errorf(
@@ -1341,7 +1340,7 @@ func (d *DemmonTree) DialSuccess(sourceProto protocol.ID, p peer.Peer) bool {
 		}
 	}
 
-	d.logger.Infof("Dialed peer with success: %s", p.String())
+	// d.logger.Infof("Dialed peer with success: %s", p.String())
 	if d.myParent != nil && peer.PeersEqual(d.myParent, p) {
 		d.logger.Infof("Dialed parent with success, parent: %s", d.myParent.StringWithFields())
 		c := nodeWatcher.Condition{

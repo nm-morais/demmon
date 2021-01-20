@@ -1,8 +1,8 @@
 package utils
 
 type Subject interface {
-	Register(Observer Observer)
-	Deregister(Observer Observer)
+	RegisterObserver(Observer Observer)
+	DeregisterObserver(Observer Observer)
 	NotifyAll()
 }
 

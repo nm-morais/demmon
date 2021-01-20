@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nm-morais/demmon-common/body_types"
-	"github.com/nm-morais/demmon/internal/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -21,15 +19,9 @@ var (
 var createOnce sync.Once
 var db *TSDB
 
-type tsdbObserver struct {
-	utils.Observer
-	observedTs []body_types.TimeseriesFilter
-}
-
 type TSDB struct {
-	logger       *logrus.Logger
-	buckets      *sync.Map
-	observerList []tsdbObserver
+	logger  *logrus.Logger
+	buckets *sync.Map
 }
 
 type Conf struct {
@@ -49,9 +41,8 @@ func GetDB(conf *Conf) *TSDB {
 				setupLogger(logger, conf.LogFolder, conf.LogFile, conf.Silent)
 			}
 			db = &TSDB{
-				logger:       logger,
-				buckets:      &sync.Map{},
-				observerList: []tsdbObserver{},
+				logger:  logger,
+				buckets: &sync.Map{},
 			}
 		})
 	}
@@ -146,26 +137,6 @@ func (db *TSDB) DeleteBucket(name string, tags map[string]string) bool {
 	return true
 }
 
-func (db *TSDB) RegisterObserver(o utils.Observer, watchlist []body_types.TimeseriesFilter) {
-	db.observerList = append(db.observerList, tsdbObserver{Observer: o, observedTs: watchlist})
-}
-
-func (db *TSDB) DeregisterObserver(o utils.Observer) {
-	observerListLength := len(db.observerList)
-	for i, observer := range db.observerList {
-		if o.GetID() == observer.GetID() {
-			db.observerList[observerListLength-1], db.observerList[i] = db.observerList[i], db.observerList[observerListLength-1]
-			db.observerList = db.observerList[:observerListLength-1]
-		}
-	}
-}
-
-func (db *TSDB) notifyAll(b *Bucket) {
-	for _, observer := range db.observerList {
-		observer.Notify(b)
-	}
-}
-
 func (db *TSDB) CreateBucket(name string, frequency time.Duration, count int) (*Bucket, error) {
 
 	db.logger.Infof("Creating new bucket with name: %s", name)
@@ -178,8 +149,6 @@ func (db *TSDB) CreateBucket(name string, frequency time.Duration, count int) (*
 			return bucket, nil
 		}
 		return nil, ErrAlreadyExists
-	} else {
-		db.notifyAll(bucket)
 	}
 
 	db.logger.Infof("Created new bucket with name: %s", name)

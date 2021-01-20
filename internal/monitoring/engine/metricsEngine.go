@@ -183,14 +183,13 @@ func (e *MetricsEngine) runWithTimeout(vm *otto.Otto, expression string, timeout
 						ans: nil,
 						err: errExpressionTimeout,
 					}
-					e.logger.Error(errExpressionTimeout)
 					return
 				}
 
-				e.logger.Errorf("got error: (%w) running expression %s, stacktrace: %s", caught, expression, string(debug.Stack()))
+				e.logger.Errorf("got error: (%+v) running expression %s, stacktrace: \n %s", caught, expression, string(debug.Stack()))
 				returnChan <- returnType{
 					ans: nil,
-					err: fmt.Errorf("%w", caught),
+					err: fmt.Errorf("%+v", caught),
 				}
 			}
 		}()
@@ -334,12 +333,22 @@ func (e *MetricsEngine) selectTs(vm *otto.Otto, call *otto.FunctionCall) otto.Va
 }
 
 func extractSelectArgs(vm *otto.Otto, call *otto.FunctionCall) (name string, tagFilters map[string]string, isTagFilterAll bool) {
+
+	if len(call.ArgumentList) != 2 {
+		throw(vm, "not enough args for select function")
+	}
+
 	name, err := call.Argument(0).ToString()
 	if err != nil {
 		throw(vm, "Invalid arg: Name is not a string")
 	}
 	isTagFilterAll = call.Argument(1).IsString() && call.Argument(1).String() == "*"
 	if !isTagFilterAll {
+
+		if call.Argument(1).IsUndefined() {
+			throw(vm, "Invalid arg: tag filters is undefined")
+		}
+
 		tagFiltersGeneric := call.Argument(1).Object()
 		tagFilters = map[string]string{}
 		tagKeys := tagFiltersGeneric.Keys()
