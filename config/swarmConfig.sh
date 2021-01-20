@@ -9,5 +9,5 @@ export SWARM_VOL_DIR="/tmp/demmon_logs/"
 export DOCKER_IMAGE="brunoanjos/demmon:latest"
 
 export CONFIG_FILE="config/banjos_config.txt"
-export LATENCY_MAP="config/inet100Latencies_x0.04.txt"
+export LATENCY_MAP="config/latency_map.txt"
 export IPS_MAP="config/banjos_ips_config.txt"
