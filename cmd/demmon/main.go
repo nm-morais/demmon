@@ -166,8 +166,6 @@ func main() {
 			DialTimeout:       3 * time.Second,
 		},
 		Silent:           silent,
-		Cpuprofile:       cpuprofile,
-		Memprofile:       memprofile,
 		LogFolder:        logFolder,
 		HandshakeTimeout: 3 * time.Second,
 		Peer:             peer.NewPeer(GetLocalIP(), uint16(protosPortVar), uint16(analyticsPortVar)),
