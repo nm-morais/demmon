@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nm-morais/demmon/internal/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -26,6 +27,7 @@ type TimeSeries interface {
 	Frequency() time.Duration
 	Count() int
 	Clear()
+	utils.Subject
 }
 
 // A Clock tells the current time.
@@ -48,17 +50,18 @@ func (defaultClock) Time() time.Time { return time.Now() }
 // interval equal to the resolution of the level. New observations are added
 // to the last bucket.
 type timeSeries struct {
-	mu          sync.Mutex
-	numBuckets  int        // number of buckets in each level
-	level       *tsLevel   // levels of bucketed Observable
-	lastAdd     time.Time  // time of last Observable tracked
-	clock       Clock      // Clock for getting current time
-	pending     Observable // observations not yet bucketed
-	pendingTime time.Time  // what time are we keeping in pending
-	dirty       bool       // if there are pending observations
-	tags        map[string]string
-	name        string
-	logger      *logrus.Entry
+	mu           sync.Mutex
+	numBuckets   int        // number of buckets in each level
+	level        *tsLevel   // levels of bucketed Observable
+	lastAdd      time.Time  // time of last Observable tracked
+	clock        Clock      // Clock for getting current time
+	pending      Observable // observations not yet bucketed
+	pendingTime  time.Time  // what time are we keeping in pending
+	dirty        bool       // if there are pending observations
+	tags         map[string]string
+	name         string
+	logger       *logrus.Entry
+	observerList []utils.Observer
 }
 
 // NewTimeSeries creates a new TimeSeries using the function provided for creating new Observable.
@@ -79,6 +82,27 @@ func NewTimeSeriesWithClock(
 	ts := new(timeSeries)
 	ts.init(name, tags, timeSeriesResolution, tsLength, clock, logger)
 	return ts
+}
+
+func (ts *timeSeries) RegisterObserver(o utils.Observer) {
+	ts.logger.Infof("Registering observer with id %s", o.GetID())
+	ts.mu.Lock()
+	ts.observerList = append(ts.observerList, o)
+	ts.mu.Unlock()
+}
+
+func (ts *timeSeries) DeregisterObserver(o utils.Observer) {
+	ts.logger.Infof("Removing observer with id %s", o.GetID())
+	ts.mu.Lock()
+	ts.observerList = utils.RemoveFromslice(ts.observerList, o)
+	ts.mu.Unlock()
+}
+
+func (ts *timeSeries) NotifyAll() {
+	for _, o := range ts.observerList {
+		ts.logger.Infof("Notifying observer with id %s", o.GetID())
+		o.Notify(nil)
+	}
 }
 
 // Clear removes all observations from the time series.
@@ -115,6 +139,13 @@ func (ts *timeSeries) String() string {
 	}
 
 	return sb.String()
+}
+
+// Advances Timeseries in time
+func (ts *timeSeries) Advance(observation Observable) {
+	ts.mu.Lock()
+
+	ts.mu.Unlock()
 }
 
 // Add records an observation at the current time.
@@ -249,7 +280,7 @@ func (ts *timeSeries) Last() Observable {
 			break
 		}
 	}
-	// ts.logger.Infof("idx: %d, Last point: %+v", idx, result)
+
 	return result
 }
 
@@ -307,6 +338,8 @@ func (ts *timeSeries) mergeValue(observation Observable, t time.Time) {
 			ts.level.bucket[bucketNumber] = observation.Clone()
 		}
 		ts.level.bucket[bucketNumber] = observation.Clone()
+		ts.logger.Info("Notifying observers...")
+		go ts.NotifyAll()
 	}
 }
 
@@ -337,7 +370,6 @@ func (ts *timeSeries) advance(t time.Time) {
 		for idx := range level.bucket {
 			level.bucket[idx] = nil
 		}
-
 		level.end = time.Unix(0, (t.UnixNano()/level.size.Nanoseconds())*level.size.Nanoseconds())
 	}
 
@@ -347,7 +379,6 @@ func (ts *timeSeries) advance(t time.Time) {
 		level.oldest = (level.oldest + 1) % ts.numBuckets
 		level.bucket[level.newest] = nil
 	}
-
 	t = level.end
 }
 

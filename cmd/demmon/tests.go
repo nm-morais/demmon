@@ -24,6 +24,7 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 		requestTimeout     = 1 * time.Second
 	)
 
+	cl.Lock()
 	_, err := cl.InstallContinuousQuery(
 		`Max(Select("nr_goroutines","*"),"*")`,
 		"the max of series nr_goroutines",
@@ -33,11 +34,13 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 		defaultMetricCount,
 		maxRetries,
 	)
+	cl.Unlock()
 
 	if err != nil {
 		panic(err)
 	}
 
+	cl.Lock()
 	_, err = cl.InstallContinuousQuery(
 		`Avg(Select("nr_goroutines","*"),"*")`,
 		"the rolling average of series nr_goroutines",
@@ -47,11 +50,13 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 		defaultMetricCount,
 		maxRetries,
 	)
+	cl.Unlock()
 
 	if err != nil {
 		panic(err)
 	}
 
+	cl.Lock()
 	_, err = cl.InstallContinuousQuery(
 		`Min(Select("nr_goroutines","*"),"*")`,
 		"the min of series nr_goroutines",
@@ -65,7 +70,9 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 	if err != nil {
 		panic(err)
 	}
+	cl.Unlock()
 
+	cl.Lock()
 	_, err = cl.InstallNeighborhoodInterestSet(&body_types.NeighborhoodInterestSet{
 		IS: body_types.InterestSet{
 			MaxRetries: maxRetries,
@@ -87,7 +94,9 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 	if err != nil {
 		panic(err)
 	}
+	cl.Unlock()
 
+	cl.Lock()
 	_, err = cl.InstallContinuousQuery(
 		`neighRoutines = Select("nr_goroutines_neigh","*")
 		 result = Min(neighRoutines, "*")`,
@@ -102,13 +111,16 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 	if err != nil {
 		panic(err)
 	}
+	cl.Unlock()
 
 	for range time.NewTicker(tickerTimeout).C {
 
+		cl.Lock()
 		res, err := cl.Query(
 			"Select('nr_goroutines_neigh','*')",
 			1*time.Second,
 		)
+		cl.Unlock()
 		if err != nil {
 			panic(err)
 		}
@@ -119,10 +131,12 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
 		}
 
+		cl.Lock()
 		res, err = cl.Query(
 			"Select('neigh_routines_min','*')",
 			1*time.Second,
 		)
+		cl.Unlock()
 		if err != nil {
 			panic(err)
 		}
@@ -133,10 +147,12 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
 		}
 
+		cl.Lock()
 		res, err = cl.Query(
 			"Select('nr_goroutines_avg','*')",
 			1*time.Second,
 		)
+		cl.Unlock()
 		if err != nil {
 			panic(err)
 		}
@@ -368,35 +384,35 @@ func testAlarms(cl *client.DemmonClient) {
 			Query: body_types.RunnableExpression{
 				Timeout: expressionTimeout,
 				Expression: `
-							lastPt = SelectLast("avg_nr_goroutines_global")[0].Last()
-							retult = False
-							if (lastPt.Count >= 13){
-								result = True
+							lastPt = SelectLast("avg_nr_goroutines_global", "*")[0].Last()
+							result = false
+							if (lastPt.Value().count >= 12){
+								result = true
 							}`,
 			},
 			CheckPeriodic:      true,
 			MaxRetries:         maxRetries,
-			TriggerBackoffTime: checkFrequency,
 			CheckPeriodicity:   checkFrequency,
+			TriggerBackoffTime: 1 * time.Minute,
 		})
 	cl.Unlock()
+
+	if err != nil {
+		panic(err)
+	}
 
 	go func() {
 		for {
 			select {
 			case <-triggerChan:
 				fmt.Print("------------ALARM TRIGGERED------------")
-			case <-errChan:
-				panic(fmt.Sprintf("alarm err: %s", err))
+			case err := <-errChan:
+				panic(fmt.Sprintf("alarm err: %s", err.Error()))
 			case <-finishChan:
 				panic("alarm finished channel was closed")
 			}
 		}
 	}()
-
-	if err != nil {
-		panic(err)
-	}
 }
 
 func testCustomInterestSets(cl *client.DemmonClient) {
@@ -405,6 +421,7 @@ func testCustomInterestSets(cl *client.DemmonClient) {
 		exportFrequency   = 5 * time.Second
 		expressionTimeout = 1 * time.Second
 	)
+
 	cl.Lock()
 	_, errChan, _, err := cl.InstallCustomInterestSet(body_types.CustomInterestSet{
 		DialTimeout:      3 * time.Second,
@@ -443,10 +460,12 @@ func testCustomInterestSets(cl *client.DemmonClient) {
 
 	for range time.NewTicker(tickerTimeout).C {
 
+		cl.Lock()
 		res, err := cl.Query(
 			"Select('nr_goroutines_landmarks','*')",
 			1*time.Second,
 		)
+		cl.Unlock()
 		if err != nil {
 			panic(err)
 		}
@@ -469,7 +488,7 @@ func testDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 		maxRetries         = 3
 		connectTimeout     = 3 * time.Second
 		tickerTimeout      = 5 * time.Second
-		requestTimeout     = 1 * time.Second
+		requestTimeout     = 3 * time.Second
 	)
 
 	clientConf := client.DemmonClientConf{
@@ -492,11 +511,13 @@ func testDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 
 	go testExporter(eConf)
 	// go testGlobalAggFunc(cl)
-	// go testAlarms(cl)
 
-	// if isLandmark {
-	// 	testGlobalAggFunc(cl)
-	// }
+	if isLandmark {
+		go testAlarms(cl)
+		testNeighInterestSets(cl)
+		testCustomInterestSets(cl)
+		testGlobalAggFunc(cl)
+	}
 }
 
 func testExporter(eConf *exporter.Conf) {

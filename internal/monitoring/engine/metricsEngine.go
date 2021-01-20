@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime/debug"
+	"sync"
 
 	// _ "github.com/robertkrimen/otto/underscore"
 
@@ -29,6 +30,8 @@ type Conf struct {
 type MetricsEngine struct {
 	logger *logrus.Logger
 	db     *tsdb.TSDB
+	vm     *otto.Otto
+	vmLock *sync.Mutex
 }
 
 func NewMetricsEngine(db *tsdb.TSDB, conf Conf, logToFile bool) *MetricsEngine {
@@ -37,11 +40,14 @@ func NewMetricsEngine(db *tsdb.TSDB, conf Conf, logToFile bool) *MetricsEngine {
 	if logToFile {
 		setupLogger(logger, conf.LogFolder, conf.LogFile, conf.Silent)
 	}
-
-	return &MetricsEngine{
+	me := &MetricsEngine{
 		logger: logger,
 		db:     db,
+		vm:     otto.New(),
+		vmLock: &sync.Mutex{},
 	}
+	me.setVMFunctions(me.vm)
+	return me
 }
 
 var (
@@ -51,10 +57,9 @@ var (
 )
 
 func (e *MetricsEngine) MakeBoolQuery(expression string, timeoutDuration time.Duration) (bool, error) {
-	vm := otto.New()
-	e.setVMFunctions(vm)
-	ottoVal, err := e.runWithTimeout(vm, expression, timeoutDuration)
-
+	e.vmLock.Lock()
+	ottoVal, err := e.runWithTimeout(e.vm, expression, timeoutDuration)
+	e.vmLock.Unlock()
 	if err != nil {
 		return false, err
 	}
@@ -76,9 +81,10 @@ func (e *MetricsEngine) MakeBoolQuery(expression string, timeoutDuration time.Du
 }
 
 func (e *MetricsEngine) MakeQuerySingleReturn(expression string, timeoutDuration time.Duration) (map[string]interface{}, error) {
-	vm := otto.New()
-	e.setVMFunctions(vm)
-	ottoVal, err := e.runWithTimeout(vm, expression, timeoutDuration)
+	e.vmLock.Lock()
+	ottoVal, err := e.runWithTimeout(e.vm, expression, timeoutDuration)
+	e.vmLock.Unlock()
+
 	if err != nil {
 		return nil, err
 	}
@@ -98,9 +104,9 @@ func (e *MetricsEngine) MakeQuerySingleReturn(expression string, timeoutDuration
 }
 
 func (e *MetricsEngine) MakeQuery(expression string, timeoutDuration time.Duration) ([]tsdb.ReadOnlyTimeSeries, error) {
-	vm := otto.New()
-	e.setVMFunctions(vm)
-	ottoVal, err := e.runWithTimeout(vm, expression, timeoutDuration)
+	e.vmLock.Lock()
+	ottoVal, err := e.runWithTimeout(e.vm, expression, timeoutDuration)
+	e.vmLock.Unlock()
 
 	if err != nil {
 		return nil, err
@@ -125,8 +131,6 @@ func (e *MetricsEngine) MakeQuery(expression string, timeoutDuration time.Durati
 }
 
 func (e *MetricsEngine) RunMergeFunc(expression string, timeoutDuration time.Duration, args []map[string]interface{}) (map[string]interface{}, error) {
-	vm := otto.New()
-
 	// make copy of args
 	argsCopy := make([]map[string]interface{}, 0, len(args))
 	for _, arg := range args {
@@ -139,13 +143,14 @@ func (e *MetricsEngine) RunMergeFunc(expression string, timeoutDuration time.Dur
 		argsCopy = append(argsCopy, argCopy)
 	}
 
-	err := vm.Set("args", argsCopy)
-
+	e.vmLock.Lock()
+	err := e.vm.Set("args", argsCopy)
 	if err != nil {
 		return nil, err
 	}
-
-	ottoVal, err := e.runWithTimeout(vm, expression, timeoutDuration)
+	ottoVal, err := e.runWithTimeout(e.vm, expression, timeoutDuration)
+	_ = e.vm.Set("args", otto.UndefinedValue())
+	e.vmLock.Unlock()
 	if err != nil {
 		return nil, err
 	}
@@ -183,14 +188,13 @@ func (e *MetricsEngine) runWithTimeout(vm *otto.Otto, expression string, timeout
 						ans: nil,
 						err: errExpressionTimeout,
 					}
-					e.logger.Error(errExpressionTimeout)
 					return
 				}
 
-				e.logger.Errorf("got error: (%w) running expression %s, stacktrace: %s", caught, expression, string(debug.Stack()))
+				e.logger.Errorf("got error: (%+v) running expression %s, stacktrace: \n %s", caught, expression, string(debug.Stack()))
 				returnChan <- returnType{
 					ans: nil,
-					err: fmt.Errorf("%w", caught),
+					err: fmt.Errorf("%+v", caught),
 				}
 			}
 		}()
@@ -224,6 +228,8 @@ func (e *MetricsEngine) runWithTimeout(vm *otto.Otto, expression string, timeout
 				val = resVal
 			}
 		}
+
+		_ = e.vm.Set("result", otto.UndefinedValue())
 
 		returnChan <- returnType{
 			ans: &val,
@@ -334,12 +340,22 @@ func (e *MetricsEngine) selectTs(vm *otto.Otto, call *otto.FunctionCall) otto.Va
 }
 
 func extractSelectArgs(vm *otto.Otto, call *otto.FunctionCall) (name string, tagFilters map[string]string, isTagFilterAll bool) {
+
+	if len(call.ArgumentList) != 2 {
+		throw(vm, "not enough args for select function")
+	}
+
 	name, err := call.Argument(0).ToString()
 	if err != nil {
 		throw(vm, "Invalid arg: Name is not a string")
 	}
 	isTagFilterAll = call.Argument(1).IsString() && call.Argument(1).String() == "*"
 	if !isTagFilterAll {
+
+		if call.Argument(1).IsUndefined() {
+			throw(vm, "Invalid arg: tag filters is undefined")
+		}
+
 		tagFiltersGeneric := call.Argument(1).Object()
 		tagFilters = map[string]string{}
 		tagKeys := tagFiltersGeneric.Keys()

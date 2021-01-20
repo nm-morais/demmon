@@ -166,8 +166,6 @@ func main() {
 			DialTimeout:       3 * time.Second,
 		},
 		Silent:           silent,
-		Cpuprofile:       cpuprofile,
-		Memprofile:       memprofile,
 		LogFolder:        logFolder,
 		HandshakeTimeout: 3 * time.Second,
 		Peer:             peer.NewPeer(GetLocalIP(), uint16(protosPortVar), uint16(analyticsPortVar)),
@@ -206,10 +204,11 @@ func main() {
 	}
 
 	dbConf := &tsdb.Conf{
-		SetupLogToFile: true,
-		Silent:         silent,
-		LogFolder:      logFolder,
-		LogFile:        "tsdb.log",
+		SetupLogToFile:   true,
+		Silent:           silent,
+		LogFolder:        logFolder,
+		LogFile:          "tsdb.log",
+		CleanupFrequency: 5 * time.Second,
 	}
 
 	if randProtosPort {
@@ -267,8 +266,6 @@ func start(
 	if !waitForStart {
 		babel.StartAsync()
 	}
-
-	go testDemmonMetrics(eConf, isLandmark)
 
 	monitor.Listen()
 }

@@ -83,10 +83,9 @@ func (m *Monitor) broadcastGlobalAggFuncsToChildren() {
 			}
 
 			if _, ok := is.subscribers[child.String()]; ok {
-				m.logger.Warnf("Not Broadcasting global interest set %d to %s because node is a subscriber",
-					aggFuncID,
-					child.String())
-
+				// m.logger.Warnf("Not Broadcasting global interest set %d to %s because node is a subscriber",
+				// 	aggFuncID,
+				// 	child.String())
 				continue
 			}
 
@@ -387,12 +386,6 @@ func (m *Monitor) handleInstallGlobalAggFuncMessage(sender peer.Peer, msg messag
 		return
 	}
 
-	// m.logger.Infof(
-	// 	"received message to install global interest sets from %s (%+v)",
-	// 	sender.String(),
-	// 	installGlobalAggFuncMsg,
-	// )
-
 	for interestSetID, interestSet := range installGlobalAggFuncMsg.InterestSets {
 
 		is, alreadyExists := m.globalAggFuncs[interestSetID]
@@ -402,7 +395,7 @@ func (m *Monitor) handleInstallGlobalAggFuncMessage(sender peer.Peer, msg messag
 				p:           sender,
 				lastRefresh: time.Now(),
 			}
-			m.logger.Info("Global interest set already present")
+			// m.logger.Info("Global interest set already present")
 			continue
 		}
 

@@ -86,8 +86,8 @@ func (m *Monitor) Logger() *logrus.Logger {
 }
 
 func (m *Monitor) SendMessage(msg message.Message, p peer.Peer) {
-	m.logger.Infof("Sending message of type %s to %s", reflect.TypeOf(msg), p.String())
-	m.babel.SendMessage(msg, p, m.ID(), m.ID(), false)
+	// m.logger.Infof("Sending message of type %s to %s", reflect.TypeOf(msg), p.String())
+	m.babel.SendMessage(msg, p, m.ID(), m.ID(), true)
 }
 
 func (m *Monitor) Init() { // REPLY HANDLERS

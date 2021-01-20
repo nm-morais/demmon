@@ -25,10 +25,11 @@ type TSDB struct {
 }
 
 type Conf struct {
-	LogFile        string
-	LogFolder      string
-	Silent         bool
-	SetupLogToFile bool
+	LogFile          string
+	LogFolder        string
+	Silent           bool
+	SetupLogToFile   bool
+	CleanupFrequency time.Duration
 }
 
 func GetDB(conf *Conf) *TSDB {
@@ -40,13 +41,27 @@ func GetDB(conf *Conf) *TSDB {
 			if conf.SetupLogToFile {
 				setupLogger(logger, conf.LogFolder, conf.LogFile, conf.Silent)
 			}
+
 			db = &TSDB{
 				logger:  logger,
 				buckets: &sync.Map{},
 			}
+			go db.cleanupTimeseries(conf.CleanupFrequency)
 		})
 	}
+
 	return db
+}
+
+func (db *TSDB) cleanupTimeseries(tickerDuration time.Duration) {
+	ticker := time.NewTicker(tickerDuration)
+	for range ticker.C {
+		db.buckets.Range(func(key, value interface{}) bool {
+			bucket := value.(*Bucket)
+			bucket.cleanup()
+			return true
+		})
+	}
 }
 
 func (db *TSDB) GetBucket(name string) (*Bucket, bool) {
