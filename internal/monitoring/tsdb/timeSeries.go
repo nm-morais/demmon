@@ -141,6 +141,13 @@ func (ts *timeSeries) String() string {
 	return sb.String()
 }
 
+// Advances Timeseries in time
+func (ts *timeSeries) Advance(observation Observable) {
+	ts.mu.Lock()
+
+	ts.mu.Unlock()
+}
+
 // Add records an observation at the current time.
 func (ts *timeSeries) AddPoint(observation Observable) {
 	ts.mu.Lock()
@@ -273,7 +280,7 @@ func (ts *timeSeries) Last() Observable {
 			break
 		}
 	}
-	// ts.logger.Infof("idx: %d, Last point: %+v", idx, result)
+
 	return result
 }
 
@@ -363,7 +370,6 @@ func (ts *timeSeries) advance(t time.Time) {
 		for idx := range level.bucket {
 			level.bucket[idx] = nil
 		}
-
 		level.end = time.Unix(0, (t.UnixNano()/level.size.Nanoseconds())*level.size.Nanoseconds())
 	}
 
@@ -373,7 +379,6 @@ func (ts *timeSeries) advance(t time.Time) {
 		level.oldest = (level.oldest + 1) % ts.numBuckets
 		level.bucket[level.newest] = nil
 	}
-
 	t = level.end
 }
 

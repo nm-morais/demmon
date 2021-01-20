@@ -24,6 +24,7 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 		requestTimeout     = 1 * time.Second
 	)
 
+	cl.Lock()
 	_, err := cl.InstallContinuousQuery(
 		`Max(Select("nr_goroutines","*"),"*")`,
 		"the max of series nr_goroutines",
@@ -33,11 +34,13 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 		defaultMetricCount,
 		maxRetries,
 	)
+	cl.Unlock()
 
 	if err != nil {
 		panic(err)
 	}
 
+	cl.Lock()
 	_, err = cl.InstallContinuousQuery(
 		`Avg(Select("nr_goroutines","*"),"*")`,
 		"the rolling average of series nr_goroutines",
@@ -47,11 +50,13 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 		defaultMetricCount,
 		maxRetries,
 	)
+	cl.Unlock()
 
 	if err != nil {
 		panic(err)
 	}
 
+	cl.Lock()
 	_, err = cl.InstallContinuousQuery(
 		`Min(Select("nr_goroutines","*"),"*")`,
 		"the min of series nr_goroutines",
@@ -65,7 +70,9 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 	if err != nil {
 		panic(err)
 	}
+	cl.Unlock()
 
+	cl.Lock()
 	_, err = cl.InstallNeighborhoodInterestSet(&body_types.NeighborhoodInterestSet{
 		IS: body_types.InterestSet{
 			MaxRetries: maxRetries,
@@ -87,7 +94,9 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 	if err != nil {
 		panic(err)
 	}
+	cl.Unlock()
 
+	cl.Lock()
 	_, err = cl.InstallContinuousQuery(
 		`neighRoutines = Select("nr_goroutines_neigh","*")
 		 result = Min(neighRoutines, "*")`,
@@ -102,13 +111,16 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 	if err != nil {
 		panic(err)
 	}
+	cl.Unlock()
 
 	for range time.NewTicker(tickerTimeout).C {
 
+		cl.Lock()
 		res, err := cl.Query(
 			"Select('nr_goroutines_neigh','*')",
 			1*time.Second,
 		)
+		cl.Unlock()
 		if err != nil {
 			panic(err)
 		}
@@ -119,10 +131,12 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
 		}
 
+		cl.Lock()
 		res, err = cl.Query(
 			"Select('neigh_routines_min','*')",
 			1*time.Second,
 		)
+		cl.Unlock()
 		if err != nil {
 			panic(err)
 		}
@@ -133,10 +147,12 @@ func testNeighInterestSets(cl *client.DemmonClient) {
 			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
 		}
 
+		cl.Lock()
 		res, err = cl.Query(
 			"Select('nr_goroutines_avg','*')",
 			1*time.Second,
 		)
+		cl.Unlock()
 		if err != nil {
 			panic(err)
 		}
@@ -274,7 +290,6 @@ func testGlobalAggFunc(cl *client.DemmonClient) {
 							`,
 			},
 		})
-
 	cl.Unlock()
 	if err != nil {
 		panic(err)
@@ -445,10 +460,12 @@ func testCustomInterestSets(cl *client.DemmonClient) {
 
 	for range time.NewTicker(tickerTimeout).C {
 
+		cl.Lock()
 		res, err := cl.Query(
 			"Select('nr_goroutines_landmarks','*')",
 			1*time.Second,
 		)
+		cl.Unlock()
 		if err != nil {
 			panic(err)
 		}
@@ -497,6 +514,8 @@ func testDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 
 	if isLandmark {
 		go testAlarms(cl)
+		testNeighInterestSets(cl)
+		testCustomInterestSets(cl)
 		testGlobalAggFunc(cl)
 	}
 }

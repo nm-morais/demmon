@@ -15,7 +15,7 @@ COPY --from=nmmorais/demmon-exporter:latest /src/github.com/nm-morais/demmon-exp
 RUN go mod download
 
 #build
-RUN GOOS=linux GOARCH=amd64 go build -o /go/bin/demmon cmd/demmon/*.go
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build --race -ldflags="-w -s" -o /go/bin/demmon cmd/demmon/*.go
 
 # EXECUTABLE IMG
 FROM debian:stable-slim as demmon

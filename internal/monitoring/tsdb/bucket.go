@@ -284,6 +284,17 @@ func (b *Bucket) GetOrCreateTimeseriesWithClock(tags map[string]string, c Clock)
 	return ts
 }
 
+func (b *Bucket) cleanup() {
+	b.timeseries.Range(func(key, value interface{}) bool {
+		ts := value.(TimeSeries)
+		if ts.Last() == nil {
+			b.logger.Info("Clearing ts with tags: %+v", ts.Tags())
+			b.DeleteTimeseries(ts.Tags())
+		}
+		return true
+	})
+}
+
 func (b *Bucket) createLoggerForTimeseries(tags map[string]string) *logrus.Entry {
 	return b.logger.WithField("tags", tags)
 }
@@ -298,7 +309,7 @@ func (b *Bucket) DeleteTimeseries(tags map[string]string) error {
 
 	ts := tsGeneric.(TimeSeries)
 	ts.Clear()
-
+	ts = nil
 	return nil
 }
 

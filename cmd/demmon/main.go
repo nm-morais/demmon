@@ -206,10 +206,11 @@ func main() {
 	}
 
 	dbConf := &tsdb.Conf{
-		SetupLogToFile: true,
-		Silent:         silent,
-		LogFolder:      logFolder,
-		LogFile:        "tsdb.log",
+		SetupLogToFile:   true,
+		Silent:           silent,
+		LogFolder:        logFolder,
+		LogFile:          "tsdb.log",
+		CleanupFrequency: 5 * time.Second,
 	}
 
 	if randProtosPort {
