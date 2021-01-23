@@ -178,7 +178,7 @@ func (e *MetricsEngine) runWithTimeout(vm *otto.Otto, expression string, timeout
 	}
 
 	returnChan := make(chan returnType)
-	defer close(returnChan)
+	done := make(chan interface{})
 
 	go func() {
 		defer func() {
@@ -202,9 +202,12 @@ func (e *MetricsEngine) runWithTimeout(vm *otto.Otto, expression string, timeout
 		vm.Interrupt = make(chan func(), 1)
 
 		go func() {
-			time.Sleep(timeoutDuration)
-			vm.Interrupt <- func() {
-				panic(errExpressionTimeout)
+			select {
+			case <-time.After(timeoutDuration):
+				vm.Interrupt <- func() {
+					panic(errExpressionTimeout)
+				}
+			case <-done:
 			}
 		}()
 
@@ -237,6 +240,8 @@ func (e *MetricsEngine) runWithTimeout(vm *otto.Otto, expression string, timeout
 		}
 	}()
 	res := <-returnChan
+	close(done)
+	close(returnChan)
 	return res.ans, res.err
 }
 

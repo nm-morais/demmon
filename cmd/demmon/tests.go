@@ -512,12 +512,10 @@ func testDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 	go testExporter(eConf)
 	// go testGlobalAggFunc(cl)
 
-	if isLandmark {
-		go testAlarms(cl)
-		testNeighInterestSets(cl)
-		testCustomInterestSets(cl)
-		testGlobalAggFunc(cl)
-	}
+	go testAlarms(cl)
+	testNeighInterestSets(cl)
+	testCustomInterestSets(cl)
+	testGlobalAggFunc(cl)
 }
 
 func testExporter(eConf *exporter.Conf) {

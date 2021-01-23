@@ -2,7 +2,6 @@
 
 import argparse
 import matplotlib as mpl
-import matplotlib.pyplot as plt
 import networkx as nx
 import json
 import os
@@ -84,7 +83,6 @@ def parse_files(file_paths, output_folder):
 
     level_width = 700
     landmarks = 0
-    G = nx.Graph()
     nodes = {}
     max_level = -1
     parent_less_nodes = 0
@@ -180,7 +178,12 @@ def parse_files(file_paths, output_folder):
             except:
                 children_counter[parentId] = 1
 
-            thisLvlWidth = nodes[parentId]["node_level_step"] / 2
+            try:
+                thisLvlWidth = nodes[parentId]["node_level_step"] * 0.9
+            except:
+                print("Node {} has no node_level_step key".format(parentId))
+                continue
+
             thisLvlStep = float(thisLvlWidth) / \
                 float(max(parent_children - 1, 1))
             nodes[node]["node_level_step"] = thisLvlStep
@@ -224,13 +227,18 @@ def parse_files(file_paths, output_folder):
         for parent_edge in parent_edges:
             f.write("{} {}\n".format(parent_edge[0], parent_edge[1]))
 
+    # import matplotlib.pyplot as plt
+    # latVals = [latencyEdges[l] for l in latencyEdgeLabels]
+    # n, bins, patches = plt.hist(latVals, 50, facecolor='green', alpha=0.75)
+    # plt.savefig("{}/histogram.png".format(output_folder))
+
+    import matplotlib.pyplot as plt
+    G = nx.Graph()
     fig, ax = plt.subplots(figsize=(18, 8))
     fig.tight_layout()
     cmap = plt.cm.rainbow
 
     print(json.dumps(nodes, indent=4, sort_keys=True))
-
-    # print(json.dumps(pos, indent=4, sort_keys=True))
 
     nx.draw_networkx_nodes(G, pos, nodelist=nodeLabels,
                            node_size=300, ax=ax, node_shape="o")

@@ -8,7 +8,6 @@ if [ -z $SWARM_SUBNET ] || [ -z $SWARM_GATEWAY ] || [ -z $SWARM_NET ] || [ -z $S
   exit
 fi
 
-
 host=$(hostname)
 docker swarm init
 JOIN_TOKEN=$(docker swarm join-token manager -q)

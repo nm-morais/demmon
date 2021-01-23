@@ -108,9 +108,12 @@ def plotGraph(node_positions, node_ids, parent_edges, landmarks, latencies, outp
     for l in latencyEdges:
         latencyEdgeLabels[l] = latencyEdges[l]
 
-    nx.draw_networkx_nodes(G, pos, nodelist=regNodes, node_color='b', node_size=35, alpha=1)
-    nx.draw_networkx_nodes(G, pos, nodelist=landmarks, node_color='r', node_size=35, alpha=1)
-    nx.draw_networkx_labels(G, pos_higher, labels, font_size=7, font_family="sans-serif", font_color="black")
+    nx.draw_networkx_nodes(G, pos, nodelist=regNodes,
+                           node_color='b', node_size=35, alpha=1)
+    nx.draw_networkx_nodes(G, pos, nodelist=landmarks,
+                           node_color='r', node_size=35, alpha=1)
+    nx.draw_networkx_labels(G, pos_higher, labels, font_size=7,
+                            font_family="sans-serif", font_color="black")
     nx.draw_networkx_edges(G, pos, arrowsize=12, style='dashed', arrowstyle="->", edgelist=parent_edges, width=1,
                            alpha=1)
 
@@ -127,7 +130,8 @@ def main():
     node_positions, node_ids = read_conf_file(args["coords_file"])
     parent_edges, landmarks = read_parent_edges_file(args["parent_edges_file"])
     latencies = read_latencies_file(args["latencies_file"])
-    plotGraph(node_positions, node_ids, parent_edges, landmarks, latencies, args["output_folder"])
+    plotGraph(node_positions, node_ids, parent_edges,
+              landmarks, latencies, args["output_folder"])
 
 
 if __name__ == "__main__":

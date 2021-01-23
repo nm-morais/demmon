@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	exporter "github.com/nm-morais/demmon-exporter"
@@ -87,7 +88,6 @@ var (
 
 func main() {
 	ParseFlags()
-
 	landmarks, ok := GetLandmarksEnv()
 	if !ok {
 		landmarks = []*membershipProtocol.PeerWithIDChain{
@@ -134,6 +134,16 @@ func main() {
 	}
 
 	logFolder = fmt.Sprintf("%s/%s:%d", logFolder, GetLocalIP(), uint16(protosPortVar))
+	os.MkdirAll(logFolder, os.ModePerm)
+
+	// f, err := os.Create(fmt.Sprintf("%s/%s", logFolder, "cpuProfile"))
+	// if err != nil {
+	// 	log.Fatal("could not create CPU profile: ", err)
+	// }
+	// defer f.Close() // error handling omitted for example
+	// if err := pprof.StartCPUProfile(f); err != nil {
+	// 	log.Fatal("could not start CPU profile: ", err)
+	// }
 
 	nodeWatcherConf := &pkg.NodeWatcherConf{
 		PrintLatencyToInterval:    5 * time.Second,
@@ -236,6 +246,7 @@ func start(
 	dConf *internal.DemmonConf, membershipConf *membershipProtocol.DemmonTreeConfig,
 	meConf *engine.Conf, dbConf *tsdb.Conf, isLandmark, waitForStart bool,
 ) {
+
 	babel := pkg.NewProtoManager(*babelConf)
 	nw := pkg.NewNodeWatcher(
 		*nwConf,
@@ -269,7 +280,18 @@ func start(
 
 	go testDemmonMetrics(eConf, isLandmark)
 
-	monitor.Listen()
+	go monitor.Listen()
+
+	// <-time.After(3 * time.Minute)
+	select {}
+
+	// buf := make([]byte, 1<<20)
+	// stacklen := runtime.Stack(buf, true)
+	// log.Printf("=== received SIGQUIT ===\n*** goroutine dump...\n%s\n*** end\n", buf[:stacklen])
+
+	// pprof.StopCPUProfile()
+	// memProfile(logFolder, "memprofile")
+	// os.Exit(0)
 }
 
 func ParseFlags() {

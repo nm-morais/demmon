@@ -17,6 +17,10 @@ if [ -z $CONFIG_FILE ]; then
   exit
 fi
 
+echo "SWARM_NET: $SWARM_NET"
+echo "DOCKER_IMAGE: $DOCKER_IMAGE"
+echo "CONFIG_FILE: $CONFIG_FILE"
+
 n_nodes=0
 for var in $@
 do
@@ -43,9 +47,6 @@ for node in $@; do
   {
     oarsh $node $build_cmd
     echo "done building image on node: $node!" 
-  } &
-
-  {
 
     echo "deleting logs on node: $node" 
     oarsh $node "$delete_logs_cmd"
@@ -58,17 +59,25 @@ for node in $@; do
 done
 wait
 
+cat $CONFIG_FILE
+
 maxcpu=$(nproc)
 nContainers=$(wc -l $CONFIG_FILE)
 i=0
 echo "Lauching containers..."
-while read -r layer ip name
+while read -r ip name
 do
   idx=$(($i % n_nodes))
   idx=$((idx+1))
   node=${!idx}
-  # echo "oarsh $node 'docker run -v $SWARM_VOL:/code/logs -d -t --cpus=$cpu --cap-add=NET_ADMIN --net $SWARM_NET --ip $ip --name $name -h $name $DOCKER_IMAGE $i'"
-  echo "Starting ${i}. Container $name with ip $ip on node $node"
-  oarsh -n $node "docker run -v $SWARM_VOL:/tmp/logs -d -t --cap-add=NET_ADMIN --net $SWARM_NET --ip $ip --name $name -h $name $DOCKER_IMAGE $i $nContainers"
+  echo "Starting ${i}. Container $name with ip $ip and name $name on: $node"
+  oarsh -n $node "docker run -v $SWARM_VOL:/tmp/logs -d -t --cap-add=NET_ADMIN \
+   --net $SWARM_NET \
+   --ip $ip \
+   --name $name \
+   -h $name \
+   -e LANDMARKS=$LANDMARKS \
+    $DOCKER_IMAGE $i $nContainers"
+    
   i=$((i+1))
 done < "$CONFIG_FILE"

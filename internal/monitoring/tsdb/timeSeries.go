@@ -100,7 +100,6 @@ func (ts *timeSeries) DeregisterObserver(o utils.Observer) {
 
 func (ts *timeSeries) NotifyAll() {
 	for _, o := range ts.observerList {
-		ts.logger.Infof("Notifying observer with id %s", o.GetID())
 		o.Notify(nil)
 	}
 }
@@ -338,7 +337,6 @@ func (ts *timeSeries) mergeValue(observation Observable, t time.Time) {
 			ts.level.bucket[bucketNumber] = observation.Clone()
 		}
 		ts.level.bucket[bucketNumber] = observation.Clone()
-		ts.logger.Info("Notifying observers...")
 		go ts.NotifyAll()
 	}
 }

@@ -18,20 +18,21 @@ if arguments == 0:
 first_node = sys.argv[1]
 
 while True:
-
     try:
         subprocess.run(
             ["ssh", "dicluster", "rm -rf {}".format(merged_logs_folder)], check=True)
     except subprocess.CalledProcessError as e:
         print(e)
 
+    processes = []
     for node in sys.argv[1:]:
-        print(node)
-        try:
-            subprocess.run(
-                ["ssh", "dicluster", "rsync -razp {}:{} {}".format(node, logs_folder, merged_logs_folder)], check=True)
-        except subprocess.CalledProcessError as e:
-            print(e)
+        print("copying logs from: {}".format(node))
+        p = subprocess.Popen(
+            ["ssh", "dicluster", "rsync -razp {}:{} {}".format(node, logs_folder, merged_logs_folder)])
+        processes.append(p)
+
+    for p in processes:
+        p.wait()
 
     try:
         subprocess.run(["ssh", "dicluster",

@@ -68,7 +68,7 @@ func (b *Bucket) GetTimeseries(tags map[string]string) (TimeSeries, bool) {
 func (b *Bucket) GetAllTimeseries() []ReadOnlyTimeSeries {
 	toReturn := make([]ReadOnlyTimeSeries, 0)
 
-	b.logger.Infof("Getting all timeseries for bucket %s", b.name)
+	// b.logger.Infof("Getting all timeseries for bucket %s", b.name)
 	b.timeseries.Range(
 		func(key, value interface{}) bool {
 			ts := value.(TimeSeries)
