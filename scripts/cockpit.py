@@ -38,6 +38,9 @@ def main():
     print(f"NodeList: {nodeList}")
     print(f"args: {args}")
 
+    if args.latencies:
+        visualize_latencies(nodeList)
+
     if args.generate:
         writeGeneratedConf(nodeList)
 
@@ -59,6 +62,9 @@ def main():
 
 def parseArgs():
     parser = argparse.ArgumentParser(description='demmon main script')
+
+    parser.add_argument('--latencies', dest='latencies',
+                        action='store_true', help='visualize latencies')
 
     parser.add_argument('--create', dest='create_swarm',
                         action='store_true', help='start swam')
@@ -137,12 +143,25 @@ def stop(nodeList):
     return
 
 
-def stop(nodeList):
-    node_list_str = join_str_arr(nodeList, " ")
-    deploy_cmd = f"bash scripts/stopContainers.sh {node_list_str}"
+def visualize_latencies(nodeList):
+
+    tmp_dir = "/home/nunomorais/demmon_logs/"
+    output_path = "/home/nunomorais/latency_visualization"
+
+    delete_cmd = "rm -rf /home/nunomorais/latency_visualization"
+    wrapped_delete_cmd = f"ssh dicluster {delete_cmd}"
+    run_cmd_with_try(wrapped_delete_cmd, stdout=sys.stdout)
+
+    for node in nodeList:
+        copyLogsFromNodeCmd = f"rsync -raz {node}:{vol_dir} {tmp_dir}"
+        wrapped_copy_logs_cmd = f"ssh dicluster {copyLogsFromNodeCmd}"
+        run_cmd_with_try(wrapped_copy_logs_cmd, stdout=sys.stdout)
+
     d = dict(os.environ)
     assign_env_vars(d)
-    run_cmd_with_try(deploy_cmd, env=d, stdout=sys.stdout)
+    visualize_cmd = f"python3 /home/nunomorais/git/nm-morais/demmon/scripts/visualizeLatency.py --output_path={output_path} --config_file=/home/nunomorais/git/nm-morais/demmon/{config_file} --latencies_file=/home/nunomorais/git/nm-morais/demmon/{latency_map} --logs_folder={tmp_dir}"
+    wrapped_visualize_cmd = f"ssh dicluster 'ssh {nodeList[0]} {visualize_cmd}'"
+    run_cmd_with_try(wrapped_visualize_cmd, env=d, stdout=sys.stdout)
     return
 
 

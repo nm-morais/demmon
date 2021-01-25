@@ -1,10 +1,12 @@
 package protocol
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/nm-morais/demmon-common/body_types"
@@ -337,25 +339,39 @@ func (d *DemmonTree) handleLandmarkMeasuredNotification(nGeneric notification.No
 
 func (d *DemmonTree) handleDebugTimer(joinTimer timer.Timer) {
 	d.babel.RegisterTimer(d.ID(), NewDebugTimer(DebugTimerDuration))
-	inView := make([]*PeerWithIDChain, 0)
+	sb := strings.Builder{}
+
+	toStrWithLat := func(p peer.Peer) string {
+		if p == nil {
+			return ""
+		}
+
+		nodeInfo, err := d.nodeWatcher.GetNodeInfo(p)
+
+		if err != nil {
+			return ""
+		}
+		return fmt.Sprintf("%s:%d;", p.IP().String(), nodeInfo.LatencyCalc().CurrValue().Milliseconds())
+	}
 
 	for _, child := range d.myChildren {
-		inView = append(inView, child)
+		if _, err := sb.WriteString(toStrWithLat(child)); err != nil {
+			panic(err)
+		}
 	}
 
 	for _, sibling := range d.mySiblings {
-		inView = append(inView, sibling)
+		if _, err := sb.WriteString(toStrWithLat(sibling)); err != nil {
+			panic(err)
+		}
 	}
 
-	if !d.landmark && d.myParent != nil {
-		inView = append(inView, d.myParent)
+	if d.myParent != nil {
+		if _, err := sb.WriteString(toStrWithLat(d.myParent)); err != nil {
+			panic(err)
+		}
 	}
-
-	toPrint := ""
-	for _, neighbor := range inView {
-		toPrint = toPrint + " " + neighbor.String()
-	}
-	d.logger.Infof(" %s InView: %s", d.self.String(), toPrint)
+	d.logger.Infof("<latency_collection> %s", sb.String())
 }
 
 func (d *DemmonTree) handleJoinTimer(joinTimer timer.Timer) {

@@ -61,7 +61,7 @@ func GetLandmarksEnv() ([]*membershipProtocol.PeerWithIDChain, bool) {
 			peer.NewPeer(net.ParseIP(landmarkIP), baseProtoPort, baseAnalyticsPort),
 			0,
 			0,
-			make(membershipProtocol.Coordinates, 4),
+			make(membershipProtocol.Coordinates, len(landmarksSplitted)),
 		)
 		landmarks[i] = landmark
 	}

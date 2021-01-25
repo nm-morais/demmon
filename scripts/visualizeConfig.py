@@ -21,7 +21,7 @@ def read_conf_file(file_path):
         line = aux.strip()
         split = line.split(" ")
         # print(line)
-        node_ip = split[1]
+        node_ip = split[0]
         identifier = str(node_ip[6:])
         # print(identifier)
         node_ids.append(identifier)
@@ -110,7 +110,8 @@ def plotGraph(node_ids, latencies, parent_edges, landmarks):
 
     nx.draw_networkx_nodes(G, pos, node_size=500, node_color=node_colors)
     # nx.draw_networkx_nodes(G,pos, nodelist=landmarks,node_color='r',node_size=500,alpha=0.8)
-    nx.draw_networkx_labels(G, pos, font_size=7, font_family="sans-serif", font_color="white")
+    nx.draw_networkx_labels(G, pos, font_size=7,
+                            font_family="sans-serif", font_color="white")
     nx.draw_networkx_edges(G, pos, arrows=False, style="dotted", edgelist=latencyEdges, width=1, alpha=0.50,
                            edge_color=edge_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52)
     nx.draw_networkx_edges(G, pos, arrowsize=10, arrowstyle="->", edgelist=parent_edges, width=3, alpha=1,
