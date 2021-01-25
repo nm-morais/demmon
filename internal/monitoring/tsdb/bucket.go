@@ -208,7 +208,7 @@ func (b *Bucket) RegisterWatchlist(o utils.Observer, watchList body_types.Timese
 		}
 		return true
 	})
-	b.watchLists[o.GetID()] = struct {
+	b.watchLists[o.ID()] = struct {
 		filter   body_types.TimeseriesFilter
 		observer utils.Observer
 	}{
@@ -219,11 +219,11 @@ func (b *Bucket) RegisterWatchlist(o utils.Observer, watchList body_types.Timese
 
 func (b *Bucket) RemoveWatchlist(o utils.Observer) error {
 
-	watchList, ok := b.watchLists[o.GetID()]
+	watchList, ok := b.watchLists[o.ID()]
 	if !ok {
 		return ErrWatchListNotFound
 	}
-	delete(b.watchLists, o.GetID())
+	delete(b.watchLists, o.ID())
 
 	b.timeseries.Range(func(key, value interface{}) bool {
 		ts := value.(TimeSeries)

@@ -157,7 +157,7 @@ def deploy(nodeList, landmarks_nr):
         landmarks.append(f.readline().split(" ")[0])
 
     print("deploying with landmarks: {}".format(join_str_arr(landmarks, " ")))
-    d["LANDMARKS"] = join_str_arr(landmarks, " ")
+    d["LANDMARKS"] = join_str_arr(landmarks, ";")
     run_cmd_with_try(deploy_cmd, env=d, stdout=sys.stdout)
     return
 

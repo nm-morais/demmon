@@ -85,14 +85,14 @@ func NewTimeSeriesWithClock(
 }
 
 func (ts *timeSeries) RegisterObserver(o utils.Observer) {
-	ts.logger.Infof("Registering observer with id %s", o.GetID())
+	ts.logger.Infof("Registering observer with id %s", o.ID())
 	ts.mu.Lock()
 	ts.observerList = append(ts.observerList, o)
 	ts.mu.Unlock()
 }
 
 func (ts *timeSeries) DeregisterObserver(o utils.Observer) {
-	ts.logger.Infof("Removing observer with id %s", o.GetID())
+	ts.logger.Infof("Removing observer with id %s", o.ID())
 	ts.mu.Lock()
 	ts.observerList = utils.RemoveFromslice(ts.observerList, o)
 	ts.mu.Unlock()

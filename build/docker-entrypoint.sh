@@ -2,6 +2,9 @@
 
 set -e
 
+echo "env: "
+env
+
 if [ $3 -eq 0 ]; then
     rm -rf /tmp/logs/*
 fi

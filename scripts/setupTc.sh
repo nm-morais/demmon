@@ -8,7 +8,7 @@ idx=$3
 nrIps=$4
 
 ips=""
-while read -r ip
+while read -r ip name
 do
   ips="${ips} ${ip}"
 done < "$ipsMap"

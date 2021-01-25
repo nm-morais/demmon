@@ -37,14 +37,14 @@ echo "number of nodes: $n_nodes"
 echo "Building images..."
 
 currdir=$(pwd)
-delete_containers_cmd='docker rm -f $(docker ps -a -q)'
-build_cmd="cd ${currdir}; source config/swarmConfig.sh ; ./scripts/buildImage.sh"
-delete_logs_cmd="docker run -v demmon_volume:/data busybox sh -c 'rm -rf /data/*'"
+delete_containers_cmd='docker rm -f $(docker ps -a -q)  > /dev/null'
+build_cmd="cd ${currdir}; source config/swarmConfig.sh ; ./scripts/buildImage.sh > /dev/null"
+delete_logs_cmd="docker run -v demmon_volume:/data busybox sh -c 'rm -rf /data/*' > /dev/null"
 host=$(hostname)
 
 for node in $@; do
-  echo "starting build on node: $node" 
   {
+    echo "starting build on node: $node" 
     oarsh $node $build_cmd
     echo "done building image on node: $node!" 
 
@@ -64,20 +64,28 @@ cat $CONFIG_FILE
 maxcpu=$(nproc)
 nContainers=$(wc -l $CONFIG_FILE)
 i=0
+
 echo "Lauching containers..."
 while read -r ip name
 do
+  echo "ip: $ip"
+  echo "name: $name"
   idx=$(($i % n_nodes))
   idx=$((idx+1))
   node=${!idx}
-  echo "Starting ${i}. Container $name with ip $ip and name $name on: $node"
-  oarsh -n $node "docker run -v $SWARM_VOL:/tmp/logs -d -t --cap-add=NET_ADMIN \
+
+  cmd="docker run -v $SWARM_VOL:/tmp/logs -d -t --cap-add=NET_ADMIN \
    --net $SWARM_NET \
    --ip $ip \
    --name $name \
    -h $name \
-   -e LANDMARKS=$LANDMARKS \
+   -e LANDMARKS='$LANDMARKS' \
     $DOCKER_IMAGE $i $nContainers"
-    
+
+  
+  # echo "running command: '$cmd'"
+
+  echo "Starting ${i}. Container $name with ip $ip and name $name on: $node"
+  oarsh -n $node "$cmd"
   i=$((i+1))
 done < "$CONFIG_FILE"
