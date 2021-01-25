@@ -367,6 +367,7 @@ func (d *DemmonTree) handleJoinTimer(joinTimer timer.Timer) {
 
 func (d *DemmonTree) handleLandmarkRedialTimer(t timer.Timer) {
 	redialTimer := t.(*landmarkRedialTimer)
+	d.logger.Infof("Redialing landmark %s", redialTimer.LandmarkToRedial.String())
 	d.nodeWatcher.Watch(redialTimer.LandmarkToRedial, d.ID())
 	c := nodeWatcher.Condition{
 		Repeatable:                false,
@@ -961,15 +962,13 @@ func (d *DemmonTree) handleJoinReplyMessage(sender peer.Peer, msg message.Messag
 
 	d.logger.Infof("Got joinReply: %+v from %s", replyMsg, sender.String())
 
-	if d.joinLevel == math.MaxUint16 {
-		d.logger.Errorf("Got joinReply: %+v but already joined... %s", replyMsg, sender.String())
-		return
+	if _, ok := d.joinTimeoutTimerIds[sender.String()]; ok {
+		d.babel.CancelTimer(d.joinTimeoutTimerIds[sender.String()])
+		delete(d.joinTimeoutTimerIds, sender.String())
 	}
 
-	if _, ok := d.currLevelPeers[d.joinLevel][sender.String()]; ok {
-		d.babel.CancelTimer(d.joinTimeoutTimerIds[sender.String()])
-	} else {
-		d.logger.Errorf("Got joinReply: %+v from timed out peer... %s", replyMsg, sender.String())
+	if d.joinLevel == math.MaxUint16 {
+		d.logger.Errorf("Got joinReply: %+v but already joined... %s", replyMsg, sender.String())
 		return
 	}
 
@@ -1335,6 +1334,7 @@ func (d *DemmonTree) DialSuccess(sourceProto protocol.ID, p peer.Peer) bool {
 		for _, l := range d.config.Landmarks {
 			if peer.PeersEqual(l, p) {
 				d.babel.SendNotification(NewNodeUpNotification(l, d.getInView()))
+				d.logger.Infof("Dialed sibling landmark with success: %s", p.String())
 				return true
 			}
 		}
@@ -1597,6 +1597,11 @@ func (d *DemmonTree) joinOverlay() {
 	d.currLevelPeersDone = []map[string]*MeasuredPeer{make(map[string]*MeasuredPeer, nrLandmarks)} // start level 1
 	d.currLevelPeers = []map[string]peer.Peer{make(map[string]peer.Peer, nrLandmarks)}             // start level 1
 	d.joinLevel = 0
+
+	if d.landmark {
+		return
+	}
+
 	d.logger.Infof("Landmarks:")
 	for i, landmark := range d.config.Landmarks {
 		d.logger.Infof("%d :%s", i, landmark.String())
@@ -1781,7 +1786,6 @@ func (d *DemmonTree) progressToNextLevel(lowestLatencyPeer peer.Peer) {
 		d.currLevelPeersDone = append(d.currLevelPeersDone, make(map[string]*MeasuredPeer))
 	}
 
-	d.joinTimeoutTimerIds = make(map[string]int)
 	for _, p := range d.currLevelPeers[d.joinLevel] {
 		d.joinTimeoutTimerIds[p.String()] = d.babel.RegisterTimer(
 			d.ID(),
@@ -1994,8 +1998,8 @@ func (d *DemmonTree) updateAndMergeSampleEntriesWithEView(sample []*PeerWithIDCh
 func (d *DemmonTree) mergeSampleWithEview(
 	sample []*PeerWithIDChain,
 	sender *PeerWithIDChain,
-	nrPeersToMerge, nrPeersToAdd int,
-) (sampleToSend, neighboursWithoutSenderDescendants []*PeerWithIDChain) {
+	nrPeersToMerge, nrPeersToAdd int) (sampleToSend,
+	neighboursWithoutSenderDescendants []*PeerWithIDChain) {
 	selfInSample := false
 
 	for _, peerWithIDChain := range sample {
@@ -2193,8 +2197,7 @@ func (d *DemmonTree) addParent(
 	newGrandParent *PeerWithIDChain,
 	myNewChain PeerIDChain,
 	parentLatency time.Duration,
-	disconnectFromParent, sendDisconnectMsg bool,
-) {
+	disconnectFromParent, sendDisconnectMsg bool) {
 	if peer.PeersEqual(newParent, d.myPendingParentInRecovery) {
 		d.myPendingParentInRecovery = nil
 	}
@@ -2244,7 +2247,6 @@ func (d *DemmonTree) addParent(
 		d.currLevelPeersDone = nil
 		d.parents = nil
 		// d.retries = nil
-		d.joinTimeoutTimerIds = nil
 	}
 
 	if parentLatency != 0 {
