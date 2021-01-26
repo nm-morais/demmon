@@ -223,7 +223,7 @@ func (m *Monitor) handleInstallNeighInterestSetMessage(sender peer.Peer, msg mes
 				lastRefresh: time.Now(),
 			}
 
-			m.logger.Info("Neigh interest set already present")
+			// m.logger.Info("Neigh interest set already present")
 			continue
 		}
 

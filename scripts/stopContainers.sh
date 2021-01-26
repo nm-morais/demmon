@@ -1,38 +1,32 @@
 #!/bin/bash
 
-config=$1
-n_nodes=$(uniq $OAR_FILE_NODES | wc -l)
+set -e
 
-if [ -z $config ]; then
-  echo "usage <config>"
+n_nodes=0
+for var in $@
+do
+  n_nodes=$((n_nodes+1))
+done
+
+if [[ $n_nodes -eq 0 ]]; then
+  echo "usage <node_array>"
   exit
 fi
 
-function nextnode {
-  local idx=$(($1 % n_nodes))
-  local i=0
-  for host in $(uniq $OAR_FILE_NODES); do
-    if [ $i -eq $idx ]; then
-      echo $host
-      break;
-    fi
-    i=$(($i +1))
-  done
-}
+echo "number of nodes: $n_nodes"
 
-function killapp {
-  local node=$1
-  local name=$2
-  echo "oarsh $node docker rm -f $name"
-  oarsh -n $node "docker rm -f $name"
-}
+currdir=$(pwd)
+delete_containers_cmd='docker rm -f $(docker ps -a -q)'
+build_cmd="cd ${currdir}; source config/swarmConfig.sh ; ./scripts/buildImage.sh"
+delete_logs_cmd="docker run -v demmon_volume:/data busybox sh -c 'rm -rf /data/*'"
+host=$(hostname)
 
-i=0
-echo "Killing apps..."
-while read -r layer ip name
-do
-    node=$(nextnode $i)
-    killapp $node $name
-    i=$(($i+1))
-done < "$config"
+for node in $@; do
+  echo "echo stopping containers on node: $node" 
+  {
+    echo "deleting running containers on node: $node" 
+    oarsh $node "$delete_containers_cmd"
+    echo "done deleting containers on node: $node!"  
+  } &
+done
 wait

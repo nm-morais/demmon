@@ -8,13 +8,13 @@ type Subject interface {
 
 type Observer interface {
 	Notify(interface{})
-	GetID() string
+	ID() string
 }
 
 func RemoveFromslice(observerList []Observer, observerToRemove Observer) []Observer {
 	observerListLength := len(observerList)
 	for i, observer := range observerList {
-		if observerToRemove.GetID() == observer.GetID() {
+		if observerToRemove.ID() == observer.ID() {
 			observerList[observerListLength-1], observerList[i] = observerList[i], observerList[observerListLength-1]
 			return observerList[:observerListLength-1]
 		}

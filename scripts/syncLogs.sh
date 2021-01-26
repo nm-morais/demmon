@@ -6,11 +6,16 @@ if [ $# -eq 0 ]
     exit 1
 fi
 
-echo "copying logs from node $1"
+echo "copying logs from nodes $@"
+ssh dicluster 'rm -rf ~/demmon_logs/*'
 
-# ssh dicluster 'scp -r node7:/tmp/demmon_logs/ ~/'; scp -r dicluster:demmon_logs /tmp/; code /tmp/demmon_logs
-copyLogsFromNodeCmd="rsync --delete -razP $1:/tmp/demmon_logs/ ~/demmon_logs/"
+for node in "$@"
+do
+  copyLogsFromNodeCmd="rsync -raz $node:/tmp/demmon_logs/ ~/demmon_logs/"
+  echo "running $copyLogsFromNodeCmd"
+  ssh dicluster $copyLogsFromNodeCmd &
+done
 
-echo "running $copyLogsFromNodeCmd"
+wait
 
-ssh dicluster $copyLogsFromNodeCmd; rsync --delete -razP dicluster:demmon_logs/ /tmp/demmon_logs/; code /tmp/demmon_logs
+rsync --delete -raz dicluster:demmon_logs/ /tmp/demmon_logs/; code /tmp/demmon_logs

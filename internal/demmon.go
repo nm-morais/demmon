@@ -1,7 +1,6 @@
 package internal
 
 import (
-	"container/heap"
 	"errors"
 	"fmt"
 	"math"
@@ -21,7 +20,7 @@ import (
 	monitoringProto "github.com/nm-morais/demmon/internal/monitoring/protocol"
 	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
 	"github.com/nm-morais/demmon/internal/utils"
-	priorityqueue "github.com/nm-morais/go-babel/pkg/dataStructures/priorityQueue"
+	"github.com/nm-morais/go-babel/pkg/dataStructures/timedEventQueue"
 	"github.com/nm-morais/go-babel/pkg/protocolManager"
 	"github.com/reugn/go-quartz/quartz"
 	"github.com/sirupsen/logrus"
@@ -70,16 +69,84 @@ type customInterestSetWrapper struct {
 
 type alarmControl struct {
 	id                int64
-	subId             uint64
+	subID             uint64
 	err               error
 	nrRetries         int
-	resetChan         chan bool
 	alarm             body_types.InstallAlarmRequest
 	lastTimeEvaluated time.Time
 	lastTimeTriggered time.Time
 	client            *client
 	d                 *Demmon
 	*sync.Mutex
+}
+
+func (ac *alarmControl) ID() string {
+	return fmt.Sprintf("%d", ac.id)
+}
+
+func (ac *alarmControl) Notify(interface{}) {
+	ac.d.logger.Info("alarm control got notified of insertion in watched timeseries.")
+	ac.Lock()
+	defer ac.Unlock()
+	if time.Since(ac.lastTimeTriggered) > ac.alarm.TriggerBackoffTime &&
+		time.Since(ac.lastTimeEvaluated) > ac.alarm.CheckPeriodicity {
+		ac.lastTimeEvaluated = time.Now()
+		go ac.OnTrigger()
+	} else {
+		ac.d.logger.Info("alarm not evaluating because time since last evaluation is less than the alarm's minimum periodicity")
+	}
+}
+
+func (ac *alarmControl) OnTrigger() (bool, *time.Time) {
+	ac.Lock()
+	defer ac.Unlock()
+	ac.lastTimeEvaluated = time.Now()
+	if time.Since(ac.lastTimeTriggered) < ac.alarm.TriggerBackoffTime {
+		nextTrigger := ac.lastTimeTriggered.Add(ac.alarm.TriggerBackoffTime)
+		return true, &nextTrigger
+	}
+	if time.Since(ac.lastTimeEvaluated) < ac.alarm.CheckPeriodicity {
+		nextTrigger := ac.lastTimeEvaluated.Add(ac.alarm.CheckPeriodicity)
+		return true, &nextTrigger
+	}
+
+	ac.d.logger.Infof("evaluating alarm %d", ac.id)
+	res, err := ac.d.me.MakeBoolQuery(ac.alarm.Query.Expression, ac.alarm.Query.Timeout)
+	if err != nil {
+		ac.d.logger.Errorf("alarm %d failed with error: %s", ac.id, err)
+		ac.nrRetries++
+		if ac.nrRetries == ac.alarm.MaxRetries {
+			ac.d.logger.Errorf("alarm %d has exceeded maxRetries (%d), sending err msg and deleting alarm", ac.id, ac.nrRetries)
+			ac.client.out <- body_types.NewResponse(ac.subID, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
+				ID:       ac.id,
+				Error:    true,
+				Trigger:  false,
+				ErrorMsg: err.Error(),
+			})
+			_, ok := ac.d.alarms.LoadAndDelete(ac.id)
+			if ok {
+				ac.d.RemoveAlarmWatchlist(ac)
+			}
+			return false, nil
+		}
+		nextTrigger := time.Now().Add(ac.alarm.CheckPeriodicity)
+		return true, &nextTrigger
+	}
+
+	if res == true {
+		ac.client.out <- body_types.NewResponse(ac.subID, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
+			ID:       ac.id,
+			Error:    false,
+			Trigger:  true,
+			ErrorMsg: "",
+		})
+		timeNow := time.Now()
+		ac.lastTimeTriggered = timeNow
+		nextTrigger := timeNow.Add(ac.alarm.TriggerBackoffTime)
+		return true, &nextTrigger
+	}
+	nextTrigger := time.Now().Add(ac.alarm.CheckPeriodicity)
+	return true, &nextTrigger
 }
 
 type continuousQueryJobWrapper struct {
@@ -110,7 +177,6 @@ type client struct {
 
 type Demmon struct {
 	alarms                          *sync.Map
-	addAlarmChan                    chan *alarmControl
 	schedulerMu                     *sync.Mutex
 	scheduler                       quartz.Scheduler
 	customInterestSets              *sync.Map
@@ -127,6 +193,7 @@ type Demmon struct {
 	fm                              *membershipFrontend.MembershipFrontend
 	me                              *engine.MetricsEngine
 	babel                           protocolManager.ProtocolManager
+	alarmTeq                        timedEventQueue.TimedEventQueue
 }
 
 func New(
@@ -137,15 +204,15 @@ func New(
 	fm *membershipFrontend.MembershipFrontend,
 	babel protocolManager.ProtocolManager,
 ) *Demmon {
+	logger := logrus.New()
 	d := &Demmon{
 		alarms:                          &sync.Map{},
-		addAlarmChan:                    make(chan *alarmControl),
 		schedulerMu:                     &sync.Mutex{},
 		scheduler:                       quartz.NewStdScheduler(),
 		customInterestSets:              &sync.Map{},
 		continuousQueries:               &sync.Map{},
 		continuousQueriesCounter:        new(uint64),
-		logger:                          logrus.New(),
+		logger:                          logger,
 		counter:                         new(uint64),
 		conf:                            dConf,
 		db:                              db,
@@ -156,12 +223,12 @@ func New(
 		fm:                              fm,
 		me:                              me,
 		babel:                           babel,
+		alarmTeq:                        timedEventQueue.NewTimedEventQueue(logger),
 	}
 
 	d.scheduler.Start()
 	go d.handleNodeUpdates()
 	go d.handleBroadcastMessages()
-	go d.evalAlarmsPeriodic()
 
 	setupLogger(d.logger, d.conf.LogFolder, d.conf.LogFile, d.conf.Silent)
 	return d
@@ -377,7 +444,6 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 
 		d.logger.Infof("Creating custom interest set %d func output bucket: %s", setID, reqBody.IS.OutputBucketOpts.Name)
 		d.customInterestSets.Store(setID, customIntSet)
-
 		go d.handleCustomInterestSet(setID, r, c)
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, body_types.InstallInterestSetReply{SetID: setID})
 
@@ -541,14 +607,13 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			id:                alarmID,
 			err:               nil,
 			nrRetries:         0,
-			resetChan:         make(chan bool, 1),
 			alarm:             *reqBody,
 			Mutex:             &sync.Mutex{},
 			d:                 d,
 			lastTimeEvaluated: time.Time{},
 			lastTimeTriggered: time.Time{},
 			client:            c,
-			subId:             r.ID,
+			subID:             r.ID,
 		}
 
 		d.alarms.Store(alarmID, alarm)
@@ -560,7 +625,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		}
 
 		if alarm.alarm.CheckPeriodic {
-			d.addAlarmToEvalPeriodic(alarm)
+			d.alarmTeq.Add(alarm, time.Now())
 		}
 
 		d.logger.Infof("Added new alarm: %+v", reqBody)
@@ -571,9 +636,18 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			break
 		}
 		alarmID := reqBody.ResourceID
-		alarm, ok := d.alarms.LoadAndDelete(alarmID)
+		alarmGeneric, ok := d.alarms.LoadAndDelete(alarmID)
 		if ok {
-			err := d.removeAlarmWatchlist(alarm.(*alarmControl))
+			alarm := alarmGeneric.(*alarmControl)
+
+			if alarm.alarm.CheckPeriodic {
+				ok = d.alarmTeq.Remove(alarm.ID())
+				if !ok {
+					panic("was installed but not in timer queue")
+				}
+			}
+
+			err := d.RemoveAlarmWatchlist(alarm)
 			if err != nil {
 				panic(err)
 			}
@@ -653,10 +727,6 @@ func (d *Demmon) handleNodeUpdates() {
 	}
 }
 
-func (ac *alarmControl) GetID() string {
-	return fmt.Sprintf("%d", ac.id)
-}
-
 func (d *Demmon) installAlarmWatchlist(observer utils.Observer, watchList []body_types.TimeseriesFilter) error {
 	for _, toWatch := range watchList {
 		_, ok := d.db.GetBucket(toWatch.MeasurementName)
@@ -673,7 +743,7 @@ func (d *Demmon) installAlarmWatchlist(observer utils.Observer, watchList []body
 	return nil
 }
 
-func (d *Demmon) removeAlarmWatchlist(alarm *alarmControl) error {
+func (d *Demmon) RemoveAlarmWatchlist(alarm *alarmControl) error {
 	for _, toWatch := range alarm.alarm.WatchList {
 		b, ok := d.db.GetBucket(toWatch.MeasurementName)
 		if ok {
@@ -681,142 +751,6 @@ func (d *Demmon) removeAlarmWatchlist(alarm *alarmControl) error {
 		}
 	}
 	return nil
-}
-
-func (ac *alarmControl) Notify(interface{}) {
-	ac.d.logger.Info("alarm control got notified of insertion in watched timeseries.")
-	ac.Lock()
-	defer ac.Unlock()
-	if time.Since(ac.lastTimeTriggered) > ac.alarm.TriggerBackoffTime &&
-		time.Since(ac.lastTimeEvaluated) > ac.alarm.CheckPeriodicity {
-		ac.lastTimeEvaluated = time.Now()
-		go ac.d.evalAlarm(ac)
-		if ac.alarm.CheckPeriodic {
-			select {
-			case ac.resetChan <- true:
-			default:
-			}
-		}
-	} else {
-		ac.d.logger.Info("alarm not evaluating because time since last evaluation is less than the alarm's minimum periodicity")
-	}
-}
-
-func (d *Demmon) addAlarmToEvalPeriodic(alarm *alarmControl) {
-	d.addAlarmChan <- alarm
-}
-
-func (d *Demmon) evalAlarm(alarm *alarmControl) {
-	alarm.Lock()
-	defer alarm.Unlock()
-	d.logger.Infof("evaluating alarm %d", alarm.id)
-	res, err := d.me.MakeBoolQuery(alarm.alarm.Query.Expression, alarm.alarm.Query.Timeout)
-	if err != nil {
-		d.logger.Errorf("alarm %d failed with error: %s", alarm.id, err)
-		alarm.nrRetries++
-		if alarm.nrRetries == alarm.alarm.MaxRetries {
-			d.logger.Errorf("alarm %d has exceeded maxRetries (%d), sending err msg and deleting alarm", alarm.id, alarm.nrRetries)
-			alarm.client.out <- body_types.NewResponse(alarm.subId, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
-				ID:       alarm.id,
-				Error:    true,
-				Trigger:  false,
-				ErrorMsg: err.Error(),
-			})
-			alarm, ok := d.alarms.LoadAndDelete(alarm.id)
-			if ok {
-				d.removeAlarmWatchlist(alarm.(*alarmControl))
-			}
-		}
-		return
-	}
-
-	if res == true {
-		alarm.client.out <- body_types.NewResponse(alarm.subId, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
-			ID:       alarm.id,
-			Error:    false,
-			Trigger:  true,
-			ErrorMsg: "",
-		})
-		alarm.lastTimeTriggered = time.Now()
-		return
-	}
-}
-
-func (d *Demmon) evalAlarmsPeriodic() {
-	var t *time.Timer
-	pq := priorityqueue.PriorityQueue{}
-
-	addAlarmToQueue := func(alarm *alarmControl, nextTrigger time.Time) {
-		d.logger.Infof("added alarm control %d to pq", alarm.id)
-		pqItem := &priorityqueue.Item{
-			Value:    alarm,
-			Priority: nextTrigger.UnixNano(),
-		}
-		heap.Push(&pq, pqItem)
-		heap.Init(&pq)
-	}
-
-	getNextFromQueue := func() *alarmControl {
-		for len(pq) > 0 {
-			nextItem := heap.Pop(&pq).(*priorityqueue.Item).Value.(*alarmControl)
-			alarmInt, stillActive := d.alarms.Load(nextItem.id)
-			if !stillActive {
-				d.logger.Warnf("alarm deleted: %d", nextItem.id)
-				continue
-			}
-			// drain reset channel
-			alarm := alarmInt.(*alarmControl)
-			select {
-			case <-alarm.resetChan:
-				addAlarmToQueue(nextItem, alarm.lastTimeEvaluated.Add(alarm.alarm.CheckPeriodicity))
-			default:
-				return alarm
-			}
-		}
-		return nil
-	}
-
-	for {
-
-		alarm := getNextFromQueue()
-		if alarm == nil {
-			alarm = <-d.addAlarmChan
-			addAlarmToQueue(alarm, time.Now().Add(alarm.alarm.CheckPeriodicity))
-			continue
-		}
-
-		// control loop
-		t = time.NewTimer(time.Until(alarm.lastTimeEvaluated.Add(alarm.alarm.CheckPeriodicity)))
-		select {
-		case newAlarm := <-d.addAlarmChan:
-			addAlarmToQueue(newAlarm, time.Now().Add(newAlarm.alarm.CheckPeriodicity))
-			addAlarmToQueue(alarm, alarm.lastTimeEvaluated.Add(alarm.alarm.CheckPeriodicity))
-		case <-t.C:
-			alarmInt, stillActive := d.alarms.Load(alarm.id)
-			if !stillActive {
-				d.logger.Infof("alarm deleted meanwhile: %d", alarm.id)
-				break
-			}
-			alarm := alarmInt.(*alarmControl)
-			alarm.Lock()
-			alarm.lastTimeEvaluated = time.Now()
-			if time.Since(alarm.lastTimeTriggered) > alarm.alarm.TriggerBackoffTime {
-				go d.evalAlarm(alarm)
-			}
-			addAlarmToQueue(alarm, alarm.lastTimeEvaluated.Add(alarm.alarm.CheckPeriodicity))
-			alarm.Unlock()
-		case <-alarm.resetChan:
-			_, stillActive := d.alarms.Load(alarm.id)
-			if !stillActive {
-				d.logger.Infof("alarm deleted: %d", alarm.id)
-				break
-			}
-			alarm.Lock()
-			addAlarmToQueue(alarm, alarm.lastTimeEvaluated.Add(alarm.alarm.CheckPeriodicity))
-			alarm.Unlock()
-		}
-		t.Stop()
-	}
 }
 
 func (d *Demmon) handleCustomInterestSet(taskID int64, req *body_types.Request, c *client) {
@@ -993,12 +927,13 @@ func (d *Demmon) handleContinuousQueryTrigger(taskID int) {
 		d.logger.Errorf("Continuous query %d failed with error: %s", taskID, err)
 		job.triedNr++
 		job.err = err
-		if job.triedNr == job.triedNr {
+		if job.triedNr == job.IS.NrRetries {
+			d.logger.Errorf("Removing continous query: %s", taskID)
 			d.schedulerMu.Lock()
 			defer d.schedulerMu.Unlock()
 			err := d.scheduler.DeleteJob(taskID)
 			if err != nil {
-				d.logger.Errorf("Failed to delete continuous query: %s", err.Error())
+				d.logger.Errorf("Failed to delete continuous query %s: %s", taskID, err.Error())
 			}
 			return
 		}

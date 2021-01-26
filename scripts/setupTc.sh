@@ -15,7 +15,8 @@ bandwidth=$((orig_bandwidth / 2))
 echo "Bandwidth limit is $orig_bandwidth but will apply $bandwidth to compensate for applying on send and receive"
 
 ips=""
-while read -r ip; do
+while read -r ip name
+do
   ips="${ips} ${ip}"
 done <"$ipsMap"
 

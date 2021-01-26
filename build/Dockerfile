@@ -26,10 +26,10 @@ RUN apt update 2>/dev/null | grep -P "\d\K upgraded" ; apt install iproute2 -y 2
 COPY build/docker-entrypoint.sh /docker-entrypoint.sh
 COPY --from=builder /go/bin/demmon /go/bin/demmon
 ARG LATENCY_MAP=config/inet100Latencies_x0.04.txt
-ARG IPS_MAP=config/ips100.txt
+ARG CONFIG_FILE=config/generated_config.txt
 COPY ${LATENCY_MAP} /latencyMap.txt
-COPY ${IPS_MAP} /ips.txt
-RUN chmod +x /docker-entrypoint.sh /go/bin/demmon
+COPY ${CONFIG_FILE} /config.txt
+RUN chmod +x /setupTc.sh /docker-entrypoint.sh /go/bin/demmon
 RUN mkdir /tmp/logs
 
-ENTRYPOINT ["/docker-entrypoint.sh", "/latencyMap.txt", "/ips.txt"]
+ENTRYPOINT ["/docker-entrypoint.sh", "/latencyMap.txt", "/config.txt"]
