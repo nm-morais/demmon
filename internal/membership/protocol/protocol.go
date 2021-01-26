@@ -1758,22 +1758,21 @@ func (d *DemmonTree) progressToNextStep() {
 	}
 
 	lowestLatencyPeerParentLatency := info.LatencyCalc().CurrValue()
-	if lowestLatencyPeerParentLatency < lowestLatencyPeer.MeasuredLatency && lowestLatencyPeerParent.NrChildren() < d.config.MaxGrpSize {
+	if lowestLatencyPeerParentLatency < lowestLatencyPeer.MeasuredLatency {
 		d.logger.Infof("Joining level %d with parent %s because latency to parent is lower than to its children", d.joinLevel, lowestLatencyPeerParent.String())
 		d.unwatchPeersInLevelDone(d.joinLevel-1, lowestLatencyPeerParent)
 		d.myPendingParentInJoin = NewMeasuredPeer(lowestLatencyPeerParent, lowestLatencyPeerParentLatency)
 		d.sendJoinAsChildMsg(lowestLatencyPeerParent, info.LatencyCalc().CurrValue(), false)
 		return
-
 	}
 
 	if lowestLatencyPeerParent.NrChildren() < d.config.MinGrpSize {
-		d.logger.Infof("Joining level %d because ideal parent in level %d has too many children", d.joinLevel-1, d.joinLevel)
+		d.logger.Infof("Joining level %d because ideal parent in level %d has too little children", d.joinLevel-1, d.joinLevel)
 		d.unwatchPeersInLevelDone(d.joinLevel-1, lowestLatencyPeerParent)
 		d.myPendingParentInJoin = lowestLatencyPeer
 		d.sendJoinAsChildMsg(lowestLatencyPeer.PeerWithIDChain, lowestLatencyPeer.MeasuredLatency, false)
 	} else {
-		d.logger.Infof("Advancing from level %d to level %d because the lowest latency peer has enough peers to form minimum sized group", d.joinLevel, d.joinLevel+1)
+		d.logger.Infof("Advancing from level %d to level %d because the lowest latency peer is in lower level and current level node has enough members", d.joinLevel, d.joinLevel+1)
 		d.unwatchPeersInLevelDone(d.joinLevel - 1)
 		d.unwatchPeersInLevelDone(d.joinLevel, lowestLatencyPeer.PeerWithIDChain)
 		d.progressToNextLevel(lowestLatencyPeer)
