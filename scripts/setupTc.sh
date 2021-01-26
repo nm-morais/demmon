@@ -4,11 +4,15 @@ latencyMap=$1
 ipsMap=$2
 idx=$3
 nrIps=$4
-bandwith=$5
+orig_bandwidth=$5
 
-if [ -z $bandwith ]; then
-  bandwith=1000
+if [ -z "$orig_bandwidth" ]; then
+  orig_bandwidth=1000
 fi
+
+bandwidth=$((orig_bandwidth / 2))
+
+echo "Bandwidth limit is $orig_bandwidth but will apply $bandwidth to compensate for applying on send and receive"
 
 ips=""
 while read -r ip; do
@@ -18,7 +22,7 @@ done <"$ipsMap"
 # shellcheck disable=SC2112
 function setuptc() {
 
-  Inbandwith=$bandwith
+  in_bandwidth=$bandwidth
 
   cmd="/sbin/modprobe ifb numifbs=1"
   echo "$cmd"
@@ -44,7 +48,7 @@ function setuptc() {
   echo "$cmd"
   eval $cmd
 
-  cmd="tc class add dev ifb0 parent 1: classid 1:1 htb rate ${Inbandwith}mbit"
+  cmd="tc class add dev ifb0 parent 1: classid 1:1 htb rate ${in_bandwidth}mbit"
   echo "$cmd"
   eval $cmd
 
@@ -55,12 +59,12 @@ function setuptc() {
   eval $cmd
   j=1
 
-  cmd="tc class add dev eth0 parent 1: classid 1:1 htb rate ${bandwith}mbit"
+  cmd="tc class add dev eth0 parent 1: classid 1:1 htb rate ${bandwidth}mbit"
   echo "$cmd"
   eval $cmd
 
   for n in $1; do
-    cmd="tc class add dev eth0 parent 1: classid 1:${j}1 htb rate ${bandwith}mbit"
+    cmd="tc class add dev eth0 parent 1: classid 1:${j}1 htb rate ${bandwidth}mbit"
     echo "$cmd"
     eval $cmd
     targetIp=$(echo ${ips} | cut -d' ' -f${j})
