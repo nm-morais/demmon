@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import time
 import argparse
 from netaddr import IPNetwork
 import json
@@ -11,7 +11,7 @@ import sys
 
 config_file = "config/generated_config.txt"
 default_nr_landmarks = 3
-n_nodes_generated_conf = 25
+n_nodes_generated_conf = 50
 network = "demmon_network"
 cidr_provided = "10.10.0.0/16"
 vol_dir = "/tmp/demmon_logs/"
@@ -146,11 +146,15 @@ def stop(nodeList):
 def visualize_latencies(nodeList):
 
     tmp_dir = "/home/nunomorais/demmon_logs/"
-    output_path = "/home/nunomorais/latency_visualization"
+    output_path = "/home/nunomorais/latency_visualization.png"
 
-    delete_cmd = "rm -rf /home/nunomorais/latency_visualization"
+    delete_cmd = "rm -rf /home/nunomorais/latency_visualization.png"
     wrapped_delete_cmd = f"ssh dicluster {delete_cmd}"
     run_cmd_with_try(wrapped_delete_cmd, stdout=sys.stdout)
+
+    rm_cmd = f"rm -rf {tmp_dir}*"
+    wrapped_rm_cmd = f"ssh dicluster {rm_cmd}"
+    run_cmd_with_try(wrapped_rm_cmd, stdout=sys.stdout)
 
     for node in nodeList:
         copyLogsFromNodeCmd = f"rsync -raz {node}:{vol_dir} {tmp_dir}"
@@ -162,6 +166,10 @@ def visualize_latencies(nodeList):
     visualize_cmd = f"python3 /home/nunomorais/git/nm-morais/demmon/scripts/visualizeLatency.py --output_path={output_path} --config_file=/home/nunomorais/git/nm-morais/demmon/{config_file} --latencies_file=/home/nunomorais/git/nm-morais/demmon/{latency_map} --logs_folder={tmp_dir}"
     wrapped_visualize_cmd = f"ssh dicluster 'ssh {nodeList[0]} {visualize_cmd}'"
     run_cmd_with_try(wrapped_visualize_cmd, env=d, stdout=sys.stdout)
+    time.sleep(5)
+    retrieve_lats_cmd = f"scp dicluster:{output_path} ."
+    run_cmd_with_try(retrieve_lats_cmd, env=d, stdout=sys.stdout)
+
     return
 
 

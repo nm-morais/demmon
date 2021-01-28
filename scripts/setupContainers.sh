@@ -37,9 +37,9 @@ echo "number of nodes: $n_nodes"
 echo "Building images..."
 
 currdir=$(pwd)
-delete_containers_cmd='docker rm -f $(docker ps -a -q)  > /dev/null'
-build_cmd="cd ${currdir}; source config/swarmConfig.sh ; ./scripts/buildImage.sh > /dev/null"
-delete_logs_cmd="docker run -i --rm -v $SWARM_VOL:/data bash sh -c 'rm -rf /data/*'"
+delete_containers_cmd='docker rm -f $(docker ps -a -q)  > /dev/null || true'
+build_cmd="cd ${currdir}; source config/swarmConfig.sh ; ./scripts/buildImage.sh"
+delete_logs_cmd="docker run --rm -v $SWARM_VOL:/data bash sh -c 'rm -rf /data/*'"
 host=$(hostname)
 
 for node in $@; do
@@ -56,7 +56,6 @@ for node in $@; do
     echo "running delete logs cmd: $delete_logs_cmd"
     oarsh $node "$delete_logs_cmd"
     echo "done deleting logs on node: $node!"  
-    
   } &
 done
 wait

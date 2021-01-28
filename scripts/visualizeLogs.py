@@ -81,7 +81,7 @@ def parse_files(file_paths, output_folder):
     minLat = 10000000000000000
     maxLat = -1
 
-    level_width = 700
+    level_width = 1000
     landmarks = 0
     nodes = {}
     max_level = -1
@@ -93,7 +93,7 @@ def parse_files(file_paths, output_folder):
             file_path, latencies_added)
         max_level = max(node_level, max_level)
         if landmark:
-            xPos = (landmarks + 1) * level_width / 2
+            xPos = (landmarks + 1) * level_width * 2
             print("landmark: {}".format(node_ip))
             print("landmark xpos: {}".format(xPos))
             landmarks += 1
@@ -245,10 +245,10 @@ def parse_files(file_paths, output_folder):
     nx.draw_networkx_labels(G, pos, nodeLabels, font_size=6, ax=ax)
     nx.draw_networkx_edges(G, pos, edgelist=parent_edges,
                            edge_color=parent_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, width=4, ax=ax)
-    nx.draw_networkx_edges(G, pos, style='dashed', edgelist=latencyEdges, width=1,
-                           alpha=0.5, edge_color=edge_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, ax=ax)
-    nx.draw_networkx_edge_labels(
-        G, pos, latencyEdgeLabels, label_pos=0.33, alpha=0.5, font_size=6, ax=ax)
+    # nx.draw_networkx_edges(G, pos, style='dashed', edgelist=latencyEdges, width=1,
+    #                        alpha=0.5, edge_color=edge_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, ax=ax)
+    # nx.draw_networkx_edge_labels(
+    #     G, pos, latencyEdgeLabels, label_pos=0.33, alpha=0.5, font_size=6, ax=ax)
 
     cbaxes = fig.add_axes([0.95, 0.05, 0.01, 0.65])
     norm = mpl.colors.Normalize(vmin=minLat, vmax=maxLat)
