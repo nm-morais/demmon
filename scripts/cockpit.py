@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+
+import multiprocessing as mp
 import time
 import argparse
 from netaddr import IPNetwork
@@ -9,16 +11,18 @@ import signal
 import sys
 
 
-config_file = "config/generated_config.txt"
 default_nr_landmarks = 3
 n_nodes_generated_conf = 50
 network = "demmon_network"
 cidr_provided = "10.10.0.0/16"
-vol_dir = "/tmp/demmon_logs/"
+vol_dir = "/home/nunomorais/demmon_logs/"
 vol_name = "demmon_volume"
 swarm_gateway = "10.10.1.1"
 image_name = "nmmorais/demmon:latest"
-latency_map = "config/bruno_100_latencies.txt"
+
+config_file = "config/generated_config.txt"
+coords_file = "config/bruno_2_100_coords.txt"
+latency_map = "config/bruno_2_100_latencies.txt"
 
 
 def assign_env_vars(env):
@@ -38,33 +42,42 @@ def main():
     print(f"NodeList: {nodeList}")
     print(f"args: {args}")
 
-    if args.latencies:
-        visualize_latencies(nodeList)
+    repeat = args.repeat != 0
+    print(f"repeat: {repeat}")
+    first_pass = True
+    while first_pass or repeat:
+        first_pass = False
+        if args.stats:
+            visualize_stats(nodeList)
 
-    if args.generate:
-        writeGeneratedConf(nodeList)
+        if args.generate:
+            writeGeneratedConf(nodeList)
 
-    if args.create_swarm:
-        start_swarm(nodeList)
+        if args.create_swarm:
+            start_swarm(nodeList)
 
-    if args.teardown_swarm:
-        teardown(nodeList)
+        if args.teardown_swarm:
+            teardown(nodeList)
 
-    if args.deploy:
-        deploy(nodeList, args.landmarks)
+        if args.deploy:
+            deploy(nodeList, args.landmarks_nr, args.landmarks)
 
-    if args.check:
-        check(nodeList)
+        if args.check:
+            check(nodeList)
 
-    if args.stop:
-        stop(nodeList)
+        if args.stop:
+            stop(nodeList)
+
+        if repeat:
+            print(f"sleeping {args.repeat} seconds...")
+            time.sleep(args.repeat)
 
 
 def parseArgs():
-    parser = argparse.ArgumentParser(description='demmon main script')
+    parser = argparse.ArgumentParser(description='demmon controller script')
 
-    parser.add_argument('--latencies', dest='latencies',
-                        action='store_true', help='visualize latencies')
+    parser.add_argument('--stats', dest='stats',
+                        action='store_true', help='visualize stats')
 
     parser.add_argument('--create', dest='create_swarm',
                         action='store_true', help='start swam')
@@ -84,8 +97,14 @@ def parseArgs():
     parser.add_argument('--stop', dest='stop',
                         action='store_true', help='stop configurations')
 
-    parser.add_argument("--landmarks", type=int,
-                        help="the number of landmarks", required=False, default=default_nr_landmarks, dest="landmarks")
+    parser.add_argument("--landmarks_nr", type=int,
+                        help="the number of landmarks", required=False, default=default_nr_landmarks, dest="landmarks_nr")
+
+    parser.add_argument('--repeat', dest='repeat', default=0, type=int,
+                        help='repeat script continuously and sleep for <repeat> seconds')
+
+    parser.add_argument("--landmarks",
+                        help="the landmarks", dest="landmarks")
 
     parser.add_argument('--nodes',
                         metavar='nodes',
@@ -99,7 +118,7 @@ def parseArgs():
 
 def check(nodeList):
     tmp_dir = "/home/nunomorais/demmon_logs/"
-    gather_logs(nodeList, vol_dir, tmp_dir)
+    # gather_logs(nodeList, vol_dir, tmp_dir)
     for node_folder in os.listdir(tmp_dir):
         print(node_folder)
         node_path = "{}/{}".format(tmp_dir, node_folder)
@@ -143,45 +162,48 @@ def stop(nodeList):
     return
 
 
-def visualize_latencies(nodeList):
+def visualize_stats(nodeList):
 
-    tmp_dir = "/home/nunomorais/demmon_logs/"
-    output_path = "/home/nunomorais/latency_visualization.png"
+    output_path = "/home/nunomorais/stats/"
 
-    delete_cmd = "rm -rf /home/nunomorais/latency_visualization.png"
-    wrapped_delete_cmd = f"ssh dicluster {delete_cmd}"
-    run_cmd_with_try(wrapped_delete_cmd, stdout=sys.stdout)
+    # delete_cmd = f"rm -rf {output_path}*"
+    # wrapped_delete_cmd = f"ssh dicluster {delete_cmd}"
+    # run_cmd_with_try(wrapped_delete_cmd, stdout=sys.stdout)
 
-    rm_cmd = f"rm -rf {tmp_dir}*"
-    wrapped_rm_cmd = f"ssh dicluster {rm_cmd}"
-    run_cmd_with_try(wrapped_rm_cmd, stdout=sys.stdout)
-
-    for node in nodeList:
-        copyLogsFromNodeCmd = f"rsync -raz {node}:{vol_dir} {tmp_dir}"
-        wrapped_copy_logs_cmd = f"ssh dicluster {copyLogsFromNodeCmd}"
-        run_cmd_with_try(wrapped_copy_logs_cmd, stdout=sys.stdout)
+    # rm_cmd = f"rm -rf {tmp_dir}*"
+    # wrapped_rm_cmd = f"ssh dicluster {rm_cmd}"
+    # run_cmd_with_try(wrapped_rm_cmd, stdout=sys.stdout)
+    # gather_logs(nodeList, vol_dir, tmp_dir)
 
     d = dict(os.environ)
     assign_env_vars(d)
-    visualize_cmd = f"python3 /home/nunomorais/git/nm-morais/demmon/scripts/visualizeLatency.py --output_path={output_path} --config_file=/home/nunomorais/git/nm-morais/demmon/{config_file} --latencies_file=/home/nunomorais/git/nm-morais/demmon/{latency_map} --logs_folder={tmp_dir}"
+    visualize_cmd = f"""python3 /home/nunomorais/git/nm-morais/demmon/scripts/visualizeStats.py  \
+    --output_path={output_path} \
+    --config_file=/home/nunomorais/git/nm-morais/demmon/{config_file} \
+    --latencies_file=/home/nunomorais/git/nm-morais/demmon/{latency_map} \
+    --coords_file=/home/nunomorais/git/nm-morais/demmon/{coords_file} \
+    --logs_folder={vol_dir} \
+    """
     wrapped_visualize_cmd = f"ssh dicluster 'ssh {nodeList[0]} {visualize_cmd}'"
     run_cmd_with_try(wrapped_visualize_cmd, env=d, stdout=sys.stdout)
-    time.sleep(5)
-    retrieve_lats_cmd = f"scp dicluster:{output_path} ."
+    retrieve_lats_cmd = f"scp -r dicluster:{output_path}* stats/"
     run_cmd_with_try(retrieve_lats_cmd, env=d, stdout=sys.stdout)
 
     return
 
 
-def deploy(nodeList, landmarks_nr):
+def deploy(nodeList, landmarks_nr, landmark_list=""):
     node_list_str = join_str_arr(nodeList, " ")
     deploy_cmd = f"./scripts/setupContainers.sh {node_list_str}"
     d = dict(os.environ)
     assign_env_vars(d)
     landmarks = []
-    f = open(config_file, "r")
-    for i in range(landmarks_nr):
-        landmarks.append(f.readline().split(" ")[0])
+    if landmark_list is None:
+        f = open(config_file, "r")
+        for i in range(landmarks_nr):
+            landmarks.append(f.readline().split(" ")[0])
+    else:
+        landmarks = landmark_list.split(" ")
 
     print("deploying with landmarks: {}".format(join_str_arr(landmarks, " ")))
     d["LANDMARKS"] = join_str_arr(landmarks, ";")
@@ -215,9 +237,15 @@ def writeGeneratedConf(nodeList):
 
 
 def gather_logs(nodeList, source_folder, dest_folder):
+    processes = []
     for node in nodeList:
-        copyLogsFromNodeCmd = f"rsync -raz {node}:{source_folder} {dest_folder}"
-        run_cmd_with_try(cmd=copyLogsFromNodeCmd, stdout=sys.stdout)
+        copyLogsFromNodeCmd = f"ssh dicluster 'rsync -raz {node}:{source_folder} {dest_folder}'"
+        p = mp.Process(target=run_cmd_with_try, kwargs={
+                       "cmd": copyLogsFromNodeCmd})
+        p.start()
+        processes.append(p)
+    for p in processes:
+        p.join()
 
 
 def exec_cmd_on_node_with_output(cmd, node):

@@ -44,22 +44,25 @@ host=$(hostname)
 
 for node in $@; do
   {
+
     echo "deleting running containers on node: $node" 
     oarsh $node "$delete_containers_cmd"
     echo "done deleting containers on node: $node!"  
 
-    echo "starting build on node: $node" 
-    oarsh $node $build_cmd
-    echo "done building image on node: $node!" 
-
     echo "deleting logs on node: $node" 
     echo "running delete logs cmd: $delete_logs_cmd"
-    oarsh $node "$delete_logs_cmd"
+    oarsh $node "$delete_logs_cmd" 
     echo "done deleting logs on node: $node!"  
+
+    echo "starting build on node: $node" 
+    oarsh $node $build_cmd 
+    echo "done building image on node: $node!" 
+
+    wait
   } &
 done
 wait
-
+sleep 1s
 cat $CONFIG_FILE
 
 maxcpu=$(nproc)

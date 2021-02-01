@@ -5,10 +5,6 @@ set -e
 echo "env: "
 env
 
-if [ $3 -eq 0 ]; then
-    rm -rf /tmp/logs/*
-fi
-
 echo "Bootstraping TC, args: $1 $2 $3 $4"
 bash setupTc.sh $1 $2 $3 $4
 

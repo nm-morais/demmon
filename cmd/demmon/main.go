@@ -43,16 +43,19 @@ var (
 	logFolder         string
 
 	demmonTreeConf = &membershipProtocol.DemmonTreeConfig{
-		LandmarkRedialTimer:           1 * time.Second,
-		JoinMessageTimeout:            4 * time.Second,
-		MaxTimeToProgressToNextLevel:  4 * time.Second,
-		MaxRetriesJoinMsg:             3,
-		Landmarks:                     nil,
-		MinGrpSize:                    2,
-		MaxGrpSize:                    5,
-		NrPeersToKickPerParent:        2,
-		NrPeersToBecomeParentInAbsorb: 2,
-		PhiLevelForNodeDown:           3,
+		LandmarkRedialTimer:          1 * time.Second,
+		JoinMessageTimeout:           4 * time.Second,
+		MaxTimeToProgressToNextLevel: 4 * time.Second,
+		MaxRetriesJoinMsg:            3,
+		Landmarks:                    nil,
+
+		MinGrpSize:                             3,
+		MaxGrpSize:                             9,
+		NrPeersToKickPerParent:                 3,
+		NrPeersToBecomeParentInAbsorb:          3,
+		MinLatencyImprovementToImprovePosition: 10 * time.Millisecond,
+
+		PhiLevelForNodeDown: 3,
 		// SwitchProbability:             0.5,
 
 		LimitFirstLevelGroupSize:      true,
@@ -61,9 +64,8 @@ var (
 		ChildrenRefreshTickDuration:   3 * time.Second,
 		RejoinTimerDuration:           10 * time.Second,
 
-		MinLatencyImprovementToImprovePosition: 25 * time.Millisecond,
-		AttemptImprovePositionProbability:      0.2,
-		EvalMeasuredPeersRefreshTickDuration:   5 * time.Second,
+		AttemptImprovePositionProbability:    0.2,
+		EvalMeasuredPeersRefreshTickDuration: 5 * time.Second,
 
 		// EnableSwitch: false,
 
@@ -81,8 +83,8 @@ var (
 		NrPeersToMeasureRandom:             1,
 		NrPeersToMergeInWalkSample:         5,
 
+		MinLatencyImprovementPerPeerForSwitch: 10 * time.Millisecond,
 		// CheckSwitchOportunityTimeout:          7500 * time.Millisecond,
-		MinLatencyImprovementPerPeerForSwitch: 25 * time.Millisecond,
 	}
 )
 

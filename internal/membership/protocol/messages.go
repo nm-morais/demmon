@@ -313,6 +313,7 @@ func (JoinAsParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 const joinAsChildMessageID = 2005
 
 type JoinAsChildMessage struct {
+	Improvement     bool
 	Urgent          bool
 	ExpectedID      PeerIDChain
 	MeasuredLatency time.Duration
@@ -323,9 +324,11 @@ func NewJoinAsChildMessage(
 	sender *PeerWithIDChain,
 	measuredLatency time.Duration,
 	expectedID PeerIDChain,
-	urgent bool,
+	urgent,
+	improvement bool,
 ) JoinAsChildMessage {
 	return JoinAsChildMessage{
+		Improvement:     improvement,
 		Urgent:          urgent,
 		ExpectedID:      expectedID,
 		MeasuredLatency: measuredLatency,
@@ -364,6 +367,12 @@ func (JoinAsChildMsgSerializer) Serialize(msg message.Message) []byte {
 		msgBytes = append(msgBytes, 0)
 	}
 
+	if jacMsg.Improvement {
+		msgBytes = append(msgBytes, 1)
+	} else {
+		msgBytes = append(msgBytes, 0)
+	}
+
 	return msgBytes
 }
 
@@ -376,8 +385,10 @@ func (JoinAsChildMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	n, peerIDChain := DeserializePeerIDChain(msgBytes[bufPos:])
 	bufPos += n
 	urgent := msgBytes[bufPos] == 1
+	bufPos += 1
+	improvement := msgBytes[bufPos] == 1
 
-	return JoinAsChildMessage{MeasuredLatency: measuredLatency, ExpectedID: peerIDChain, Urgent: urgent, Sender: sender}
+	return JoinAsChildMessage{MeasuredLatency: measuredLatency, ExpectedID: peerIDChain, Urgent: urgent, Sender: sender, Improvement: improvement}
 }
 
 const joinAsChildMessageReplyID = 2006
