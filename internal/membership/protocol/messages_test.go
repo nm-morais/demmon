@@ -130,35 +130,15 @@ func TestAbsorbMessageSerializer(t *testing.T) {
 	chain := PeerIDChain{}
 	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1}, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
 
-	absorber := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 3, Coordinates{3})
-	absorbed := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 3, Coordinates{3})
+	toKick := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 3, Coordinates{3})
 
-	toSerialize := NewAbsorbMessage(absorbed, absorber)
+	toSerialize := NewAbsorbMessage(toKick)
 	serializer := toSerialize.Serializer()
 	deserializer := toSerialize.Deserializer()
 	msgBytes := serializer.Serialize(toSerialize)
 	deserialized := deserializer.Deserialize(msgBytes)
 	msgConverted := deserialized.(AbsorbMessage)
 	fmt.Println(msgConverted)
-
-	if !peer.PeersEqual(msgConverted.PeerAbsorber, toSerialize.PeerAbsorber) {
-		t.Logf("%+v", msgConverted.PeerAbsorber.String())
-		t.Logf("%+v", toSerialize.PeerAbsorber.String())
-		t.Log("peerAbsorber does not match")
-		t.FailNow()
-
-		return
-	}
-
-	if !peer.PeersEqual(absorbed, msgConverted.PeerToKick) {
-		t.Logf("%s", absorbed.String())
-		t.Logf("%+v", msgConverted.PeerToKick)
-		t.Log("peer3 does not match")
-		t.FailNow()
-
-		return
-	}
-
 	t.Logf("before: %+v", toSerialize)
 	t.Logf("after: %+v", deserialized)
 }
@@ -176,7 +156,7 @@ func TestJoinReplyMsgSerializer(t *testing.T) {
 		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3}),
 	}
 
-	toSerialize := NewJoinReplyMessage(children, self)
+	toSerialize := NewJoinReplyMessage(children, self, self)
 	serializer := toSerialize.Serializer()
 	deserializer := toSerialize.Deserializer()
 	msgBytes := serializer.Serialize(toSerialize)

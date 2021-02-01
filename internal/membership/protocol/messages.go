@@ -49,14 +49,16 @@ func (JoinMsgSerializer) Deserialize(_ []byte) message.Message {
 const joinReplyMessageID = 2001
 
 type JoinReplyMessage struct {
+	Parent   *PeerWithIDChain
 	Sender   *PeerWithIDChain
 	Children []*PeerWithIDChain
 }
 
-func NewJoinReplyMessage(children []*PeerWithIDChain, sender *PeerWithIDChain) JoinReplyMessage {
+func NewJoinReplyMessage(children []*PeerWithIDChain, sender, parent *PeerWithIDChain) JoinReplyMessage {
 	return JoinReplyMessage{
 		Children: children,
 		Sender:   sender,
+		Parent:   parent,
 	}
 }
 
@@ -82,6 +84,7 @@ func (JoinReplyMsgSerializer) Serialize(msg message.Message) []byte {
 	var msgBytes []byte
 
 	msgBytes = append(msgBytes, jrMsg.Sender.MarshalWithFields()...)
+	msgBytes = append(msgBytes, jrMsg.Parent.MarshalWithFields()...)
 	msgBytes = append(msgBytes, SerializePeerWithIDChainArray(jrMsg.Children)...)
 
 	return msgBytes
@@ -89,11 +92,13 @@ func (JoinReplyMsgSerializer) Serialize(msg message.Message) []byte {
 
 func (JoinReplyMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	bufPos := 0
-	n, peer := UnmarshalPeerWithIdChain(msgBytes[bufPos:])
+	n, sender := UnmarshalPeerWithIdChain(msgBytes[bufPos:])
+	bufPos += n
+	n, parent := UnmarshalPeerWithIdChain(msgBytes[bufPos:])
 	bufPos += n
 	_, hosts := DeserializePeerWithIDChainArray(msgBytes[bufPos:])
 
-	return JoinReplyMessage{Children: hosts, Sender: peer}
+	return JoinReplyMessage{Children: hosts, Sender: sender, Parent: parent}
 }
 
 // -------------- Update parent --------------
@@ -523,14 +528,12 @@ func (JoinAsChildMessageReplySerializer) Deserialize(msgBytes []byte) message.Me
 const absorbMessageID = 2007
 
 type AbsorbMessage struct {
-	PeerAbsorber *PeerWithIDChain
-	PeerToKick   *PeerWithIDChain
+	peerAbsorber *PeerWithIDChain
 }
 
-func NewAbsorbMessage(peerToAbsorb, peerAbsorber *PeerWithIDChain) AbsorbMessage {
+func NewAbsorbMessage(peerAbsorber *PeerWithIDChain) AbsorbMessage {
 	return AbsorbMessage{
-		PeerToKick:   peerToAbsorb,
-		PeerAbsorber: peerAbsorber,
+		peerAbsorber: peerAbsorber,
 	}
 }
 
@@ -553,20 +556,12 @@ var absorbMessageSerializer = AbsorbMessageSerializer{}
 
 func (AbsorbMessageSerializer) Serialize(msg message.Message) []byte {
 	absMsg := msg.(AbsorbMessage)
-
-	var msgBytes []byte
-
-	msgBytes = append(msgBytes, absMsg.PeerAbsorber.MarshalWithFields()...)
-	msgBytes = append(msgBytes, absMsg.PeerToKick.MarshalWithFields()...)
-
-	return msgBytes
+	return absMsg.peerAbsorber.MarshalWithFields()
 }
 
 func (AbsorbMessageSerializer) Deserialize(msgBytes []byte) message.Message {
-	n, peerAbsorber := UnmarshalPeerWithIdChain(msgBytes)
-	_, peerToKick := UnmarshalPeerWithIdChain(msgBytes[n:])
-
-	return AbsorbMessage{PeerToKick: peerToKick, PeerAbsorber: peerAbsorber}
+	_, peerAbsorber := UnmarshalPeerWithIdChain(msgBytes)
+	return AbsorbMessage{peerAbsorber: peerAbsorber}
 }
 
 // DISCONNECT AS CHILD message

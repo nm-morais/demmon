@@ -1,10 +1,90 @@
 package protocol
 
 import (
+	"fmt"
+	"math"
 	"math/rand"
+	"sort"
+	"strings"
+	"time"
 
 	"github.com/nm-morais/demmon/internal/utils"
+	"github.com/nm-morais/go-babel/pkg/nodeWatcher"
+	"github.com/nm-morais/go-babel/pkg/peer"
+	"github.com/nm-morais/go-babel/pkg/timer"
 )
+
+func (d *DemmonTree) handleDebugTimer(joinTimer timer.Timer) {
+	sb := strings.Builder{}
+
+	toStrWithLat := func(p peer.Peer) string {
+		if p == nil {
+			return ""
+		}
+
+		nodeInfo, err := d.nodeWatcher.GetNodeInfo(p)
+
+		if err != nil {
+			return ""
+		}
+		return fmt.Sprintf("%s:%d;", p.IP().String(), nodeInfo.LatencyCalc().CurrValue().Milliseconds())
+	}
+
+	for _, child := range d.myChildren {
+		if _, err := sb.WriteString(toStrWithLat(child)); err != nil {
+			panic(err)
+		}
+	}
+
+	for _, sibling := range d.mySiblings {
+		if _, err := sb.WriteString(toStrWithLat(sibling)); err != nil {
+			panic(err)
+		}
+	}
+
+	if d.myParent != nil {
+		if _, err := sb.WriteString(toStrWithLat(d.myParent)); err != nil {
+			panic(err)
+		}
+	}
+	d.logger.Infof("<latency_collection> %s", sb.String())
+}
+
+func (d *DemmonTree) generateChildID() PeerID {
+	i := 0
+outer:
+	for {
+		i++
+		if i == 5 { // for safety
+			panic("could not generate child ID in 5 iterations")
+		}
+		var peerID PeerID
+		n, err := rand.Read(peerID[:])
+		if err != nil {
+			panic(err)
+		}
+		if n != len(peerID) {
+			panic("rand did not write all peerID array")
+		}
+
+		for _, c := range d.myChildren {
+			if peerID.String() == c.chain[len(c.chain)-1].String() {
+				continue outer
+			}
+		}
+
+		d.logger.Infof("Generated peerID: %+v", peerID)
+		return peerID
+	}
+}
+
+func peerMapToArr(peers map[string]*PeerWithIDChain) []*PeerWithIDChain {
+	toReturn := make([]*PeerWithIDChain, 0, len(peers))
+	for _, p := range peers {
+		toReturn = append(toReturn, p)
+	}
+	return toReturn
+}
 
 func getRandSample(nrPeersToSelect int, peers ...*PeerWithIDChain) map[string]*PeerWithIDChain {
 	rand.Shuffle(len(peers), func(i, j int) { peers[i], peers[j] = peers[j], peers[i] })
@@ -65,13 +145,25 @@ func getExcludingDescendantsOf(toFilter []*PeerWithIDChain, ascendantChain PeerI
 	return toReturn
 }
 
-// func xorDistance(ip1 net.IP, ip2 net.IP) *big.Int {
-// 	var rawBytes [32]byte
-// 	ip1_4 := ip1.To4()
-// 	ip2_4 := ip2.To4()
+func (d *DemmonTree) getPeerMapAsPeerMeasuredArr(peerMap map[string]*PeerWithIDChain) MeasuredPeersByLat {
+	measuredPeers := make(MeasuredPeersByLat, 0, len(peerMap))
 
-// 	for i := 0; i < len(ip1_4); i++ {
-// 		rawBytes[i] = ip1_4[i] ^ ip2_4[i]
-// 	}
-// 	return big.NewInt(0).SetBytes(rawBytes[:])
-// }
+	for _, peer := range peerMap {
+		nodeStats, err := d.nodeWatcher.GetNodeInfo(peer.Peer)
+		var currLat time.Duration
+		if err != nil {
+			d.logger.Warnf("Do not have latency measurement for %s", peer.String())
+			currLat = math.MaxInt64
+		} else {
+			currLat = nodeStats.LatencyCalc().CurrValue()
+		}
+		measuredPeers = append(measuredPeers, NewMeasuredPeer(peer, currLat))
+	}
+	sort.Sort(measuredPeers)
+
+	return measuredPeers
+}
+
+func (d *DemmonTree) isNodeDown(n nodeWatcher.NodeInfo) bool {
+	return !n.Detector().IsAvailable()
+}

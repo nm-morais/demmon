@@ -49,10 +49,10 @@ var (
 		MaxRetriesJoinMsg:            3,
 		Landmarks:                    nil,
 
-		MinGrpSize:                             3,
-		MaxGrpSize:                             9,
-		NrPeersToKickPerParent:                 3,
-		NrPeersToBecomeParentInAbsorb:          3,
+		MinGrpSize:                    4,
+		NrPeersToBecomeParentInAbsorb: 1,
+		MaxGrpSize:                    7,
+		// NrPeersToKickPerParent:                 3,
 		MinLatencyImprovementToImprovePosition: 10 * time.Millisecond,
 
 		PhiLevelForNodeDown: 3,
