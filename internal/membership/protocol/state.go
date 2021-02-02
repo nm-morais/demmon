@@ -77,10 +77,11 @@ func (d *DemmonTree) addParent(
 	}
 
 	if peer.PeersEqual(newParent, d.myPendingParentInJoin) {
-		d.myPendingParentInJoin = nil
+		existingLatencyMeasurement = &d.myPendingParentInJoin.MeasuredLatency
 		d.joined = true
 		d.joinMap = nil // TODO cleanup join function
-		existingLatencyMeasurement = &d.myPendingParentInJoin.MeasuredLatency
+		d.bestPeerlastLevel = nil
+		d.myPendingParentInJoin = nil
 		haveCause = true
 	}
 
@@ -182,6 +183,7 @@ func (d *DemmonTree) addChild(newChild *PeerWithIDChain, childrenLatency time.Du
 		d.nodeWatcher.Watch(newChild, d.ID())
 	}
 
+	d.myChildren[newChild.String()] = newChildWithID
 	d.babel.Dial(d.ID(), newChild, newChild.ToTCPAddr())
 	d.updateSelfVersion()
 	d.logger.Infof("added children: %s", newChildWithID.String())
@@ -226,11 +228,18 @@ func (d *DemmonTree) removeChild(toRemove peer.Peer) {
 
 func (d *DemmonTree) addSibling(newSibling *PeerWithIDChain) {
 	d.logger.Infof("Adding sibling: %s", newSibling.String())
-	if _, ok := d.mySiblings[newSibling.String()]; !ok {
+	oldSibling, ok := d.mySiblings[newSibling.String()]
+
+	if !ok {
 		d.nodeWatcher.Watch(newSibling.Peer, d.ID())
 		d.babel.Dial(d.ID(), newSibling.Peer, newSibling.Peer.ToTCPAddr())
-		d.mySiblings[newSibling.String()] = newSibling
 		d.removeFromMeasuredPeers(newSibling)
+	}
+
+	d.mySiblings[newSibling.String()] = newSibling
+	if ok {
+		d.mySiblings[newSibling.String()].inConnActive = oldSibling.inConnActive
+		d.mySiblings[newSibling.String()].outConnActive = oldSibling.outConnActive
 	}
 }
 
@@ -243,7 +252,6 @@ func (d *DemmonTree) removeSibling(toRemove peer.Peer) {
 		d.babel.Disconnect(d.ID(), toRemove)
 		return
 	}
-
 	d.logger.Panic("Removing sibling not in mySiblings or myPendingSiblings")
 }
 

@@ -149,22 +149,25 @@ def parse_file(file, node_ip, node_infos):
 
         if "My parent changed" in line:
             split = line.split(" ")
+
             split_line = line.split(" ")
-            ip_port = str(split_line[10])
+            ip_port = str(split_line[11])
             ip = str(ip_port.split(":")[0])[6:]
 
-            # print(f"parent_name: {ip}")
+            print(f"parent_name: {ip}")
             node_measurements["parent"] = ip
         if "My level" in line:
             node_measurements["level"] = int(line.split(" ")[-1][:-2])
         if "Latency:" in line and "[NodeWatcher]" in line:
+
             if "Lowest Latency Peer" in line:
                 continue
-
             split = line.split(" ")
-            ip_port = str(split[6])[:-1]
+            ip_port = str(split[7])[:-1]
             ip = str(ip_port.split(":")[0])[6:]
-            latStr = split[10]
+            # for i, j in enumerate(split):
+            #     print(i, j)
+            latStr = split[11]
             latStr2 = latStr[:-1]
             node_measurements["latencies"].append(
                 (node_ip, ip, (int(latStr2) / 1000000) / 2))
@@ -241,7 +244,7 @@ def plotTree(node_infos, max_level, output_folder):
                 parentPos = (parent_less_nodes, -2)
                 parent_less_nodes += 100
                 print(
-                    f"err: {nodeID} has parent but parent {parentId} but parent not in node list")
+                    f"err: {nodeID} has parent but parent: {parentId} not in node list")
                 continue
 
             nodeParentPos = parentPos[parentId]
@@ -270,6 +273,8 @@ def plotTree(node_infos, max_level, output_folder):
             parent_edges.append((nodeID, parentId))
 
         for latencyPair in node_infos[nodeID]["latencies"]:
+            # print(
+            #     f"Adding latency edge between {latencyPair[0]} and {latencyPair[1]}")
             minLat = min(int(latencyPair[2]), minLat)
             maxLat = max(int(latencyPair[2]), maxLat)
             latencyEdges[(latencyPair[0], latencyPair[1])
@@ -281,20 +286,21 @@ def plotTree(node_infos, max_level, output_folder):
     parent_colors = []
     for p in parent_edges:
         try:
-            parent_colors.append(latencyEdges[p])
             latencyEdgeLabels[p] = latencyEdges[p]
+            parent_colors.append(latencyEdges[p])
         except KeyError:
             try:
-                parent_colors.append(latencyEdges[(p[1], p[0])])
                 latencyEdgeLabels[(p[1], p[0])] = latencyEdges[(p[1], p[0])]
+                parent_colors.append(latencyEdges[(p[1], p[0])])
             except KeyError:
-                parent_colors.append(1000000000)
+                print(f"Missing latency edge between {p[0]} and {p[1]}")
                 latencyEdgeLabels[(p[1], p[0])] = "missing"
+                parent_colors.append(1000000000)
 
     # import matplotlib.pyplot as plt
     # latVals = [latencyEdges[l] for l in latencyEdgeLabels]
     # n, bins, patches = plt.hist(latVals, 50, facecolor='green', alpha=0.75)
-    # plt.savefig("{}/histogram.svg".format(output_folder))
+    # plt.savefig("{}/histogram.svg".format(output_folder), dpi=1200)
 
     import matplotlib.pyplot as plt
     G = nx.Graph()
@@ -312,12 +318,12 @@ def plotTree(node_infos, max_level, output_folder):
     # nx.draw_networkx_edge_labels(
     #     G, pos, latencyEdgeLabels, label_pos=0.33, alpha=0.5, font_size=6, ax=ax)
 
-    cbaxes = fig.add_axes([0.85, 0.05, 0.01, 0.65])
+    cbaxes = fig.add_axes([0.89, 0.6, 0.005, 0.33])
     norm = matplotlib.colors.Normalize(vmin=minLat, vmax=maxLat)
     matplotlib.colorbar.ColorbarBase(
         cbaxes, cmap=cmap, norm=norm, orientation='vertical')
     print(f"saving topology to: {output_folder}")
-    plt.savefig("{}topology.svg".format(output_folder))
+    plt.savefig("{}topology.svg".format(output_folder), dpi=1200)
     # print("parent_edges:\t", parent_edges)
     return parent_edges, landmarks
 
@@ -388,7 +394,7 @@ def plotConfigMapAndConnections(node_positions, node_ids, parent_edges, landmark
                            alpha=1)
     plt.axis("off")
     print(f"saving config with coords to: {output_folder}")
-    plt.savefig(f"{output_folder}topology_coords.svg")
+    plt.savefig(f"{output_folder}topology_coords.svg", dpi=1200)
 
 
 def plot_avg_latency_all_nodes_over_time(df, output_path):
@@ -404,7 +410,7 @@ def plot_avg_latency_all_nodes_over_time(df, output_path):
            title='Average latency over time in active view')
     ax.grid()
     print(f"saving average latency over time in active view to: {output_path}")
-    fig.savefig(f"{output_path}latencies_over_time.svg")
+    fig.savefig(f"{output_path}latencies_over_time.svg", dpi=1200)
 
 
 def plot_avg_degree_all_nodes_over_time(df, output_path):
@@ -417,7 +423,7 @@ def plot_avg_degree_all_nodes_over_time(df, output_path):
            title='Average degree of nodes over time')
     ax.grid()
     print(f"saving average degree of nodes over time to: {output_path}")
-    fig.savefig(f"{output_path}degree_over_time.svg")
+    fig.savefig(f"{output_path}degree_over_time.svg", dpi=1200)
 
 
 def read_coords_file(file_path):

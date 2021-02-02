@@ -84,18 +84,30 @@ func (JoinReplyMsgSerializer) Serialize(msg message.Message) []byte {
 	var msgBytes []byte
 
 	msgBytes = append(msgBytes, jrMsg.Sender.MarshalWithFields()...)
-	msgBytes = append(msgBytes, jrMsg.Parent.MarshalWithFields()...)
-	msgBytes = append(msgBytes, SerializePeerWithIDChainArray(jrMsg.Children)...)
+	if jrMsg.Parent != nil {
+		msgBytes = append(msgBytes, 1)
+		msgBytes = append(msgBytes, jrMsg.Parent.MarshalWithFields()...)
+	} else {
+		msgBytes = append(msgBytes, 0)
+	}
 
-	return msgBytes
+	return append(msgBytes, SerializePeerWithIDChainArray(jrMsg.Children)...)
 }
 
 func (JoinReplyMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	bufPos := 0
 	n, sender := UnmarshalPeerWithIdChain(msgBytes[bufPos:])
 	bufPos += n
-	n, parent := UnmarshalPeerWithIdChain(msgBytes[bufPos:])
-	bufPos += n
+	var parent *PeerWithIDChain
+
+	if msgBytes[bufPos] == 1 {
+		bufPos++
+		n, parent = UnmarshalPeerWithIdChain(msgBytes[bufPos:])
+		bufPos += n
+	} else {
+		bufPos++
+	}
+
 	_, hosts := DeserializePeerWithIDChainArray(msgBytes[bufPos:])
 
 	return JoinReplyMessage{Children: hosts, Sender: sender, Parent: parent}
