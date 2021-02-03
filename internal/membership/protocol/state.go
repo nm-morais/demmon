@@ -67,11 +67,11 @@ func (d *DemmonTree) addParent(
 	// TODO add to measured peers
 	if peer.PeersEqual(newParent, d.myPendingParentInRecovery) {
 		d.myPendingParentInRecovery = nil
-		existingLatencyMeasurement = &d.myPendingParentInImprovement.MeasuredLatency
 		haveCause = true
 	}
 
 	if peer.PeersEqual(newParent, d.myPendingParentInImprovement) {
+		existingLatencyMeasurement = &d.myPendingParentInImprovement.MeasuredLatency
 		d.myPendingParentInImprovement = nil
 		haveCause = true
 	}

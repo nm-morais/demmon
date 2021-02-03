@@ -49,9 +49,10 @@ var (
 		MaxRetriesJoinMsg:            3,
 		Landmarks:                    nil,
 
-		MinGrpSize:                    4,
-		NrPeersToBecomeParentInAbsorb: 1,
-		MaxGrpSize:                    7,
+		MinGrpSize:            3,
+		MaxGrpSize:            7,
+		MinSizeToCreateNewGrp: 6,
+
 		// NrPeersToKickPerParent:                 3,
 		MinLatencyImprovementToImprovePosition: 10 * time.Millisecond,
 
@@ -280,9 +281,9 @@ func start(
 		babel.StartAsync()
 	}
 
-	// go testDemmonMetrics(eConf, isLandmark)
 	go monitor.Listen()
-	// <-time.After(3 * time.Minute)
+	// <-time.After(3 * time.Second)
+	// testDemmonMetrics(eConf, isLandmark)
 	select {}
 
 	// buf := make([]byte, 1<<20)

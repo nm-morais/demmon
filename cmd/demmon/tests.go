@@ -360,11 +360,9 @@ func testMsgBroadcast(cl *client.DemmonClient) {
 		}
 	}()
 
-	go func() {
-		for msg := range msgChan {
-			fmt.Printf("Got message:%+v\n", msg)
-		}
-	}()
+	for msg := range msgChan {
+		fmt.Printf("Got message:%+v\n", msg)
+	}
 }
 
 func testAlarms(cl *client.DemmonClient) {
@@ -498,24 +496,32 @@ func testDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 	}
 	cl := client.New(clientConf)
 
+	var err error
 	for i := 0; i < 3; i++ {
 		cl.Lock()
-		err := cl.ConnectTimeout(connectTimeout)
+		err = cl.ConnectTimeout(connectTimeout)
 		cl.Unlock()
 		if err != nil {
+			fmt.Println("failed to connect to demmon")
 			time.Sleep(connectBackoffTime)
 			continue
 		}
 		break
 	}
 
-	go testExporter(eConf)
+	if err != nil {
+		panic("could not connect demmon client")
+	} else {
+		fmt.Println("CONNECTED TO DEMMON")
+	}
+	// go testExporter(eConf)
 	// go testGlobalAggFunc(cl)
 
-	go testAlarms(cl)
-	testNeighInterestSets(cl)
-	testCustomInterestSets(cl)
-	testGlobalAggFunc(cl)
+	// go testAlarms(cl)
+	// testNeighInterestSets(cl)
+	// testCustomInterestSets(cl)
+	// testGlobalAggFunc(cl)
+	testMsgBroadcast(cl)
 }
 
 func testExporter(eConf *exporter.Conf) {

@@ -426,6 +426,25 @@ def plot_avg_degree_all_nodes_over_time(df, output_path):
     fig.savefig(f"{output_path}degree_over_time.svg", dpi=1200)
 
 
+def plot_degree_hist_last_sample(node_infos, output_path):
+    fig, ax = plt.subplots()
+    node_degrees = []
+    for info in node_infos:
+        # print(node_infos[info].keys())
+        # print(node_infos[info]["degree"][-1])
+        print(info, node_infos[info]["degree"][-1])
+        node_degrees.append(node_infos[info]["degree"][-1])
+        # {"degree":, "ip": node_infos[info]["ip"]})
+
+    plt.hist(node_degrees, bins=30)  # density=False would make counts
+    print(node_degrees)
+    ax.set(xlabel='time (s)', ylabel='degree',
+           title='Histogram of degree of nodes in last sample')
+    ax.grid()
+    print(f"saving histogram of degree of nodes in last sample: {output_path}")
+    fig.savefig(f"{output_path}hist_degree.svg", dpi=1200)
+
+
 def read_coords_file(file_path):
     f = open(file_path, "r")
     node_positions = {}
@@ -500,7 +519,8 @@ def main():
     df.index = df["timestamp"]
     print(df)
     print("system_lat_avg:", system_lat_avg)
-
+    plot_degree_hist_last_sample(
+        node_infos=node_infos, output_path=args.output_path)
     plot_avg_latency_all_nodes_over_time(
         df=df, output_path=args.output_path)
     plot_avg_degree_all_nodes_over_time(

@@ -3,6 +3,7 @@ package frontend
 import (
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/nm-morais/demmon-common/body_types"
 	membershipProtocol "github.com/nm-morais/demmon/internal/membership/protocol"
@@ -83,8 +84,8 @@ func (f *MembershipFrontend) handleBcastMessageReceived(notifGeneric notificatio
 	f.logger.Infof("Delivering received broadcast message: %+v", notif.Message)
 	select {
 	case f.broadcastMessages <- notif.Message:
-	default:
-		f.logger.Error("Discarding broadcast message because channel had no listener")
+	case <-time.After(time.Second):
+		f.logger.Error("Discarding broadcast message after 3 seconds because channel had no listener")
 	}
 }
 
@@ -97,8 +98,8 @@ func (f *MembershipFrontend) handleNodeUp(n notification.Notification) {
 		Peer: body_types.Peer{ID: nodeUp.PeerUp.Chain().String(), IP: nodeUp.PeerUp.IP()},
 		View: convertView(nodeUp.InView),
 	}:
-	default:
-		f.logger.Error("Discarding node update because channel had no listener")
+	case <-time.After(time.Second):
+		f.logger.Error("Discarding broadcast message after 3 seconds because channel had no listener")
 	}
 }
 
@@ -112,8 +113,8 @@ func (f *MembershipFrontend) handleNodeDown(n notification.Notification) {
 		View: convertView(nodeDown.InView),
 	}:
 
-	default:
-		f.logger.Error("Discarding node update because channel had no listener")
+	case <-time.After(time.Second):
+		f.logger.Error("Discarding broadcast message after 3 seconds because channel had no listener")
 	}
 }
 

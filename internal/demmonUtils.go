@@ -16,6 +16,7 @@ import (
 
 func (d *Demmon) readPump(c *client) {
 	defer func() {
+		close(c.out)
 		err := c.conn.Close()
 		if err != nil {
 			d.logger.Errorf("error closing connection: %s", err.Error())
@@ -50,11 +51,15 @@ func (d *Demmon) writePump(c *client) {
 		}
 	}()
 
-	for message := range c.out {
-		err := c.conn.WriteJSON(message)
-		if err != nil {
-			d.logger.Errorf("error: %v writing to connection", err)
-			return
+	for {
+		select {
+		case message := <-c.out:
+			err := c.conn.WriteJSON(message)
+			if err != nil {
+				d.logger.Errorf("error: %v writing to connection", err)
+				return
+			}
+		case <-c.done:
 		}
 	}
 }
