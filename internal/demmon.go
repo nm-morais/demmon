@@ -760,7 +760,7 @@ func (d *Demmon) RemoveAlarmWatchlist(alarm *alarmControl) error {
 }
 
 func (d *Demmon) handleCustomInterestSet(taskID int64, req *body_types.Request, c *client) {
-	defer d.logger.Warnf("Custom interest set %d returning", taskID)
+	defer d.logger.Errorf("Custom interest set %d returning", taskID)
 	jobGeneric, ok := d.customInterestSets.Load(taskID)
 	if !ok {
 		return
@@ -806,21 +806,17 @@ func (d *Demmon) handleCustomInterestSet(taskID int64, req *body_types.Request, 
 					if err != nil {
 						d.logger.Errorf("Got error %s connecting to node %s in custom interest set %d", err.Error(), p.IP.String(), taskID)
 						job.Lock()
-						nrRetries, ok := job.nrRetries[p.IP.String()]
+						_, ok := job.nrRetries[p.IP.String()]
 						if !ok {
 							job.nrRetries[p.IP.String()] = 0
-							nrRetries = 0
 						}
-						job.Unlock()
-						if nrRetries == customJobWrapper.is.IS.MaxRetries {
-							job.Lock()
+						job.nrRetries[p.IP.String()]++
+						if job.nrRetries[p.IP.String()] == customJobWrapper.is.IS.MaxRetries {
 							job.err = err
 							job.Unlock()
 							d.logger.Errorf("Could not connect to custom interest set %d target: %s ", taskID, p.IP.String())
 							return
 						}
-						job.Lock()
-						job.nrRetries[p.IP.String()]++
 						job.Unlock()
 						time.Sleep(customJobWrapper.is.DialRetryBackoff * time.Duration(i))
 						continue
@@ -855,20 +851,17 @@ func (d *Demmon) handleCustomInterestSet(taskID int64, req *body_types.Request, 
 				res, err := cl.Query(query.Expression, query.Timeout)
 				if err != nil {
 					job.Lock()
-					nrRetries, ok := job.nrRetries[p.IP.String()]
+					_, ok := job.nrRetries[p.IP.String()]
 					if !ok {
 						job.nrRetries[p.IP.String()] = 0
-						nrRetries = 0
 					}
-					job.Unlock()
-					if nrRetries == customJobWrapper.is.IS.MaxRetries {
-						job.Lock()
+					job.nrRetries[p.IP.String()]++
+					d.logger.Errorf("custom interest set %d failed to query peer %s (%d/%d)", taskID, p.IP.String(), job.nrRetries[p.IP.String()], customJobWrapper.is.IS.MaxRetries)
+					if job.nrRetries[p.IP.String()] == customJobWrapper.is.IS.MaxRetries {
 						job.err = err
 						job.Unlock()
 						return
 					}
-					job.Lock()
-					job.nrRetries[p.IP.String()]++
 					job.Unlock()
 					return
 				}
