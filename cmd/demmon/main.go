@@ -278,7 +278,7 @@ func start(
 		babel.StartAsync()
 	}
 
-	go testDemmonMetrics(eConf, isLandmark)
+	// go testDemmonMetrics(eConf, isLandmark)
 
 	go monitor.Listen()
 
