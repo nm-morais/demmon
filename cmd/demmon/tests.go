@@ -337,7 +337,7 @@ func testMsgBroadcast(cl *client.DemmonClient) {
 	const tickerTimeout = 5 * time.Second
 
 	cl.Lock()
-	msgChan, _, err := cl.InstallBroadcastMessageHandler(1)
+	msgChan, _, err := cl.InstallBroadcastMessageHandler("1")
 	cl.Unlock()
 
 	if err != nil {
@@ -349,7 +349,7 @@ func testMsgBroadcast(cl *client.DemmonClient) {
 			cl.Lock()
 			err := cl.BroadcastMessage(
 				body_types.Message{
-					ID:      1,
+					ID:      "1",
 					TTL:     2,
 					Content: struct{ Message string }{Message: "hey"}},
 			)
