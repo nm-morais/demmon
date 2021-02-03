@@ -25,6 +25,7 @@ import (
 	"github.com/nm-morais/go-babel/pkg/protocolManager"
 	"github.com/reugn/go-quartz/quartz"
 	"github.com/sirupsen/logrus"
+	"github.com/ungerik/go-dry"
 )
 
 var upgrader = websocket.Upgrader{
@@ -65,7 +66,7 @@ type customInterestSetWrapper struct {
 	nrRetries map[string]int
 	clients   map[string]*demmon_client.DemmonClient
 	is        body_types.CustomInterestSet
-	*sync.Mutex
+	*dry.DebugMutex
 }
 
 type alarmControl struct {
@@ -369,10 +370,10 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 
 		setID := utils.GetRandInt(math.MaxInt64)
 		customIntSet := &customInterestSetWrapper{
-			nrRetries: make(map[string]int),
-			is:        reqBody,
-			Mutex:     &sync.Mutex{},
-			clients:   make(map[string]*demmon_client.DemmonClient),
+			nrRetries:  make(map[string]int),
+			is:         reqBody,
+			DebugMutex: &dry.DebugMutex{},
+			clients:    make(map[string]*demmon_client.DemmonClient),
 		}
 
 		d.logger.Infof("Creating custom interest set %d func output bucket: %s", setID, reqBody.IS.OutputBucketOpts.Name)
@@ -393,12 +394,17 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		if !d.extractBody(r, &reqBody, resp) {
 			break
 		}
+		d.logger.Infof("Updating custom interest set %d", reqBody.SetID)
+
 		customISGeneric, ok := d.customInterestSets.Load(reqBody.SetID)
 		if !ok {
+			d.logger.Errorf("custom interest set %d not found", reqBody.SetID)
 			resp = body_types.NewResponse(r.ID, false, body_types.ErrCustomInterestSetNotFound, 404, r.Type, nil)
 			break
 		}
+
 		customIS := customISGeneric.(*customInterestSetWrapper)
+		d.logger.Infof("Locking custom interest set lock %d", reqBody.SetID)
 		customIS.Lock()
 		customIS.is.Hosts = reqBody.Hosts
 		customIS.Unlock()
@@ -825,6 +831,7 @@ func (d *Demmon) handleCustomInterestSet(taskID int64, req *body_types.Request, 
 	if !ok {
 		return
 	}
+	defer d.customInterestSets.Delete(taskID)
 
 	customJobWrapper := jobGeneric.(*customInterestSetWrapper)
 	ticker := time.NewTicker(customJobWrapper.is.IS.OutputBucketOpts.Granularity.Granularity)
@@ -837,7 +844,7 @@ func (d *Demmon) handleCustomInterestSet(taskID int64, req *body_types.Request, 
 			return
 		}
 		job := jobGeneric.(*customInterestSetWrapper)
-		if job.err != nil {
+		if job.err != nil { // TODO should it cancel?
 			return
 		}
 		query := job.is.IS.Query
