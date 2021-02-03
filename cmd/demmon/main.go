@@ -48,10 +48,10 @@ var (
 		MaxTimeToProgressToNextLevel:  4 * time.Second,
 		MaxRetriesJoinMsg:             3,
 		Landmarks:                     nil,
-		MinGrpSize:                    2,
-		MaxGrpSize:                    5,
-		NrPeersToKickPerParent:        2,
-		NrPeersToBecomeParentInAbsorb: 2,
+		MinGrpSize:                    6,
+		MaxGrpSize:                    9,
+		NrPeersToKickPerParent:        3,
+		NrPeersToBecomeParentInAbsorb: 1,
 		PhiLevelForNodeDown:           3,
 		// SwitchProbability:             0.5,
 
@@ -61,7 +61,7 @@ var (
 		ChildrenRefreshTickDuration:   3 * time.Second,
 		RejoinTimerDuration:           10 * time.Second,
 
-		MinLatencyImprovementToImprovePosition: 25 * time.Millisecond,
+		MinLatencyImprovementToImprovePosition: 10 * time.Millisecond,
 		AttemptImprovePositionProbability:      0.2,
 		EvalMeasuredPeersRefreshTickDuration:   5 * time.Second,
 
