@@ -584,7 +584,7 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 		d.logger.Infof("measuredPeer.MeasuredLatency: %s", measuredPeer.MeasuredLatency)
 		aux := *measuredPeer
 		d.myPendingParentInImprovement = &aux
-		d.sendJoinAsChildMsg(measuredPeer.PeerWithIDChain, measuredPeer.MeasuredLatency, false)
+		d.sendJoinAsChildMsg(measuredPeer.PeerWithIDChain, measuredPeer.MeasuredLatency, false, true)
 
 		// if measuredPeer.Chain().Level() < d.self.Chain().Level()-1 {
 		// 	// if measuredPeer.NrChildren() < d.config.MaxGrpSize { // must go UP in levels
@@ -932,11 +932,11 @@ func (d *DemmonTree) handleAbsorbMessage(sender peer.Peer, m message.Message) {
 			peerLat = nodeInfo.LatencyCalc().CurrValue()
 		}
 		d.myPendingParentInAbsorb = absorbMessage.PeerAbsorber
-		toSend := NewJoinAsChildMessage(d.self, peerLat, absorbMessage.PeerAbsorber.Chain(), false)
+		toSend := NewJoinAsChildMessage(d.self, peerLat, absorbMessage.PeerAbsorber.Chain(), false, false)
 		d.sendMessage(toSend, absorbMessage.PeerAbsorber)
 	} else {
 		d.myPendingParentInAbsorb = absorbMessage.PeerAbsorber
-		toSend := NewJoinAsChildMessage(d.self, 0, absorbMessage.PeerAbsorber.Chain(), false)
+		toSend := NewJoinAsChildMessage(d.self, 0, absorbMessage.PeerAbsorber.Chain(), false, false)
 		d.sendMessageTmpTCPChan(toSend, absorbMessage.PeerAbsorber)
 	}
 }
@@ -1194,7 +1194,7 @@ func (d *DemmonTree) handleJoinAsChildMessageReply(sender peer.Peer, m message.M
 		if d.myGrandParent != nil {
 			d.logger.Warnf("Pending parent in absorb denied request.. falling back to grandparent")
 			d.myPendingParentInRecovery = d.myGrandParent
-			d.sendJoinAsChildMsg(d.myGrandParent, 0, true)
+			d.sendJoinAsChildMsg(d.myGrandParent, 0, true, false)
 			d.myGrandParent = nil
 		} else {
 			d.fallbackToMeasuredPeers()
@@ -1460,7 +1460,7 @@ func (d *DemmonTree) DialFailed(p peer.Peer) {
 		if d.myGrandParent != nil {
 			d.logger.Warnf("Falling back to grandparent %s", d.myGrandParent.String())
 			d.myPendingParentInRecovery = d.myGrandParent
-			d.sendJoinAsChildMsg(d.myGrandParent, 0, true)
+			d.sendJoinAsChildMsg(d.myGrandParent, 0, true, false)
 			d.myGrandParent = nil
 			return
 		}
@@ -1503,7 +1503,7 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer) {
 		if d.myGrandParent != nil {
 			d.logger.Warnf("Falling back to grandparent %s", d.myGrandParent.String())
 			d.myPendingParentInRecovery = d.myGrandParent
-			d.sendJoinAsChildMsg(d.myGrandParent, 0, true)
+			d.sendJoinAsChildMsg(d.myGrandParent, 0, true, false)
 			d.myGrandParent = nil
 			return
 		}
@@ -1631,10 +1631,10 @@ func (d *DemmonTree) joinOverlay() {
 func (d *DemmonTree) sendJoinAsChildMsg(
 	newParent *PeerWithIDChain,
 	newParentLat time.Duration,
-	urgent bool) {
+	urgent, improvement bool) {
 	d.logger.Infof("Pending parent: %s", newParent.String())
 	d.logger.Infof("Joining level %d", uint16(len(newParent.Chain())))
-	toSend := NewJoinAsChildMessage(d.self, newParentLat, newParent.Chain(), urgent)
+	toSend := NewJoinAsChildMessage(d.self, newParentLat, newParent.Chain(), urgent, improvement)
 	d.sendMessageTmpTCPChan(toSend, newParent)
 }
 
@@ -1700,7 +1700,7 @@ func (d *DemmonTree) progressToNextStep() {
 		)
 		lowestLatencyPeer := currLevelPeersDone[0]
 		d.myPendingParentInJoin = lowestLatencyPeer
-		d.sendJoinAsChildMsg(lowestLatencyPeer.PeerWithIDChain, lowestLatencyPeer.MeasuredLatency, false)
+		d.sendJoinAsChildMsg(lowestLatencyPeer.PeerWithIDChain, lowestLatencyPeer.MeasuredLatency, false, false)
 		return
 	}
 
@@ -1740,7 +1740,7 @@ func (d *DemmonTree) progressToNextStep() {
 	if lowestLatencyPeer.NrChildren() < d.config.MinGrpSize {
 		d.logger.Infof("Joining level %d under peer %s because nodes in this level have not enough members", d.joinLevel, lowestLatencyPeer.String())
 		d.myPendingParentInJoin = lowestLatencyPeer
-		d.sendJoinAsChildMsg(lowestLatencyPeer.PeerWithIDChain, lowestLatencyPeer.MeasuredLatency, false)
+		d.sendJoinAsChildMsg(lowestLatencyPeer.PeerWithIDChain, lowestLatencyPeer.MeasuredLatency, false, false)
 		return
 	}
 
@@ -1762,7 +1762,7 @@ func (d *DemmonTree) progressToNextStep() {
 		d.logger.Infof("Joining level %d with parent %s because latency to parent is lower than to its children", d.joinLevel, lowestLatencyPeerParent.String())
 		d.unwatchPeersInLevelDone(d.joinLevel-1, lowestLatencyPeerParent)
 		d.myPendingParentInJoin = NewMeasuredPeer(lowestLatencyPeerParent, lowestLatencyPeerParentLatency)
-		d.sendJoinAsChildMsg(lowestLatencyPeerParent, info.LatencyCalc().CurrValue(), false)
+		d.sendJoinAsChildMsg(lowestLatencyPeerParent, info.LatencyCalc().CurrValue(), false, false)
 		return
 	}
 
@@ -1770,7 +1770,7 @@ func (d *DemmonTree) progressToNextStep() {
 		d.logger.Infof("Joining level %d because ideal parent in level %d has too little children", d.joinLevel-1, d.joinLevel)
 		d.unwatchPeersInLevelDone(d.joinLevel-1, lowestLatencyPeerParent)
 		d.myPendingParentInJoin = lowestLatencyPeer
-		d.sendJoinAsChildMsg(lowestLatencyPeer.PeerWithIDChain, lowestLatencyPeer.MeasuredLatency, false)
+		d.sendJoinAsChildMsg(lowestLatencyPeer.PeerWithIDChain, lowestLatencyPeer.MeasuredLatency, false, false)
 	} else {
 		d.logger.Infof("Advancing from level %d to level %d because the lowest latency peer is in lower level and current level node has enough members", d.joinLevel, d.joinLevel+1)
 		d.unwatchPeersInLevelDone(d.joinLevel - 1)
@@ -1904,7 +1904,7 @@ func (d *DemmonTree) fallbackToParentInJoin(node peer.Peer) {
 	d.unwatchPeersInLevelDone(d.joinLevel)
 	d.joinLevel--
 	d.myPendingParentInJoin = NewMeasuredPeer(peerParent, 0)
-	d.sendJoinAsChildMsg(peerParent, peerLat, true)
+	d.sendJoinAsChildMsg(peerParent, peerLat, true, false)
 }
 
 func (d *DemmonTree) fallbackToMeasuredPeers() {
@@ -1930,7 +1930,7 @@ func (d *DemmonTree) fallbackToMeasuredPeers() {
 	bestPeer = measuredPeersArr[0]
 	d.logger.Infof(" falling back to %s : %s", bestPeer.String(), bestPeer.MeasuredLatency)
 	d.myPendingParentInRecovery = bestPeer.PeerWithIDChain
-	d.sendJoinAsChildMsg(bestPeer.PeerWithIDChain, bestPeer.MeasuredLatency, true)
+	d.sendJoinAsChildMsg(bestPeer.PeerWithIDChain, bestPeer.MeasuredLatency, true, false)
 }
 
 func (d *DemmonTree) updateAndMergeSampleEntriesWithEView(sample []*PeerWithIDChain, nrPeersToMerge int) {
