@@ -728,7 +728,7 @@ func (d *Demmon) handleBroadcastMessages() {
 				for _, cl := range subs.subs {
 				repeat:
 					select {
-					case cl.client.out <- body_types.NewResponse(uint64(cl.subID), true, nil, 200, routes.InstallBroadcastMessageHandler, body_types.Message{
+					case cl.client.out <- body_types.NewResponse(cl.subID, true, nil, 200, routes.InstallBroadcastMessageHandler, body_types.Message{
 						ID:      bcastMsg.ID,
 						TTL:     bcastMsg.TTL,
 						Content: bcastMsg.Content,
@@ -804,7 +804,7 @@ func (d *Demmon) RemoveAlarmWatchlist(alarm *alarmControl) error {
 	return nil
 }
 
-func (d *Demmon) handleCustomInterestSet(taskID int64, req *body_types.Request, c *client) {
+func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request, c *client) {
 	defer d.logger.Warnf("Custom interest set %d returning", taskID)
 	jobGeneric, ok := d.customInterestSets.Load(taskID)
 	if !ok {
