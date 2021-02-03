@@ -1,10 +1,24 @@
 #!/bin/bash
 
-if [ -z $DOCKER_IMAGE ]; then
-  echo "Pls specify $DOCKER_IMAGE"
-  help
+if [ -z $LATENCY_MAP ]; then
+  echo "Pls specify LATENCY_MAP"
   exit
 fi
+
+if [ -z $CONFIG_FILE ]; then
+  echo "Pls specify CONFIG_FILE"
+  exit
+fi
+
+if [ -z $DOCKER_IMAGE ]; then
+  echo "Pls specify $DOCKER_IMAGE"
+  exit
+fi
+
+echo "CONFIG_FILE: $CONFIG_FILE"
+echo "LATENCY_MAP: $LATENCY_MAP"
+echo "DOCKER_IMAGE: $DOCKER_IMAGE"
+
 
 cd ../go-babel
 ./scripts/buildImage.sh
@@ -23,4 +37,4 @@ cd demmon-exporter
 cd ..
 
 cd demmon
-docker build --build-arg LATENCY_MAP --build-arg IPS_MAP -f build/Dockerfile -t $DOCKER_IMAGE .
+docker build --build-arg LATENCY_MAP=$LATENCY_MAP --build-arg CONFIG_FILE=$CONFIG_FILE -f build/Dockerfile -t $DOCKER_IMAGE .

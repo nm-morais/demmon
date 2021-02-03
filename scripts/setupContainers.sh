@@ -38,7 +38,7 @@ echo "Building images..."
 
 currdir=$(pwd)
 delete_containers_cmd='docker rm -f $(docker ps -a -q)  > /dev/null || true'
-build_cmd="cd ${currdir}; source config/swarmConfig.sh ; ./scripts/buildImage.sh"
+build_cmd="cd ${currdir}; ./scripts/buildImage.sh"
 delete_logs_cmd="docker run --rm -v $SWARM_VOL:/data bash sh -c 'rm -rf /data/*'"
 host=$(hostname)
 

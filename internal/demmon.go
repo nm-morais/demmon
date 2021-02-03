@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"reflect"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -55,7 +56,7 @@ type broadcastMessageSubscribers struct {
 	*sync.Mutex
 	subs []*struct {
 		client *client
-		subID  int
+		subID  string
 	}
 }
 
@@ -68,8 +69,8 @@ type customInterestSetWrapper struct {
 }
 
 type alarmControl struct {
-	id                int64
-	subID             uint64
+	id                string
+	subID             string
 	err               error
 	nrRetries         int
 	alarm             body_types.InstallAlarmRequest
@@ -81,7 +82,7 @@ type alarmControl struct {
 }
 
 func (ac *alarmControl) ID() string {
-	return fmt.Sprintf("%d", ac.id)
+	return ac.id
 }
 
 func (ac *alarmControl) Notify(interface{}) {
@@ -151,23 +152,22 @@ func (ac *alarmControl) OnTrigger() (bool, *time.Time) {
 }
 
 type continuousQueryJobWrapper struct {
-	id int
+	id string
 	d  *Demmon
 }
 
-// Description returns a PrintJob description.
 func (job continuousQueryJobWrapper) Description() string {
 	return ""
 }
 
-// Key returns a PrintJob unique key.
 func (job continuousQueryJobWrapper) Key() int {
-	return job.id
+	id, _ := strconv.ParseInt(job.id, 10, 64)
+	return int(id)
 }
 
-// Execute Called by the Scheduler when a Trigger fires that is associated with the Job.
 func (job continuousQueryJobWrapper) Execute() {
-	job.d.handleContinuousQueryTrigger(job.id)
+	id, _ := strconv.ParseInt(job.id, 10, 64)
+	job.d.handleContinuousQueryTrigger(int(id))
 }
 
 type client struct {
@@ -376,10 +376,11 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			triedNr:     reqBody.NrRetries,
 			IS:          reqBody,
 		}
-		d.continuousQueries.Store(int(taskID), cc)
+		taskIDStr := fmt.Sprintf("%d", taskID)
+		d.continuousQueries.Store(taskIDStr, cc)
 		d.schedulerMu.Lock()
 		job := &continuousQueryJobWrapper{
-			id: int(taskID),
+			id: taskIDStr,
 			d:  d,
 		}
 		err = d.scheduler.ScheduleJob(job, trigger)
@@ -391,7 +392,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		}
 
 		ans := body_types.InstallContinuousQueryReply{
-			TaskID: taskID,
+			TaskID: taskIDStr,
 		}
 		d.schedulerMu.Unlock()
 		d.logger.Infof("installed continuous query: %+v", reqBody)
@@ -445,7 +446,8 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			break
 		}
 
-		setID := utils.GetRandInt(math.MaxInt64)
+		setIDNr := utils.GetRandInt(math.MaxInt64)
+		setID := fmt.Sprintf("%d", setIDNr)
 		customIntSet := &customInterestSetWrapper{
 			nrRetries: make(map[string]int),
 			is:        reqBody,
@@ -589,9 +591,9 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			Mutex: &sync.Mutex{},
 			subs: []*struct {
 				client *client
-				subID  int
+				subID  string
 			}{
-				{client: c, subID: int(r.ID)},
+				{client: c, subID: r.ID},
 			},
 		})
 
@@ -600,8 +602,8 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			actual.Lock()
 			actual.subs = append(actual.subs, &struct {
 				client *client
-				subID  int
-			}{client: c, subID: int(r.ID)})
+				subID  string
+			}{client: c, subID: r.ID})
 			actual.Unlock()
 		}
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, nil)
@@ -613,7 +615,9 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		if !d.extractBody(r, reqBody, resp) {
 			break
 		}
-		alarmID := utils.GetRandInt(math.MaxInt64)
+		alarmIDNr := utils.GetRandInt(math.MaxInt64)
+		alarmID := fmt.Sprintf("%d", alarmIDNr)
+
 		alarm := &alarmControl{
 			id:                alarmID,
 			err:               nil,
@@ -757,7 +761,7 @@ func (d *Demmon) handleNodeUpdates() {
 		case nodeUp := <-nodeUps:
 			d.logger.Infof("Delivering node up %+v", nodeUp)
 			d.nodeUpdatesSubscribers.Range(func(key, valueGeneric interface{}) bool {
-				subID := key.(uint64)
+				subID := key.(string)
 				client := valueGeneric.(*client)
 				client.out <- body_types.NewResponse(subID, true, nil, 200, routes.MembershipUpdates, nodeUp)
 				return true
@@ -765,7 +769,7 @@ func (d *Demmon) handleNodeUpdates() {
 		case nodeDown := <-nodeDowns:
 			d.logger.Infof("Delivering node down %+v", nodeDown)
 			d.nodeUpdatesSubscribers.Range(func(key, valueGeneric interface{}) bool {
-				subID := key.(uint64)
+				subID := key.(string)
 				client := valueGeneric.(*client)
 				client.out <- body_types.NewResponse(subID, true, nil, 200, routes.MembershipUpdates, nodeDown)
 				return true
