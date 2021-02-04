@@ -703,7 +703,6 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 			d.logger.Errorf("Do not have latency measurement for my children %s in absorb procedure", children.String())
 			return
 		}
-
 		childrenAsMeasuredPeers = append(childrenAsMeasuredPeers, node)
 	}
 
