@@ -16,6 +16,7 @@ import (
 
 func (d *Demmon) readPump(c *client) {
 	defer func() {
+		close(c.done)
 		err := c.conn.Close()
 		if err != nil {
 			d.logger.Errorf("error closing connection: %s", err.Error())
@@ -23,22 +24,26 @@ func (d *Demmon) readPump(c *client) {
 	}()
 
 	for {
-		req := &body_types.Request{}
-		err := c.conn.ReadJSON(req)
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(
-				err,
-				websocket.CloseMessage,
-				websocket.CloseGoingAway,
-				websocket.CloseAbnormalClosure,
-			) {
+		select {
+		case <-c.done:
+		default:
+			req := &body_types.Request{}
+			err := c.conn.ReadJSON(req)
+			if err != nil {
+				if websocket.IsUnexpectedCloseError(
+					err,
+					websocket.CloseMessage,
+					websocket.CloseGoingAway,
+					websocket.CloseAbnormalClosure,
+				) {
+					d.logger.Errorf("error: %v reading from connection", err)
+					break
+				}
 				d.logger.Errorf("error: %v reading from connection", err)
-				break
+				return
 			}
-			d.logger.Errorf("error: %v reading from connection", err)
-			return
+			d.handleRequest(req, c)
 		}
-		d.handleRequest(req, c)
 	}
 }
 
@@ -50,12 +55,17 @@ func (d *Demmon) writePump(c *client) {
 		}
 	}()
 
-	for message := range c.out {
-		err := c.conn.WriteJSON(message)
+	select {
+	case msg, ok := <-c.out:
+		if !ok {
+			return
+		}
+		err := c.conn.WriteJSON(msg)
 		if err != nil {
 			d.logger.Errorf("error: %v writing to connection", err)
 			return
 		}
+	case <-c.done:
 	}
 }
 
