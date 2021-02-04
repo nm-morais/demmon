@@ -172,13 +172,17 @@ func (job continuousQueryJobWrapper) Execute() {
 
 type client struct {
 	id   uint64
+	mu   *sync.Mutex
 	conn *websocket.Conn
 	done chan interface{}
 }
 
 // Description returns a PrintJob description.
 func (d *Demmon) sendResponse(resp *body_types.Response, cl *client) {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
 	err := cl.conn.WriteJSON(resp)
+
 	if err != nil {
 		d.logger.Errorf("Got error writing to client conn: %s", err.Error())
 		if err := cl.conn.Close(); err != nil {
@@ -266,6 +270,7 @@ func (d *Demmon) handleDial(w http.ResponseWriter, req *http.Request) {
 	client := &client{
 		id:   atomic.AddUint64(d.counter, 1),
 		conn: conn,
+		mu:   &sync.Mutex{},
 		done: make(chan interface{}),
 	}
 
