@@ -805,7 +805,7 @@ func (d *Demmon) RemoveAlarmWatchlist(alarm *alarmControl) error {
 }
 
 func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request, c *client) {
-	defer d.logger.Warnf("Custom interest set %d returning", taskID)
+	defer d.logger.Warnf("Custom interest set %s returning", taskID)
 	jobGeneric, ok := d.customInterestSets.Load(taskID)
 	if !ok {
 		return
@@ -816,7 +816,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 	wg := &sync.WaitGroup{}
 
 	for range ticker.C {
-		d.logger.Infof("Custom interest set %d trigger", taskID)
+		d.logger.Infof("Custom interest set %s trigger", taskID)
 		jobGeneric, ok = d.customInterestSets.Load(taskID)
 		if !ok {
 			return
@@ -848,7 +848,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 				for i := 0; i < customJobWrapper.is.IS.MaxRetries; i++ {
 					err := newCL.ConnectTimeout(job.is.DialTimeout)
 					if err != nil {
-						d.logger.Errorf("Got error %s connecting to node %s in custom interest set %d", err.Error(), p.IP.String(), taskID)
+						d.logger.Errorf("Got error %s connecting to node %s in custom interest set %s", err.Error(), p.IP.String(), taskID)
 						job.Lock()
 						nrRetries, ok := job.nrRetries[p.IP.String()]
 						if !ok {
@@ -860,7 +860,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 							job.Lock()
 							job.err = err
 							job.Unlock()
-							d.logger.Errorf("Could not connect to custom interest set %d target: %s ", taskID, p.IP.String())
+							d.logger.Errorf("Could not connect to custom interest set %s target: %s ", taskID, p.IP.String())
 							return
 						}
 						job.Lock()
@@ -880,14 +880,14 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 		}
 		wg.Wait()
 		if job.err != nil {
-			d.logger.Errorf("returning from interest set %d due to error %s", taskID, job.err.Error())
+			d.logger.Errorf("returning from interest set %s due to error %s", taskID, job.err.Error())
 			c.out <- body_types.NewResponse(req.ID, true, body_types.ErrCannotConnect, 500, routes.InstallCustomInterestSet, nil)
 			return
 		}
 		for _, p := range customJobWrapper.is.Hosts {
 			cl, ok := job.clients[p.IP.String()]
 			if !ok {
-				panic("client is nil")
+				continue
 			}
 			clCopy := cl
 			pCopy := p
@@ -933,11 +933,11 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 		}
 		wg.Wait()
 		if job.err != nil {
-			d.logger.Errorf("returning from interest set %d due to error %s", taskID, job.err.Error())
+			d.logger.Errorf("returning from interest set %s due to error %s", taskID, job.err.Error())
 			c.out <- body_types.NewResponse(req.ID, true, body_types.ErrQuerying, 500, routes.InstallCustomInterestSet, nil)
 			return
 		}
-
+		job.Lock()
 		for host, cl := range job.clients {
 			found := false
 			for _, h := range job.is.Hosts {
@@ -952,6 +952,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 				delete(job.clients, host)
 			}
 		}
+		job.Unlock()
 	}
 }
 
