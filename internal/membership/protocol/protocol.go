@@ -188,8 +188,10 @@ func (d *DemmonTree) Start() {
 		d.babel.RegisterPeriodicTimer(d.ID(), NewCheckChidrenSizeTimer(d.config.CheckChildenSizeTimerDuration))
 		d.babel.RegisterPeriodicTimer(d.ID(), NewParentRefreshTimer(d.config.ParentRefreshTickDuration))
 		d.babel.RegisterPeriodicTimer(d.ID(), NewDebugTimer(DebugTimerDuration))
+		d.babel.RegisterPeriodicTimer(d.ID(), NewUpdateChildTimer(d.config.ChildrenRefreshTickDuration))
 		return
 	}
+
 	d.babel.RegisterPeriodicTimer(d.ID(), NewUpdateChildTimer(d.config.ChildrenRefreshTickDuration))
 	d.babel.RegisterPeriodicTimer(d.ID(), NewParentRefreshTimer(d.config.ParentRefreshTickDuration))
 	d.babel.RegisterPeriodicTimer(d.ID(), NewMeasureNewPeersTimer(d.config.MeasureNewPeersRefreshTickDuration))
@@ -361,7 +363,7 @@ func (d *DemmonTree) handleRefreshParentTimer(t timer.Timer) {
 		toSend := NewUpdateParentMessage(
 			d.myParent,
 			d.self,
-			child.Chain()[child.Chain().Level()],
+			child.Chain()[len(child.Chain())-1],
 			getMapAsPeerWithIDChainArray(d.myChildren, child),
 		)
 		d.sendMessage(toSend, child.Peer)
@@ -376,8 +378,9 @@ func (d *DemmonTree) handleUpdateChildTimer(t timer.Timer) {
 }
 
 func (d *DemmonTree) sendUpdateChildMessage(dest peer.Peer) {
-	measuredSiblings := d.getPeerMapAsPeerMeasuredArr(d.myChildren)
-	toSend := NewUpdateChildMessage(d.self, measuredSiblings)
+	measuredChildren := d.getPeerMapAsPeerMeasuredArr(d.myChildren)
+	d.logger.Infof("Sending measured siblings: %+v", measuredChildren)
+	toSend := NewUpdateChildMessage(d.self, measuredChildren)
 	d.sendMessage(toSend, dest)
 }
 
