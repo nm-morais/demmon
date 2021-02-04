@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/mitchellh/mapstructure"
 	"github.com/nm-morais/demmon-common/body_types"
@@ -30,15 +29,6 @@ func (d *Demmon) readPump(c *client) {
 			req := &body_types.Request{}
 			err := c.conn.ReadJSON(req)
 			if err != nil {
-				if websocket.IsUnexpectedCloseError(
-					err,
-					websocket.CloseMessage,
-					websocket.CloseGoingAway,
-					websocket.CloseAbnormalClosure,
-				) {
-					d.logger.Errorf("error: %v reading from connection", err)
-					break
-				}
 				d.logger.Errorf("error: %v reading from connection", err)
 				return
 			}
