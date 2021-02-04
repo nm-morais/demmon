@@ -520,13 +520,15 @@ func testDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 	} else {
 		fmt.Println("CONNECTED TO DEMMON")
 	}
-	// go testExporter(eConf)
+
+	go testExporter(eConf)
 	// go testGlobalAggFunc(cl)
 
-	go testAlarms(cl)
-	testNeighInterestSets(cl)
-	testCustomInterestSets(cl)
-	testGlobalAggFunc(cl)
+	// go testAlarms(cl)
+	// testNeighInterestSets(cl)
+	go testCustomInterestSets(cl)
+	// testGlobalAggFunc(cl)
+	go testMsgBroadcast(cl)
 }
 
 func testExporter(eConf *exporter.Conf) {
