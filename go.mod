@@ -14,7 +14,6 @@ require (
 	github.com/reugn/go-quartz v0.3.2
 	github.com/robertkrimen/otto v0.0.0-20200922221731-ef014fd054ac
 	github.com/sirupsen/logrus v1.7.0
-	github.com/ungerik/go-dry v0.0.0-20180411133923-654ae31114c8
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 )
 
