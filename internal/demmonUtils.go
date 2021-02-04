@@ -33,31 +33,6 @@ func (d *Demmon) readPump(c *client) {
 	}
 }
 
-func (d *Demmon) writePump(c *client) {
-	defer func() {
-		err := c.conn.Close()
-		if err != nil {
-			d.logger.Errorf("error writing to connection: %s", err.Error())
-		}
-	}()
-
-	for {
-		select {
-		case msg, ok := <-c.out:
-			if !ok {
-				return
-			}
-			err := c.conn.WriteJSON(msg)
-			if err != nil {
-				d.logger.Errorf("error: %v writing to connection", err)
-				return
-			}
-		case <-c.done:
-			return
-		}
-	}
-}
-
 func (d *Demmon) extractBody(r *body_types.Request, reqBody interface{}, resp *body_types.Response) bool {
 	err := decode(r.Message, reqBody)
 	if err != nil {
