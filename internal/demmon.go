@@ -25,7 +25,6 @@ import (
 	"github.com/nm-morais/go-babel/pkg/protocolManager"
 	"github.com/reugn/go-quartz/quartz"
 	"github.com/sirupsen/logrus"
-	"github.com/ungerik/go-dry"
 )
 
 var upgrader = websocket.Upgrader{
@@ -66,7 +65,7 @@ type customInterestSetWrapper struct {
 	nrRetries map[string]int
 	clients   map[string]*demmon_client.DemmonClient
 	is        body_types.CustomInterestSet
-	*dry.DebugMutex
+	*sync.Mutex
 }
 
 type alarmControl struct {
@@ -119,12 +118,13 @@ func (ac *alarmControl) OnTrigger() (bool, *time.Time) {
 		ac.nrRetries++
 		if ac.nrRetries == ac.alarm.MaxRetries {
 			ac.d.logger.Errorf("alarm %d has exceeded maxRetries (%d), sending err msg and deleting alarm", ac.id, ac.nrRetries)
-			ac.client.out <- body_types.NewResponse(ac.subID, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
+			ac.client.sendResponse(body_types.NewResponse(ac.subID, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
 				ID:       ac.id,
 				Error:    true,
 				Trigger:  false,
 				ErrorMsg: err.Error(),
-			})
+			}))
+
 			_, ok := ac.d.alarms.LoadAndDelete(ac.id)
 			if ok {
 				ac.d.RemoveAlarmWatchlist(ac)
@@ -136,12 +136,12 @@ func (ac *alarmControl) OnTrigger() (bool, *time.Time) {
 	}
 
 	if res == true {
-		ac.client.out <- body_types.NewResponse(ac.subID, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
+		ac.client.sendResponse(body_types.NewResponse(ac.subID, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
 			ID:       ac.id,
 			Error:    false,
 			Trigger:  true,
 			ErrorMsg: "",
-		})
+		}))
 		timeNow := time.Now()
 		ac.lastTimeTriggered = timeNow
 		nextTrigger := timeNow.Add(ac.alarm.TriggerBackoffTime)
@@ -174,6 +174,15 @@ type client struct {
 	id   uint64
 	conn *websocket.Conn
 	out  chan *body_types.Response
+	done chan interface{}
+}
+
+// Description returns a PrintJob description.
+func (cl *client) sendResponse(resp *body_types.Response) {
+	select {
+	case cl.out <- resp:
+	case <-cl.done:
+	}
 }
 
 type Demmon struct {
@@ -256,6 +265,7 @@ func (d *Demmon) handleDial(w http.ResponseWriter, req *http.Request) {
 		id:   atomic.AddUint64(d.counter, 1),
 		conn: conn,
 		out:  make(chan *body_types.Response),
+		done: make(chan interface{}),
 	}
 
 	go d.readPump(client)
@@ -439,10 +449,10 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		setIDNr := utils.GetRandInt(math.MaxInt64)
 		setID := fmt.Sprintf("%d", setIDNr)
 		customIntSet := &customInterestSetWrapper{
-			nrRetries:  make(map[string]int),
-			is:         reqBody,
-			DebugMutex: &dry.DebugMutex{},
-			clients:    make(map[string]*demmon_client.DemmonClient),
+			nrRetries: make(map[string]int),
+			is:        reqBody,
+			Mutex:     &sync.Mutex{},
+			clients:   make(map[string]*demmon_client.DemmonClient),
 		}
 
 		d.logger.Infof("Creating custom interest set %d func output bucket: %s", setID, reqBody.IS.OutputBucketOpts.Name)
@@ -462,17 +472,12 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		if !d.extractBody(r, &reqBody, resp) {
 			break
 		}
-		d.logger.Infof("Updating custom interest set %d", reqBody.SetID)
-
 		customISGeneric, ok := d.customInterestSets.Load(reqBody.SetID)
 		if !ok {
-			d.logger.Errorf("custom interest set %d not found", reqBody.SetID)
 			resp = body_types.NewResponse(r.ID, false, body_types.ErrCustomInterestSetNotFound, 404, r.Type, nil)
 			break
 		}
-
 		customIS := customISGeneric.(*customInterestSetWrapper)
-		d.logger.Infof("Locking custom interest set lock %d", reqBody.SetID)
 		customIS.Lock()
 		customIS.is.Hosts = reqBody.Hosts
 		customIS.Unlock()
@@ -691,25 +696,61 @@ func (d *Demmon) subscribeNodeEvents(r *body_types.Request, c *client) body_type
 
 func (d *Demmon) handleBroadcastMessages() {
 	msgChan := d.fm.GetBroadcastChan()
-	for bcastMsg := range msgChan {
-		msgCopy := bcastMsg
-		d.logger.Infof("Delivering Bcast message: %+v", bcastMsg)
+	updates := []body_types.Message{}
 
-		subsGeneric, ok := d.broadcastMessageSubscribers.Load(bcastMsg.ID)
-		if !ok {
-			d.logger.Warnf("Could not deliver broadcasted messages because there are no listeners for msg type %d", bcastMsg.ID)
-			continue
+	handleUpdateFunc := func(nextUpdate interface{}) {
+		update := (nextUpdate).(body_types.Message)
+		updates = append(updates, update)
+	}
+
+	for {
+
+		if len(updates) == 0 {
+			handleUpdateFunc(<-msgChan)
 		}
-		subs := subsGeneric.(*broadcastMessageSubscribers)
-		subs.Lock()
-		for _, cl := range subs.subs {
-			cl.client.out <- body_types.NewResponse(cl.subID, true, nil, 200, routes.InstallBroadcastMessageHandler, body_types.Message{
-				ID:      msgCopy.ID,
-				TTL:     msgCopy.TTL,
-				Content: msgCopy.Content,
-			})
+
+		select {
+		case v := <-msgChan:
+			handleUpdateFunc(v)
+		default:
+			idx := 0
+			for _, bcastMsg := range updates {
+				d.logger.Infof("Delivering Bcast message: %+v", bcastMsg)
+
+				subsGeneric, ok := d.broadcastMessageSubscribers.Load(bcastMsg.ID)
+				if !ok {
+					d.logger.Warnf("Could not deliver broadcasted messages because there are no listeners for msg type %d", bcastMsg.ID)
+					continue
+				}
+				subs := subsGeneric.(*broadcastMessageSubscribers)
+				subs.Lock()
+
+				for _, cl := range subs.subs {
+				repeat:
+					select {
+					case cl.client.out <- body_types.NewResponse(cl.subID, true, nil, 200, routes.InstallBroadcastMessageHandler, body_types.Message{
+						ID:      bcastMsg.ID,
+						TTL:     bcastMsg.TTL,
+						Content: bcastMsg.Content,
+					}):
+					case <-cl.client.done:
+						for idx, sub := range subs.subs {
+							if sub.client.id == cl.client.id {
+								subs.subs = append(subs.subs[:idx], subs.subs[idx+1:]...)
+								break
+							}
+						}
+					case v := <-msgChan:
+						handleUpdateFunc(v)
+						goto repeat
+					}
+
+				}
+				subs.Unlock()
+				idx++
+			}
+			updates = updates[idx:]
 		}
-		subs.Unlock()
 	}
 }
 
@@ -765,11 +806,12 @@ func (d *Demmon) RemoveAlarmWatchlist(alarm *alarmControl) error {
 
 func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request, c *client) {
 	defer d.logger.Warnf("Custom interest set %s returning", taskID)
+	defer d.customInterestSets.Delete(taskID)
+
 	jobGeneric, ok := d.customInterestSets.Load(taskID)
 	if !ok {
 		return
 	}
-	defer d.customInterestSets.Delete(taskID)
 
 	customJobWrapper := jobGeneric.(*customInterestSetWrapper)
 	ticker := time.NewTicker(customJobWrapper.is.IS.OutputBucketOpts.Granularity.Granularity)
@@ -782,7 +824,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 			return
 		}
 		job := jobGeneric.(*customInterestSetWrapper)
-		if job.err != nil { // TODO should it cancel?
+		if job.err != nil {
 			return
 		}
 		query := job.is.IS.Query
@@ -810,17 +852,21 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 					if err != nil {
 						d.logger.Errorf("Got error %s connecting to node %s in custom interest set %s", err.Error(), p.IP.String(), taskID)
 						job.Lock()
-						_, ok := job.nrRetries[p.IP.String()]
+						nrRetries, ok := job.nrRetries[p.IP.String()]
 						if !ok {
 							job.nrRetries[p.IP.String()] = 0
+							nrRetries = 0
 						}
-						job.nrRetries[p.IP.String()]++
-						if job.nrRetries[p.IP.String()] == customJobWrapper.is.IS.MaxRetries {
+						job.Unlock()
+						if nrRetries == customJobWrapper.is.IS.MaxRetries {
+							job.Lock()
 							job.err = err
 							job.Unlock()
 							d.logger.Errorf("Could not connect to custom interest set %s target: %s ", taskID, p.IP.String())
 							return
 						}
+						job.Lock()
+						job.nrRetries[p.IP.String()]++
 						job.Unlock()
 						time.Sleep(customJobWrapper.is.DialRetryBackoff * time.Duration(i))
 						continue
@@ -855,17 +901,20 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 				res, err := cl.Query(query.Expression, query.Timeout)
 				if err != nil {
 					job.Lock()
-					_, ok := job.nrRetries[p.IP.String()]
+					nrRetries, ok := job.nrRetries[p.IP.String()]
 					if !ok {
 						job.nrRetries[p.IP.String()] = 0
+						nrRetries = 0
 					}
-					job.nrRetries[p.IP.String()]++
-					d.logger.Errorf("custom interest set %d failed to query peer %s (%d/%d)", taskID, p.IP.String(), job.nrRetries[p.IP.String()], customJobWrapper.is.IS.MaxRetries)
-					if job.nrRetries[p.IP.String()] == customJobWrapper.is.IS.MaxRetries {
+					job.Unlock()
+					if nrRetries == customJobWrapper.is.IS.MaxRetries {
+						job.Lock()
 						job.err = err
 						job.Unlock()
 						return
 					}
+					job.Lock()
+					job.nrRetries[p.IP.String()]++
 					job.Unlock()
 					return
 				}
