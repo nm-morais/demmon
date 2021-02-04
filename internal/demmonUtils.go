@@ -23,18 +23,13 @@ func (d *Demmon) readPump(c *client) {
 	}()
 
 	for {
-		select {
-		case <-c.done:
+		req := &body_types.Request{}
+		err := c.conn.ReadJSON(req)
+		if err != nil {
+			d.logger.Errorf("error: %v reading from connection", err)
 			return
-		default:
-			req := &body_types.Request{}
-			err := c.conn.ReadJSON(req)
-			if err != nil {
-				d.logger.Errorf("error: %v reading from connection", err)
-				return
-			}
-			d.handleRequest(req, c)
 		}
+		d.handleRequest(req, c)
 	}
 }
 
@@ -42,9 +37,10 @@ func (d *Demmon) writePump(c *client) {
 	defer func() {
 		err := c.conn.Close()
 		if err != nil {
-			d.logger.Errorf("error closing the connection: %s", err.Error())
+			d.logger.Errorf("error writing to connection: %s", err.Error())
 		}
 	}()
+
 	for {
 		select {
 		case msg, ok := <-c.out:
