@@ -25,6 +25,7 @@ func (d *Demmon) readPump(c *client) {
 	for {
 		select {
 		case <-c.done:
+			return
 		default:
 			req := &body_types.Request{}
 			err := c.conn.ReadJSON(req)
@@ -56,6 +57,7 @@ func (d *Demmon) writePump(c *client) {
 				return
 			}
 		case <-c.done:
+			return
 		}
 	}
 }

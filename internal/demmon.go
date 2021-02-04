@@ -841,7 +841,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 				})
 
 				for i := 0; i < customJobWrapper.is.IS.MaxRetries; i++ {
-					err := newCL.ConnectTimeout(job.is.DialTimeout)
+					err, _ := newCL.ConnectTimeout(job.is.DialTimeout)
 					if err != nil {
 						d.logger.Errorf("Got error %s connecting to node %s in custom interest set %s", err.Error(), p.IP.String(), taskID)
 						job.Lock()

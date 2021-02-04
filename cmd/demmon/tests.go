@@ -548,7 +548,7 @@ func testDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 	} else {
 		fmt.Println("CONNECTED TO DEMMON")
 	}
-	// go testExporter(eConf)
+	go testExporter(eConf)
 	// go testGlobalAggFunc(cl)
 
 	// go testAlarms(cl)

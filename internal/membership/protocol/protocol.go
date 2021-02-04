@@ -1295,7 +1295,7 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer) {
 		return
 	}
 
-	d.logger.Panicf("Unknown peer down %s", p.String())
+	d.logger.Errorf("Unknown peer down %s", p.String())
 }
 
 func (d *DemmonTree) MessageDelivered(msg message.Message, p peer.Peer) {

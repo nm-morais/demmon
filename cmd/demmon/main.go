@@ -282,8 +282,8 @@ func start(
 	}
 
 	go monitor.Listen()
-	// <-time.After(3 * time.Second)
-	// testDemmonMetrics(eConf, isLandmark)
+	<-time.After(3 * time.Second)
+	go testDemmonMetrics(eConf, isLandmark)
 	select {}
 
 	// buf := make([]byte, 1<<20)
