@@ -11,7 +11,7 @@ if [ -z $CONFIG_FILE ]; then
 fi
 
 if [ -z $DOCKER_IMAGE ]; then
-  echo "Pls specify $DOCKER_IMAGE"
+  echo "Pls specify DOCKER_IMAGE"
   exit
 fi
 
@@ -37,4 +37,4 @@ cd demmon-exporter
 cd ..
 
 cd demmon
-docker build --build-arg LATENCY_MAP=$LATENCY_MAP --build-arg CONFIG_FILE=$CONFIG_FILE -f build/Dockerfile -t $DOCKER_IMAGE .
+docker build --build-arg LATENCY_MAP=$LATENCY_MAP --build-arg CONFIG_FILE=$CONFIG_FILE -f build/Dockerfile -t $DOCKER_IMAGE . 

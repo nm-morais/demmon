@@ -658,11 +658,10 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 
 	// nrPeersToKick := d.config.NrPeersToBecomeParentInAbsorb * int(d.config.NrPeersToBecomeChildrenPerParentInAbsorb)
 
-	if len(d.myChildren) < int(d.config.MinSizeToCreateNewGrp) {
+	if len(d.myChildren) < d.config.MinSizeToCreateNewGrp {
+		d.logger.Info("handleCheckChildrenSize timer trigger returning due to goup size being too small")
 		return
 	}
-
-	d.logger.Info("handleCheckChildrenSize timer trigger")
 
 	peersToKickPerAbsorber := make(map[*PeerWithIDChain]struct {
 		totalLatency int
@@ -697,10 +696,10 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 
 		peerAbsorberSiblingLatencies := d.myChildrenLatencies[peerAbsorber.String()]
 		sort.Sort(peerAbsorberSiblingLatencies)
-
+		d.logger.Infof("peer %s sibling latencies: %s", peerAbsorber.StringWithFields(), peerAbsorberSiblingLatencies.String())
 		for _, candidateToKick := range peerAbsorberSiblingLatencies {
 
-			if len(peerAbsorberStats.peersToKick) == int(d.config.MinSizeToCreateNewGrp) {
+			if len(peerAbsorberStats.peersToKick) == d.config.MinSizeToCreateNewGrp {
 				break
 			}
 
@@ -746,18 +745,20 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 
 	for _, absorber := range keys {
 		absorberStats := peersToKickPerAbsorber[absorber]
-		if absorberStats.peersToKick.Len() > d.config.MinSizeToCreateNewGrp {
-			for _, toKickPeer := range absorberStats.peersToKick {
-				d.logger.Infof(
-					"Sending absorb message with peerToAbsorb: %s, peerAbsorber: %s",
-					toKickPeer.StringWithFields(),
-					absorber.StringWithFields(),
-				)
-				toSend := NewAbsorbMessage(absorber)
-				d.sendMessage(toSend, toKickPeer)
-			}
-			break
+		if len(absorberStats.peersToKick) < d.config.MinSizeToCreateNewGrp {
+			d.logger.Infof("peer %s does not have enough siblings (%d/%d) to become parent in absorb", absorber.StringWithFields(), len(absorberStats.peersToKick), d.config.MinSizeToCreateNewGrp)
+			continue
 		}
+		for _, toKickPeer := range absorberStats.peersToKick {
+			d.logger.Infof(
+				"Sending absorb message with peerToAbsorb: %s, peerAbsorber: %s",
+				toKickPeer.StringWithFields(),
+				absorber.StringWithFields(),
+			)
+			toSend := NewAbsorbMessage(absorber)
+			d.sendMessage(toSend, toKickPeer)
+		}
+		break
 	}
 
 }
