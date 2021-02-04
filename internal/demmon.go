@@ -173,7 +173,6 @@ func (job continuousQueryJobWrapper) Execute() {
 type client struct {
 	id   uint64
 	conn *websocket.Conn
-	out  chan *body_types.Response
 	done chan interface{}
 }
 
@@ -267,7 +266,6 @@ func (d *Demmon) handleDial(w http.ResponseWriter, req *http.Request) {
 	client := &client{
 		id:   atomic.AddUint64(d.counter, 1),
 		conn: conn,
-		out:  make(chan *body_types.Response),
 		done: make(chan interface{}),
 	}
 
@@ -710,10 +708,7 @@ func (d *Demmon) handleBroadcastMessages() {
 		case v := <-msgChan:
 			handleUpdateFunc(v)
 		default:
-			idx := 0
 			for _, bcastMsg := range updates {
-				d.logger.Infof("Delivering Bcast message: %+v", bcastMsg)
-
 				subsGeneric, ok := d.broadcastMessageSubscribers.Load(bcastMsg.ID)
 				if !ok {
 					d.logger.Warnf("Could not deliver broadcasted messages because there are no listeners for msg type %d", bcastMsg.ID)
@@ -725,11 +720,13 @@ func (d *Demmon) handleBroadcastMessages() {
 				for _, cl := range subs.subs {
 				repeat:
 					select {
-					case cl.client.out <- body_types.NewResponse(cl.subID, true, nil, 200, routes.InstallBroadcastMessageHandler, body_types.Message{
-						ID:      bcastMsg.ID,
-						TTL:     bcastMsg.TTL,
-						Content: bcastMsg.Content,
-					}):
+					default:
+						d.sendResponse(body_types.NewResponse(cl.subID, true, nil, 200, routes.InstallBroadcastMessageHandler, body_types.Message{
+							ID:      bcastMsg.ID,
+							TTL:     bcastMsg.TTL,
+							Content: bcastMsg.Content,
+						}), cl.client)
+						d.logger.Infof("Delivered Bcast message to client: %+v", bcastMsg)
 					case <-cl.client.done:
 						for idx, sub := range subs.subs {
 							if sub.client.id == cl.client.id {
@@ -744,9 +741,8 @@ func (d *Demmon) handleBroadcastMessages() {
 
 				}
 				subs.Unlock()
-				idx++
 			}
-			updates = updates[idx:]
+			updates = []body_types.Message{}
 		}
 	}
 }
@@ -760,7 +756,7 @@ func (d *Demmon) handleNodeUpdates() {
 			d.nodeUpdatesSubscribers.Range(func(key, valueGeneric interface{}) bool {
 				subID := key.(string)
 				client := valueGeneric.(*client)
-				client.out <- body_types.NewResponse(subID, true, nil, 200, routes.MembershipUpdates, nodeUp)
+				d.sendResponse(body_types.NewResponse(subID, true, nil, 200, routes.MembershipUpdates, nodeUp), client)
 				return true
 			})
 		case nodeDown := <-nodeDowns:
@@ -768,7 +764,7 @@ func (d *Demmon) handleNodeUpdates() {
 			d.nodeUpdatesSubscribers.Range(func(key, valueGeneric interface{}) bool {
 				subID := key.(string)
 				client := valueGeneric.(*client)
-				client.out <- body_types.NewResponse(subID, true, nil, 200, routes.MembershipUpdates, nodeDown)
+				d.sendResponse(body_types.NewResponse(subID, true, nil, 200, routes.MembershipUpdates, nodeDown), client)
 				return true
 			})
 		}
