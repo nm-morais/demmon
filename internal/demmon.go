@@ -118,12 +118,12 @@ func (ac *alarmControl) OnTrigger() (bool, *time.Time) {
 		ac.nrRetries++
 		if ac.nrRetries == ac.alarm.MaxRetries {
 			ac.d.logger.Errorf("alarm %d has exceeded maxRetries (%d), sending err msg and deleting alarm", ac.id, ac.nrRetries)
-			ac.client.sendResponse(body_types.NewResponse(ac.subID, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
+			ac.d.sendResponse(body_types.NewResponse(ac.subID, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
 				ID:       ac.id,
 				Error:    true,
 				Trigger:  false,
 				ErrorMsg: err.Error(),
-			}))
+			}), ac.client)
 
 			_, ok := ac.d.alarms.LoadAndDelete(ac.id)
 			if ok {
@@ -136,12 +136,12 @@ func (ac *alarmControl) OnTrigger() (bool, *time.Time) {
 	}
 
 	if res == true {
-		ac.client.sendResponse(body_types.NewResponse(ac.subID, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
+		ac.d.sendResponse(body_types.NewResponse(ac.subID, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
 			ID:       ac.id,
 			Error:    false,
 			Trigger:  true,
 			ErrorMsg: "",
-		}))
+		}), ac.client)
 		timeNow := time.Now()
 		ac.lastTimeTriggered = timeNow
 		nextTrigger := timeNow.Add(ac.alarm.TriggerBackoffTime)
@@ -178,10 +178,13 @@ type client struct {
 }
 
 // Description returns a PrintJob description.
-func (cl *client) sendResponse(resp *body_types.Response) {
-	select {
-	case cl.out <- resp:
-	case <-cl.done:
+func (d *Demmon) sendResponse(resp *body_types.Response, cl *client) {
+	err := cl.conn.WriteJSON(resp)
+	if err != nil {
+		d.logger.Errorf("Got error writing to client conn: %s", err.Error())
+		if err := cl.conn.Close(); err != nil {
+			d.logger.Errorf("Got error closing client conn: %s", err.Error())
+		}
 	}
 }
 
@@ -269,7 +272,6 @@ func (d *Demmon) handleDial(w http.ResponseWriter, req *http.Request) {
 	}
 
 	go d.readPump(client)
-	go d.writePump(client)
 }
 
 func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
@@ -679,7 +681,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 	// else {
 	// 	d.logger.Infof("Got request %s, response: status:% d, response: %+v", r.Type.String(), resp.Code, resp.Message)
 	// }
-	c.sendResponse(resp)
+	d.sendResponse(resp, c)
 }
 
 func (d *Demmon) subscribeNodeEvents(r *body_types.Request, c *client) body_types.NodeUpdateSubscriptionResponse {
@@ -878,7 +880,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 		wg.Wait()
 		if job.err != nil {
 			d.logger.Errorf("returning from interest set %s due to error %s", taskID, job.err.Error())
-			c.sendResponse(body_types.NewResponse(req.ID, true, nil, 500, routes.InstallCustomInterestSet, body_types.CustomInterestSetErr{Err: body_types.ErrCannotConnect.Error()}))
+			d.sendResponse(body_types.NewResponse(req.ID, true, nil, 500, routes.InstallCustomInterestSet, body_types.CustomInterestSetErr{Err: body_types.ErrCannotConnect.Error()}), c)
 			return
 		}
 		for _, p := range customJobWrapper.is.Hosts {
@@ -895,6 +897,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 				defer wg.Done()
 				res, err := cl.Query(query.Expression, query.Timeout)
 				if err != nil {
+					d.logger.Errorf("Got error %s querying  node %s in custom interest set %s", err.Error(), p.IP.String(), taskID)
 					job.Lock()
 					nrRetries, ok := job.nrRetries[p.IP.String()]
 					if !ok {
@@ -931,7 +934,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 		wg.Wait()
 		if job.err != nil {
 			d.logger.Errorf("returning from interest set %s due to error %s", taskID, job.err.Error())
-			c.sendResponse(body_types.NewResponse(req.ID, true, nil, 500, routes.InstallCustomInterestSet, body_types.CustomInterestSetErr{Err: body_types.ErrQuerying.Error()}))
+			d.sendResponse(body_types.NewResponse(req.ID, true, nil, 500, routes.InstallCustomInterestSet, body_types.CustomInterestSetErr{Err: body_types.ErrQuerying.Error()}), c)
 			return
 		}
 		job.Lock()
