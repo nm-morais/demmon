@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/mitchellh/mapstructure"
 	"github.com/nm-morais/demmon-common/body_types"
@@ -30,15 +29,6 @@ func (d *Demmon) readPump(c *client) {
 			req := &body_types.Request{}
 			err := c.conn.ReadJSON(req)
 			if err != nil {
-				if websocket.IsUnexpectedCloseError(
-					err,
-					websocket.CloseMessage,
-					websocket.CloseGoingAway,
-					websocket.CloseAbnormalClosure,
-				) {
-					d.logger.Errorf("error: %v reading from connection", err)
-					break
-				}
 				d.logger.Errorf("error: %v reading from connection", err)
 				return
 			}
@@ -54,18 +44,19 @@ func (d *Demmon) writePump(c *client) {
 			d.logger.Errorf("error closing the connection: %s", err.Error())
 		}
 	}()
-
-	select {
-	case msg, ok := <-c.out:
-		if !ok {
-			return
+	for {
+		select {
+		case msg, ok := <-c.out:
+			if !ok {
+				return
+			}
+			err := c.conn.WriteJSON(msg)
+			if err != nil {
+				d.logger.Errorf("error: %v writing to connection", err)
+				return
+			}
+		case <-c.done:
 		}
-		err := c.conn.WriteJSON(msg)
-		if err != nil {
-			d.logger.Errorf("error: %v writing to connection", err)
-			return
-		}
-	case <-c.done:
 	}
 }
 

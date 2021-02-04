@@ -498,9 +498,11 @@ func testDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 	}
 	cl := client.New(clientConf)
 
+	var err error
+	var errChan chan error
 	for i := 0; i < 3; i++ {
 		cl.Lock()
-		err := cl.ConnectTimeout(connectTimeout)
+		err, errChan = cl.ConnectTimeout(connectTimeout)
 		cl.Unlock()
 		if err != nil {
 			time.Sleep(connectBackoffTime)
@@ -509,7 +511,16 @@ func testDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 		break
 	}
 
-	go testExporter(eConf)
+	go func() {
+		panic(<-errChan)
+	}()
+
+	if err != nil {
+		panic("could not connect demmon client")
+	} else {
+		fmt.Println("CONNECTED TO DEMMON")
+	}
+	// go testExporter(eConf)
 	// go testGlobalAggFunc(cl)
 
 	go testAlarms(cl)
@@ -519,10 +530,14 @@ func testDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 }
 
 func testExporter(eConf *exporter.Conf) {
-	e, err := exporter.New(eConf, GetLocalIP().String(), "demmon", nil)
+	e, err, errChan := exporter.New(eConf, GetLocalIP().String(), "demmon", nil)
 	if err != nil {
 		panic(err)
 	}
+
+	go func() {
+		panic(<-errChan)
+	}()
 
 	exportFrequncy := 5 * time.Second
 	g := e.NewGauge("nr_goroutines", 12)
