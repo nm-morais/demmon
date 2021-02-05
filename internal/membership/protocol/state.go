@@ -58,8 +58,7 @@ func (d *DemmonTree) getPeerRelationshipType(p peer.Peer) (isSibling, isChildren
 func (d *DemmonTree) addParent(
 	newParent *PeerWithIDChain,
 	newGrandParent *PeerWithIDChain,
-	myNewChain PeerIDChain,
-	disconnectFromParent, sendDisconnectMsg bool) {
+	myNewChain PeerIDChain) {
 
 	haveCause := false
 	var existingLatencyMeasurement *time.Duration
@@ -95,19 +94,10 @@ func (d *DemmonTree) addParent(
 	}
 
 	if d.myParent != nil && !peer.PeersEqual(d.myParent, newParent) {
-		if disconnectFromParent {
-			tmp := d.myParent
-			d.myParent = nil
-			if sendDisconnectMsg {
-				toSend := NewDisconnectAsChildMessage()
-
-				d.babel.SendNotification(NewNodeDownNotification(tmp, d.getInView()))
-				d.sendMessageAndDisconnect(toSend, tmp)
-			} else {
-				d.babel.Disconnect(d.ID(), tmp)
-			}
-			d.nodeWatcher.Unwatch(tmp, d.ID())
-		}
+		toSend := NewDisconnectAsChildMessage()
+		d.babel.SendNotification(NewNodeDownNotification(d.myParent, d.getInView()))
+		d.sendMessageAndDisconnect(toSend, d.myParent)
+		d.nodeWatcher.Unwatch(d.myParent, d.ID())
 	}
 
 	d.logger.Infof(

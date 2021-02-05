@@ -15,6 +15,7 @@ import os
 import argparse
 
 latency_collection_tag = "<latency_collection>"
+inview_tag = "<inView>"
 
 
 def get_file_list(log_folder):
@@ -101,6 +102,13 @@ def extractLatencyTotal(line):
     return latency_total, n_nodes
 
 
+def extractInView(line):
+    # print("line", line)
+    line_cut = line[line.index(inview_tag) + len(inview_tag) + 1:len(line) - 1]
+    line_cut = line_cut.replace("\\", "")
+    return json.loads(line_cut)
+
+
 def parse_file(file, node_ip, node_infos):
     f = open(file, "r")
 
@@ -147,19 +155,17 @@ def parse_file(file, node_ip, node_infos):
             node_measurements["landmark"] = True
             node_measurements["level"] = 0
 
-        if "My parent changed" in line:
-            split = line.split(" ")
+        # if "My parent changed" in line:
+        #     split = line.split(" ")
 
-            split_line = line.split(" ")
-            ip_port = str(split_line[11])
-            ip = str(ip_port.split(":")[0])[6:]
+        #     split_line = line.split(" ")
+        #     ip_port = str(split_line[11])
+        #     ip = str(ip_port.split(":")[0])[6:]
 
-            print(f"parent_name: {ip}")
-            node_measurements["parent"] = ip
-        if "My level" in line:
-            node_measurements["level"] = int(line.split(" ")[-1][:-2])
+        #     print(f"parent_name: {ip}")
+        #     node_measurements["parent"] = ip
+
         if "Latency:" in line and "[NodeWatcher]" in line:
-
             if "Lowest Latency Peer" in line:
                 continue
             split = line.split(" ")
@@ -172,12 +178,35 @@ def parse_file(file, node_ip, node_infos):
             node_measurements["latencies"].append(
                 (node_ip, ip, (int(latStr2) / 1000000) / 2))
 
+        if inview_tag in line:
+            inView = extractInView(line)
+            # print(inView)
+            try:
+                # print("assigning parent", inView["parent"])
+                node_measurements["parent"] = str(
+                    inView["parent"]["Name"].split(":")[0])[6:]
+
+            except KeyError:
+                pass
+
     if added == 0:
         print(
             f"warn: node {node_ip} has no active view latencies")
         return
 
     node_infos[node_ip] = node_measurements
+
+
+def getNodeLevel(node_infos, nodeID):
+    # print("Finding nodeID", nodeID)
+    try:
+        parent = node_infos[nodeID]["parent"]
+        # print(f"finding parent: {parent}")
+        if parent == "":
+            return 1
+        return 1 + getNodeLevel(node_infos, parent)
+    except KeyError as e:
+        return 0
 
 
 def plotTree(node_infos, max_level, output_folder):
@@ -195,8 +224,11 @@ def plotTree(node_infos, max_level, output_folder):
     pos = {}
     children = {}
     node_level_steps = {}
-
+    levels = {}
     parentPos = {}
+
+    for nodeID in node_infos:
+        children[nodeID] = 0
 
     for nodeID in node_infos:
         if node_infos[nodeID]["landmark"]:
@@ -205,27 +237,35 @@ def plotTree(node_infos, max_level, output_folder):
             # print("landmark xpos: {}".format(xPos))
             landmarks += 1
             parentPos[nodeID] = [xPos, 0]
+            node_level = getNodeLevel(node_infos, nodeID)
+            levels[nodeID] = node_level
             continue
-        if node_infos[nodeID]["level"] == -1:
-            parent_less_nodes += 100
-            parentPos[nodeID] = [parent_less_nodes, -3]
-            continue
+        else:
+            try:
+                parent = node_infos[nodeID]["parent"]
+                children[parent] += 1
+                node_level = getNodeLevel(node_infos, nodeID)
+                levels[nodeID] = node_level
+                # print(f"Assigned level {node_level} to node {nodeID}")
+            except KeyError:
+                levels[nodeID] = -1
+                parentPos[nodeID] = [parent_less_nodes, -3]
+                parent_less_nodes += 100
+                continue
 
-        parentPos[nodeID] = [0, 0]
-        parent = node_infos[nodeID]["parent"]
-        try:
-            children[parent] = children[parent] + 1
-        except KeyError:
-            children[parent] = 1
+    # print(levels)
+    for nodeID in levels:
+        max_level = max(max_level, levels[nodeID])
+        # print(levels[nodeID])
+    # print(max_level)
 
-    for nodeID in sorted(node_infos, key=lambda x: node_infos[x]["level"], reverse=False):
-        level = node_infos[nodeID]["level"]
+    for nodeID in sorted(node_infos, key=lambda x: levels[x], reverse=False):
         landmark = node_infos[nodeID]["landmark"]
         # print(f"{nodeID} - level {level}, landmark: {landmark}")
         if nodeID.startswith("."):
             continue
 
-        if node_infos[nodeID]["level"] == -1:
+        if levels[nodeID] == -1:
             parent_less_nodes += 100
             pos[nodeID] = parentPos[nodeID]
             print("err: {} has no parent".format(nodeID))
@@ -256,8 +296,8 @@ def plotTree(node_infos, max_level, output_folder):
             except:
                 children_counter[parentId] = 1
             # print(node_infos[parentId])
-            thisLvlWidth = node_level_steps[parentId]
 
+            thisLvlWidth = node_level_steps[parentId]
             thisLvlStep = float(thisLvlWidth) / \
                 float(max(parent_children - 1, 1))
             node_level_steps[nodeID] = thisLvlStep
@@ -432,13 +472,13 @@ def plot_degree_hist_last_sample(node_infos, output_path):
     for info in node_infos:
         # print(node_infos[info].keys())
         # print(node_infos[info]["degree"][-1])
-        print(info, node_infos[info]["degree"][-1])
+        # print(info, node_infos[info]["degree"][-1])
         node_degrees.append(node_infos[info]["degree"][-1])
         # {"degree":, "ip": node_infos[info]["ip"]})
 
     plt.hist(node_degrees, bins=30)  # density=False would make counts
     print(node_degrees)
-    ax.set(xlabel='time (s)', ylabel='degree',
+    ax.set(xlabel='Degree of nodes', ylabel='degree',
            title='Histogram of degree of nodes in last sample')
     ax.grid()
     print(f"saving histogram of degree of nodes in last sample: {output_path}")
@@ -517,7 +557,7 @@ def main():
 
     df = pd.DataFrame(pd_data)
     df.index = df["timestamp"]
-    print(df)
+    # print(df)
     print("system_lat_avg:", system_lat_avg)
     plot_degree_hist_last_sample(
         node_infos=node_infos, output_path=args.output_path)

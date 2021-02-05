@@ -1022,8 +1022,6 @@ func (d *DemmonTree) handleJoinAsChildMessageReply(sender peer.Peer, m message.M
 			japrMsg.Parent,
 			japrMsg.GrandParent,
 			myNewID,
-			false,
-			false,
 		)
 		return
 	}
@@ -1059,6 +1057,7 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 			getStringOrNil(d.myParent),
 			upMsg.Parent.StringWithFields(),
 		)
+		d.sendMessageTmpTCPChan(NewDisconnectAsChildMessage(), sender)
 		return
 	}
 
@@ -1354,7 +1353,6 @@ func (d *DemmonTree) sendJoinAsChildMsg(
 	d.logger.Infof("Joining level %d", uint16(len(newParent.Chain())))
 	toSend := NewJoinAsChildMessage(d.self, newParentLat, newParent.Chain(), urgent, improvement)
 	d.sendMessageTmpTCPChan(toSend, newParent)
-
 }
 
 func (d *DemmonTree) attemptProgress() {

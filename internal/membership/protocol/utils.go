@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/rand"
@@ -14,7 +15,7 @@ import (
 	"github.com/nm-morais/go-babel/pkg/timer"
 )
 
-func (d *DemmonTree) handleDebugTimer(joinTimer timer.Timer) {
+func (d *DemmonTree) printLatencyCollectionStats() {
 	sb := strings.Builder{}
 
 	toStrWithLat := func(p peer.Peer) string {
@@ -48,6 +49,67 @@ func (d *DemmonTree) handleDebugTimer(joinTimer timer.Timer) {
 		}
 	}
 	d.logger.Infof("<latency_collection> %s", sb.String())
+}
+
+func (d *DemmonTree) printInViewStats() {
+	type peerWithLatency struct {
+		Name    string
+		Latency int
+	}
+
+	type viewWithLatencies struct {
+		Parent   *peerWithLatency   `json:"parent,omitempty"`
+		Children []*peerWithLatency `json:"children,omitempty"`
+		Siblings []*peerWithLatency `json:"siblings,omitempty"`
+	}
+	tmp := viewWithLatencies{
+		Parent:   nil,
+		Children: []*peerWithLatency{},
+		Siblings: []*peerWithLatency{},
+	}
+	getNodeWithLat := func(p *PeerWithIDChain) *peerWithLatency {
+		if p == nil {
+			return nil
+		}
+
+		nodeInfo, err := d.nodeWatcher.GetNodeInfo(p)
+
+		if err != nil {
+			return nil
+		}
+		return &peerWithLatency{
+			Name:    p.String(),
+			Latency: int(nodeInfo.LatencyCalc().CurrValue()),
+		}
+	}
+
+	for _, child := range d.myChildren {
+		if aux := getNodeWithLat(child); aux != nil {
+			tmp.Children = append(tmp.Children, aux)
+		}
+	}
+
+	for _, sibling := range d.mySiblings {
+		if aux := getNodeWithLat(sibling); aux != nil {
+			tmp.Siblings = append(tmp.Siblings, aux)
+		}
+	}
+
+	if aux := getNodeWithLat(d.myParent); aux != nil {
+		tmp.Parent = aux
+	}
+
+	res, err := json.Marshal(tmp)
+	if err != nil {
+		panic(err)
+	}
+
+	d.logger.Infof("<inView> %s", string(res))
+}
+
+func (d *DemmonTree) handleDebugTimer(joinTimer timer.Timer) {
+	d.printLatencyCollectionStats()
+	d.printInViewStats()
 }
 
 func (d *DemmonTree) generateChildID() PeerID {
