@@ -145,19 +145,30 @@ func getExcludingDescendantsOf(toFilter []*PeerWithIDChain, ascendantChain PeerI
 	return toReturn
 }
 
-func (d *DemmonTree) getPeerMapAsPeerMeasuredArr(peerMap map[string]*PeerWithIDChain) MeasuredPeersByLat {
+func (d *DemmonTree) getPeerMapAsPeerMeasuredArr(peerMap map[string]*PeerWithIDChain, exclusions ...*PeerWithIDChain) MeasuredPeersByLat {
 	measuredPeers := make(MeasuredPeersByLat, 0, len(peerMap))
 
-	for _, peer := range peerMap {
-		nodeStats, err := d.nodeWatcher.GetNodeInfo(peer.Peer)
+	for _, p := range peerMap {
+
+		found := false
+		for _, exclusion := range exclusions {
+			if peer.PeersEqual(exclusion, p) {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		nodeStats, err := d.nodeWatcher.GetNodeInfo(p.Peer)
 		var currLat time.Duration
 		if err != nil {
-			d.logger.Warnf("Do not have latency measurement for %s", peer.String())
+			d.logger.Warnf("Do not have latency measurement for %s", p.String())
 			currLat = math.MaxInt64
 		} else {
 			currLat = nodeStats.LatencyCalc().CurrValue()
 		}
-		measuredPeers = append(measuredPeers, NewMeasuredPeer(peer, currLat))
+		measuredPeers = append(measuredPeers, NewMeasuredPeer(p, currLat))
 	}
 	sort.Sort(measuredPeers)
 

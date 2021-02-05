@@ -133,7 +133,6 @@ func (d *DemmonTree) addParent(
 	}
 	d.babel.Dial(d.ID(), newParent, newParent.ToTCPAddr())
 	d.removeFromMeasuredPeers(newParent)
-	// d.resetSwitchTimer()
 
 	for childStr, child := range d.myChildren {
 		childID := child.Chain()[len(child.Chain())-1]
@@ -205,54 +204,47 @@ func (d *DemmonTree) removeChild(toRemove peer.Peer) {
 	d.logger.Infof("removing child: %s", toRemove.String())
 
 	child, ok := d.myChildren[toRemove.String()]
-	if ok {
-		delete(d.myChildrenLatencies, toRemove.String())
-		delete(d.myChildren, toRemove.String())
-
-		d.self = NewPeerWithIDChain(
-			d.self.Chain(),
-			d.self.Peer,
-			d.self.nChildren-1,
-			d.self.Version()+1,
-			d.self.Coordinates,
-		)
-
-		d.babel.SendNotification(NewNodeDownNotification(child, d.getInView()))
-		d.babel.Disconnect(d.ID(), toRemove)
-		d.nodeWatcher.Unwatch(toRemove, d.ID())
-
-	} else {
+	if !ok {
 		d.logger.Panic("Removing child not in myChildren or myPendingChildren")
 	}
+
+	delete(d.myChildrenLatencies, toRemove.String())
+	delete(d.myChildren, toRemove.String())
+	d.updateSelfVersion()
+	d.babel.SendNotification(NewNodeDownNotification(child, d.getInView()))
+	d.babel.Disconnect(d.ID(), toRemove)
+	d.nodeWatcher.Unwatch(toRemove, d.ID())
+	d.logger.Infof("Removed child: %s", toRemove.String())
 }
 
 func (d *DemmonTree) addSibling(newSibling *PeerWithIDChain) {
 	d.logger.Infof("Adding sibling: %s", newSibling.String())
-	oldSibling, ok := d.mySiblings[newSibling.String()]
-
-	if !ok {
-		d.nodeWatcher.Watch(newSibling.Peer, d.ID())
-		d.babel.Dial(d.ID(), newSibling.Peer, newSibling.Peer.ToTCPAddr())
-		d.removeFromMeasuredPeers(newSibling)
+	_, ok := d.mySiblings[newSibling.String()]
+	if ok {
+		d.logger.Errorf("Added sibling: %s but it was already on the map", newSibling.String())
+		return
 	}
 
 	d.mySiblings[newSibling.String()] = newSibling
-	if ok {
-		d.mySiblings[newSibling.String()].inConnActive = oldSibling.inConnActive
-		d.mySiblings[newSibling.String()].outConnActive = oldSibling.outConnActive
-	}
+	d.nodeWatcher.Watch(newSibling.Peer, d.ID())
+	d.babel.Dial(d.ID(), newSibling.Peer, newSibling.Peer.ToTCPAddr())
+	d.removeFromMeasuredPeers(newSibling)
+	d.logger.Infof("Added sibling: %s", newSibling.String())
 }
 
 func (d *DemmonTree) removeSibling(toRemove peer.Peer) {
 	d.logger.Infof("Removing sibling: %s", toRemove.String())
-	if sibling, ok := d.mySiblings[toRemove.String()]; ok {
-		delete(d.mySiblings, toRemove.String())
-		d.nodeWatcher.Unwatch(sibling, d.ID())
-		d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView()))
-		d.babel.Disconnect(d.ID(), toRemove)
+	sibling, ok := d.mySiblings[toRemove.String()]
+	if !ok {
+		d.logger.Errorf("Removing sibling %s not in mySiblings", toRemove.String())
 		return
 	}
-	d.logger.Panic("Removing sibling not in mySiblings or myPendingSiblings")
+	delete(d.mySiblings, toRemove.String())
+	d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView()))
+	d.nodeWatcher.Unwatch(sibling, d.ID())
+	d.babel.Disconnect(d.ID(), toRemove)
+	d.logger.Infof("Removed sibling: %s", toRemove.String())
+	return
 }
 
 func (d *DemmonTree) isNeighbour(toTest peer.Peer) bool {
@@ -275,18 +267,31 @@ func (d *DemmonTree) isNeighbour(toTest peer.Peer) bool {
 }
 
 func (d *DemmonTree) getInView() InView {
+	var parent *PeerWithIDChain
 	childArr := make([]*PeerWithIDChain, 0)
 	for _, child := range d.myChildren {
+		if !child.outConnActive {
+			continue
+		}
+
 		childArr = append(childArr, child)
 	}
 
 	siblingArr := make([]*PeerWithIDChain, 0)
 	for _, sibling := range d.mySiblings {
+		if !sibling.outConnActive {
+			continue
+		}
+
 		siblingArr = append(siblingArr, sibling)
 	}
 
+	if d.myParent != nil && !d.myParent.outConnActive {
+		parent = d.myParent
+	}
+
 	return InView{
-		Parent:      d.myParent,
+		Parent:      parent,
 		Grandparent: d.myGrandParent,
 		Children:    childArr,
 		Siblings:    siblingArr,
@@ -387,6 +392,7 @@ func (d *DemmonTree) mergeSampleWithEview(
 }
 
 func (d *DemmonTree) mergeSiblingsWith(newSiblings []*PeerWithIDChain) {
+	d.logger.Info("Merging siblings...")
 	for _, msgSibling := range newSiblings {
 		if peer.PeersEqual(d.babel.SelfPeer(), msgSibling) {
 			continue
@@ -397,6 +403,8 @@ func (d *DemmonTree) mergeSiblingsWith(newSiblings []*PeerWithIDChain) {
 			continue
 		}
 		if msgSibling.version > sibling.Version() {
+			msgSibling.inConnActive = sibling.inConnActive
+			msgSibling.outConnActive = sibling.outConnActive
 			d.mySiblings[msgSibling.String()] = msgSibling
 		}
 	}
@@ -453,6 +461,8 @@ func (d *DemmonTree) updateAndMergeSampleEntriesWithEView(sample []*PeerWithIDCh
 
 		if sibling, ok := d.mySiblings[currPeer.String()]; ok {
 			if currPeer.IsHigherVersionThan(sibling) {
+				currPeer.inConnActive = sibling.inConnActive
+				currPeer.outConnActive = sibling.outConnActive
 				d.mySiblings[currPeer.String()] = currPeer
 			}
 
@@ -461,6 +471,8 @@ func (d *DemmonTree) updateAndMergeSampleEntriesWithEView(sample []*PeerWithIDCh
 
 		if children, isChildren := d.myChildren[currPeer.String()]; isChildren {
 			if currPeer.IsHigherVersionThan(children) {
+				currPeer.inConnActive = children.inConnActive
+				currPeer.outConnActive = children.outConnActive
 				d.myChildren[currPeer.String()] = currPeer
 			}
 			continue
