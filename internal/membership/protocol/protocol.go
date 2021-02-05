@@ -491,6 +491,10 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 			continue
 		}
 
+		if measuredPeer.nChildren == 0 {
+			continue
+		}
+
 		if d.self.Chain().Level() <= measuredPeer.Chain().Level() {
 			continue
 		}
