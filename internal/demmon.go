@@ -477,8 +477,10 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		if !d.extractBody(r, &reqBody, resp) {
 			break
 		}
+		d.logger.Infof("Updating cutom interest set %s", reqBody.SetID)
 		customISGeneric, ok := d.customInterestSets.Load(reqBody.SetID)
 		if !ok {
+			d.logger.Warnf("Custom interest set %s not found", reqBody.SetID)
 			resp = body_types.NewResponse(r.ID, false, body_types.ErrCustomInterestSetNotFound, 404, r.Type, nil)
 			break
 		}
@@ -486,6 +488,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		customIS.Lock()
 		customIS.is.Hosts = reqBody.Hosts
 		customIS.Unlock()
+		d.logger.Infof("Updated cutom interest set  %s successfully", reqBody.SetID)
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, nil)
 	case routes.InstallNeighborhoodInterestSet:
 		reqBody := body_types.NeighborhoodInterestSet{}
@@ -803,7 +806,7 @@ func (d *Demmon) RemoveAlarmWatchlist(alarm *alarmControl) error {
 }
 
 func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request, c *client) {
-	defer d.logger.Warnf("Custom interest set %s returning", taskID)
+	defer d.logger.Panicf("Custom interest set %s returning", taskID)
 	defer d.customInterestSets.Delete(taskID)
 
 	jobGeneric, ok := d.customInterestSets.Load(taskID)
@@ -830,12 +833,12 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 		for _, p := range customJobWrapper.is.Hosts {
 			_, ok := job.clients[p.IP.String()]
 			if ok {
-				d.logger.Infof("Already have client for peer %s", p.IP.String())
 				continue
 			}
 
 			wg.Add(1)
 			pCopy := p
+			d.logger.Infof("Creating client for peer %s in customInterestSet %s", p.IP.String(), taskID)
 
 			go func(p body_types.CustomInterestSetHost) {
 				defer wg.Done()
@@ -869,7 +872,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 						time.Sleep(customJobWrapper.is.DialRetryBackoff * time.Duration(i))
 						continue
 					}
-					d.logger.Infof("Connected to custom interest set %d target: %s successfully", taskID, p.IP.String())
+					d.logger.Infof("Connected to custom interest set %s target: %s successfully", taskID, p.IP.String())
 					job.Lock()
 					job.nrRetries[p.IP.String()] = 0
 					job.clients[p.IP.String()] = newCL
@@ -924,7 +927,6 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 					tmp := tsdb.StaticTimeseriesFromDTO(ts)
 					toAdd = append(toAdd, tmp)
 				}
-				d.logger.Infof("Custom interest set %d adding to DB values: %+v", taskID, toAdd)
 				err = d.db.AddAll(toAdd)
 				if err != nil {
 					d.logger.Panicf("Unexpected err adding metric to db: %s", err.Error())
@@ -941,6 +943,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 		job.Lock()
 		for host, cl := range job.clients {
 			found := false
+
 			for _, h := range job.is.Hosts {
 				if host == h.IP.String() {
 					found = true
