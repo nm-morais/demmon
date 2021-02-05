@@ -472,7 +472,7 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 
 	parentStats, err := d.nodeWatcher.GetNodeInfo(d.myParent)
 	if err != nil {
-		d.logger.Panic("Do not have latency measurement for parent")
+		d.logger.Errorf("Do not have latency measurement for parent")
 		return
 	}
 
@@ -1203,7 +1203,7 @@ func (d *DemmonTree) DialSuccess(sourceProto protocol.ID, p peer.Peer) bool {
 		return true
 	}
 
-	d.logger.Panicf("Dialed unknown peer: %s", p.String())
+	d.logger.Errorf("Dialed unknown peer: %s", p.String())
 	return false
 }
 
