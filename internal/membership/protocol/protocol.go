@@ -144,6 +144,7 @@ func (d *DemmonTree) Logger() *logrus.Logger {
 }
 
 func (d *DemmonTree) Start() {
+
 	d.self = NewPeerWithIDChain(nil, d.babel.SelfPeer(), 0, 0, make(Coordinates, len(d.config.Landmarks)))
 	for _, landmark := range d.config.Landmarks {
 
@@ -200,6 +201,7 @@ func (d *DemmonTree) Start() {
 	d.babel.RegisterPeriodicTimer(d.ID(), NewCheckChidrenSizeTimer(d.config.CheckChildenSizeTimerDuration))
 	d.babel.RegisterPeriodicTimer(d.ID(), NewDebugTimer(DebugTimerDuration))
 	d.joinOverlay()
+	d.logger.Error("HERE")
 }
 
 func (d *DemmonTree) Init() {
@@ -360,11 +362,14 @@ func (d *DemmonTree) handleRefreshParentTimer(t timer.Timer) {
 			d.logger.Warnf("Could not send message to children because there is no active conn to it %s", child.StringWithFields())
 			continue
 		}
+		childrenArr := getMapAsPeerWithIDChainArray(d.myChildren, child)
+		d.logger.Infof("Sending children: %+v to %s", childrenArr, child.StringWithFields())
+
 		toSend := NewUpdateParentMessage(
 			d.myParent,
 			d.self,
 			child.Chain()[len(child.Chain())-1],
-			getMapAsPeerWithIDChainArray(d.myChildren, child),
+			childrenArr,
 		)
 		d.sendMessage(toSend, child.Peer)
 	}
@@ -378,9 +383,9 @@ func (d *DemmonTree) handleUpdateChildTimer(t timer.Timer) {
 }
 
 func (d *DemmonTree) sendUpdateChildMessage(dest peer.Peer) {
-	measuredChildren := d.getPeerMapAsPeerMeasuredArr(d.myChildren)
-	d.logger.Infof("Sending measured siblings: %+v", measuredChildren)
-	toSend := NewUpdateChildMessage(d.self, measuredChildren)
+	measuredSiblings := d.getPeerMapAsPeerMeasuredArr(d.mySiblings)
+	d.logger.Infof("Sending measured siblings: %+v", measuredSiblings)
+	toSend := NewUpdateChildMessage(d.self, measuredSiblings)
 	d.sendMessage(toSend, dest)
 }
 
@@ -663,16 +668,19 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 		return
 	}
 
-	peersToKickPerAbsorber := make(map[*PeerWithIDChain]struct {
+	peersToKickPerAbsorber := make(map[*PeerWithIDChain]*struct {
 		totalLatency int
 		peersToKick  MeasuredPeersByLat
 	}) // bit weird, but works for what i need
 
 	for _, children := range d.myChildren {
-		peersToKickPerAbsorber[children] = struct {
+		peersToKickPerAbsorber[children] = &struct {
 			totalLatency int
 			peersToKick  MeasuredPeersByLat
-		}{}
+		}{
+			totalLatency: 0,
+			peersToKick:  []*MeasuredPeer{},
+		}
 	}
 
 	// nrPeersKicked := func() int {
@@ -1043,7 +1051,7 @@ func getStringOrNil(p *PeerWithIDChain) string {
 
 func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Message) {
 	upMsg := m.(UpdateParentMessage)
-	// d.logger.Infof("got UpdateParentMessage %+v from %s", upMsg, sender.String())
+	d.logger.Infof("got UpdateParentMessage %+v from %s", upMsg, sender.String())
 
 	if !peer.PeersEqual(sender, d.myParent) {
 		d.logger.Errorf(
@@ -1070,7 +1078,6 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 
 	myNewChain := append(upMsg.Parent.Chain(), upMsg.ProposedID)
 	if !myNewChain.Equal(d.self.Chain()) {
-
 		d.logger.Infof("My chain changed: (%+v -> %+v)", d.self.Chain(), myNewChain)
 		d.logger.Infof(
 			"My level changed: (%d -> %d)",
@@ -1079,25 +1086,13 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 		) // IMPORTANT FOR VISUALIZER
 
 		d.self = NewPeerWithIDChain(myNewChain, d.self.Peer, d.self.nChildren, d.self.Version()+1, d.self.Coordinates)
-
-		for childStr, child := range d.myChildren {
-			childID := child.Chain()[len(child.Chain())-1]
-			d.myChildren[childStr] = NewPeerWithIDChain(
-				append(myNewChain, childID),
-				child.Peer,
-				child.nChildren,
-				child.Version()+1,
-				child.Coordinates,
-			)
-			//TODO maybe propagate to children
-		}
 	}
 	d.mergeSiblingsWith(upMsg.Siblings)
 }
 
 func (d *DemmonTree) handleUpdateChildMessage(sender peer.Peer, m message.Message) {
 	upMsg := m.(UpdateChildMessage)
-	// d.logger.Infof("got updateChildMessage %+v from %s", m, sender.String())
+	d.logger.Infof("got updateChildMessage %+v from %s", m, sender.String())
 	child, ok := d.myChildren[sender.String()]
 
 	if !ok {
@@ -1108,10 +1103,10 @@ func (d *DemmonTree) handleUpdateChildMessage(sender peer.Peer, m message.Messag
 		)
 		return
 	}
-	upMsg.Child.inConnActive = child.inConnActive
-	upMsg.Child.outConnActive = child.outConnActive
 	d.myChildren[sender.String()] = upMsg.Child
-	d.myChildrenLatencies[child.String()] = upMsg.Siblings
+	d.myChildren[sender.String()].inConnActive = child.inConnActive
+	d.myChildren[sender.String()].outConnActive = child.outConnActive
+	d.myChildrenLatencies[sender.String()] = upMsg.Siblings
 }
 
 func (d *DemmonTree) InConnRequested(dialerProto protocol.ID, p peer.Peer) bool {
@@ -1363,27 +1358,47 @@ func (d *DemmonTree) sendJoinAsChildMsg(
 }
 
 func (d *DemmonTree) attemptProgress() {
-
+	var lowestLatencyPeer *PeerWithParentAndChildren
+	var idx int
 	canProgress, nextLevelPeers := d.getPeersInNextLevelByLat(d.bestPeerlastLevel)
 	if !canProgress {
 		return
 	}
 
-	lowestLatencyPeer := nextLevelPeers[0]
+	d.logger.Infof("Getting lowest latency peer...")
+	for i, nextLevelPeer := range nextLevelPeers {
+		_, isLandmark := d.isLandmark(nextLevelPeer.peer)
+		if isLandmark {
+			idx = i
+			lowestLatencyPeer = nextLevelPeer
+			break
+		}
+
+		currPeerParent := nextLevelPeer.parent
+		if currPeerParent == nil {
+			continue
+		}
+		prevParent, ok := d.joinMap[currPeerParent.String()]
+		if !ok || !peer.PeersEqual(currPeerParent, prevParent.peer) {
+			d.logger.Infof("Discarding peer %s because parent switched (%s/%s) in the meantime", nextLevelPeer.peer, getStringOrNil(currPeerParent), getStringOrNil(prevParent.parent))
+			continue
+		}
+		idx = i
+		lowestLatencyPeer = nextLevelPeer
+	}
 
 	if lowestLatencyPeer == nil { //cannot progres to next level
 		d.logger.Infof("Lowest latency peer is nil")
-		if lowestLatencyPeer.parent == nil { // cannot fallback to previous level
+		if d.bestPeerlastLevel == nil { // cannot fallback to previous level
 			d.babel.RegisterTimer(d.ID(), NewJoinTimer(d.config.RejoinTimerDuration))
 			return
 		}
-		lowestLatencyPeerParent := d.joinMap[lowestLatencyPeer.parent.String()]
+		lowestLatencyPeerParent := d.joinMap[d.bestPeerlastLevel.peer.String()]
 		d.bestPeerlastLevel = lowestLatencyPeerParent
 		d.attemptProgress()
 		return
 	}
 
-	d.logger.Infof("Getting lowest latency peer...")
 	d.lastLevelProgress = time.Now()
 	d.logger.Infof(
 		"Lowest Latency Peer: %s , Latency: %d",
@@ -1398,7 +1413,7 @@ func (d *DemmonTree) attemptProgress() {
 			d.sendJoinAsChildMsg(lowestLatencyPeer.peer.PeerWithIDChain, lowestLatencyPeer.peer.MeasuredLatency, false, false)
 			return
 		}
-		for _, v := range nextLevelPeers[1:] {
+		for _, v := range nextLevelPeers[idx:] {
 			d.unwatchPeers(v.peer)
 		}
 		d.progressToNextLevel(lowestLatencyPeer)
