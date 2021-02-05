@@ -707,7 +707,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 		d.logger.Infof("peer %s sibling latencies: %s", peerAbsorber.StringWithFields(), peerAbsorberSiblingLatencies.String())
 		for _, candidateToKick := range peerAbsorberSiblingLatencies {
 
-			if len(peerAbsorberStats.peersToKick) == d.config.MinSizeToCreateNewGrp {
+			if len(peerAbsorberStats.peersToKick) == int(d.config.MinGrpSize) {
 				break
 			}
 
@@ -753,7 +753,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 
 	for _, absorber := range keys {
 		absorberStats := peersToKickPerAbsorber[absorber]
-		if len(absorberStats.peersToKick) < d.config.MinSizeToCreateNewGrp {
+		if len(absorberStats.peersToKick) < int(d.config.MinGrpSize) {
 			d.logger.Infof("peer %s does not have enough siblings (%d/%d) to become parent in absorb", absorber.StringWithFields(), len(absorberStats.peersToKick), d.config.MinSizeToCreateNewGrp)
 			continue
 		}
@@ -1379,7 +1379,11 @@ func (d *DemmonTree) attemptProgress() {
 			continue
 		}
 		prevParent, ok := d.joinMap[currPeerParent.String()]
-		if !ok || !peer.PeersEqual(currPeerParent, prevParent.peer) {
+		if !ok {
+			continue
+		}
+
+		if !peer.PeersEqual(currPeerParent, prevParent.peer) {
 			d.logger.Infof("Discarding peer %s because parent switched (%s/%s) in the meantime", nextLevelPeer.peer, getStringOrNil(currPeerParent), getStringOrNil(prevParent.parent))
 			continue
 		}
