@@ -806,7 +806,7 @@ func (d *Demmon) RemoveAlarmWatchlist(alarm *alarmControl) error {
 }
 
 func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request, c *client) {
-	defer d.logger.Panicf("Custom interest set %s returning", taskID)
+	defer d.logger.Panicf("Custom interest set %s returning", taskID) // TODO remove, only here fos testing
 	defer d.customInterestSets.Delete(taskID)
 
 	jobGeneric, ok := d.customInterestSets.Load(taskID)
