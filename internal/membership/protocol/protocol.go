@@ -260,16 +260,20 @@ func (d *DemmonTree) handleUnderpopulatedTimer(joinTimer timer.Timer) {
 	if d.myGrandParent == nil || d.myParent == nil {
 		return
 	}
+
 	if !d.joined || d.myPendingParentInAbsorb != nil || d.myPendingParentInImprovement != nil {
 		return
 	}
+
 	if nrPeersInGrp >= int(d.config.MinGrpSize) {
+		d.logger.Info("underpop timer returning (nrPeersInGrp < MinGrpSize)")
 		return
 	}
 
 	r := rand.Float64()
-	probToStay := float64(nrPeersInGrp) / float64(d.config.MinGrpSize)
-	if r < probToStay {
+	probToStay := float64(nrPeersInGrp-1) / float64(d.config.MinGrpSize)
+	if r > probToStay {
+		d.logger.Infof("underpop timer returning (r=%f > prob=%f)", r, probToStay)
 		return
 	}
 
@@ -525,7 +529,9 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 		}
 
 		if d.self.Chain().Level() <= measuredPeer.Chain().Level() {
-			continue
+			if len(d.myChildren) > 0 {
+				continue
+			}
 		}
 
 		// if len(d.myChildren) > 0 {
