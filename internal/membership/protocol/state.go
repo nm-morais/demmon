@@ -162,7 +162,7 @@ func (d *DemmonTree) getNeighborsAsPeerWithIDChainArray() []*PeerWithIDChain {
 	return possibilitiesToSend
 }
 
-func (d *DemmonTree) addChild(newChild *PeerWithIDChain, childrenLatency time.Duration) PeerID {
+func (d *DemmonTree) addChild(newChild *PeerWithIDChain, childrenLatency time.Duration, outConnActive, inConnActive bool) PeerID {
 	proposedID := d.generateChildID()
 	newChildWithID := NewPeerWithIDChain(
 		append(d.self.Chain(), proposedID),
@@ -172,14 +172,19 @@ func (d *DemmonTree) addChild(newChild *PeerWithIDChain, childrenLatency time.Du
 		newChild.Coordinates,
 	)
 
-	if childrenLatency != 0 {
-		d.nodeWatcher.WatchWithInitialLatencyValue(newChild, d.ID(), childrenLatency)
-	} else {
-		d.nodeWatcher.Watch(newChild, d.ID())
+	newChildWithID.inConnActive = inConnActive
+	newChildWithID.outConnActive = outConnActive
+
+	if !outConnActive {
+		if childrenLatency != 0 {
+			d.nodeWatcher.WatchWithInitialLatencyValue(newChild, d.ID(), childrenLatency)
+		} else {
+			d.nodeWatcher.Watch(newChild, d.ID())
+		}
+		d.babel.Dial(d.ID(), newChild, newChild.ToTCPAddr())
 	}
 
 	d.myChildren[newChild.String()] = newChildWithID
-	d.babel.Dial(d.ID(), newChild, newChild.ToTCPAddr())
 	d.updateSelfVersion()
 	d.logger.Infof("added children: %s", newChildWithID.String())
 	d.removeFromMeasuredPeers(newChild)

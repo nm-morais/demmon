@@ -49,11 +49,11 @@ var (
 		MaxRetriesJoinMsg:            3,
 		Landmarks:                    nil,
 
-		MinGrpSize: 3,
+		MinGrpSize: 2,
 		MaxGrpSize: 9,
 
-		NrPeersToBecomeChildrenPerParentInAbsorb: 3,
-		NrPeersToBecomeParentInAbsorb:            2,
+		NrPeersToBecomeParentInAbsorb:            3,
+		NrPeersToBecomeChildrenPerParentInAbsorb: 2,
 
 		// NrPeersToKickPerParent:                 3,
 		MinLatencyImprovementToImprovePosition: 10 * time.Millisecond,
@@ -61,7 +61,7 @@ var (
 		PhiLevelForNodeDown: 3,
 		// SwitchProbability:             0.5,
 
-		CheckChildenSizeTimerDuration: 3 * time.Second,
+		CheckChildenSizeTimerDuration: 5 * time.Second,
 		ParentRefreshTickDuration:     3 * time.Second,
 		ChildrenRefreshTickDuration:   3 * time.Second,
 		RejoinTimerDuration:           10 * time.Second,
