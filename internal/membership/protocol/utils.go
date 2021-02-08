@@ -161,19 +161,20 @@ func getRandSample(nrPeersToSelect int, peers ...*PeerWithIDChain) map[string]*P
 	return toReturn
 }
 
-func getPeersExcluding(toFilter []*PeerWithIDChain, exclusions map[string]interface{}) []*PeerWithIDChain {
+func getPeersExcluding(toFilter []*PeerWithIDChain, exclusions map[string]bool) []*PeerWithIDChain {
 	toReturn := make([]*PeerWithIDChain, 0)
 
 	for _, p := range toFilter {
 		_, excluded := exclusions[p.String()]
-		if !excluded {
-			toReturn = append(toReturn, p)
+		if excluded {
+			continue
 		}
+		toReturn = append(toReturn, p)
 	}
 	return toReturn
 }
 
-func getRandomExcluding(toFilter []*PeerWithIDChain, exclusions map[string]interface{}) *PeerWithIDChain {
+func getRandomExcluding(toFilter []*PeerWithIDChain, exclusions map[string]bool) *PeerWithIDChain {
 	filtered := getPeersExcluding(toFilter, exclusions)
 	filteredLen := len(filtered)
 	if filteredLen == 0 {
@@ -200,9 +201,10 @@ func getExcludingDescendantsOf(toFilter []*PeerWithIDChain, ascendantChain PeerI
 	toReturn := make([]*PeerWithIDChain, 0)
 
 	for _, peer := range toFilter {
-		if !peer.IsDescendentOf(ascendantChain) {
-			toReturn = append(toReturn, peer)
+		if peer.IsDescendentOf(ascendantChain) {
+			continue
 		}
+		toReturn = append(toReturn, peer)
 	}
 	return toReturn
 }

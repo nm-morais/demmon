@@ -420,7 +420,7 @@ func (d *DemmonTree) handleExternalNeighboringTimer(joinTimer timer.Timer) {
 	msgToSend = NewRandomWalkMessage(uint16(d.config.RandomWalkTTL), d.self, peerMapToArr(sample))
 	peerToSendTo = getRandomExcluding(
 		getExcludingDescendantsOf(neighbors, d.self.Chain()),
-		map[string]interface{}{d.self.String(): nil},
+		map[string]bool{d.self.String(): true},
 	)
 	// }
 
@@ -789,9 +789,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 			toSend := NewAbsorbMessage(absorber.PeerWithIDChain)
 			d.sendMessage(toSend, toKickPeer)
 		}
-		break
 	}
-
 }
 
 // message handlers
@@ -799,90 +797,79 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 func (d *DemmonTree) handleRandomWalkMessage(sender peer.Peer, m message.Message) {
 	randWalkMsg := m.(RandomWalkMessage)
 
-	hopsTaken := d.config.RandomWalkTTL - int(randWalkMsg.TTL)
-	if hopsTaken < d.config.NrHopsToIgnoreWalk {
-		randWalkMsg.TTL--
-		sampleToSend, neighboursWithoutSenderDescendants := d.mergeSampleWithEview(
-			randWalkMsg.Sample,
-			randWalkMsg.Sender,
-			0,
-			d.config.NrPeersToMergeInWalkSample,
-		)
-		p := getRandomExcluding(
-			neighboursWithoutSenderDescendants,
-			map[string]interface{}{d.self.String(): nil, randWalkMsg.Sender.String(): nil, sender.String(): nil},
-		)
-		if p == nil {
-			walkReply := NewWalkReplyMessage(sampleToSend)
+	nrPeersToMerge := d.config.NrPeersToMergeInWalkSample
+	nrPeersToAdd := d.config.NrPeersToMergeInWalkSample
+	var sampleToSend,
+		neighboursWithoutSenderDescendants []*PeerWithIDChain
 
-			d.logger.Infof(
-				"have no peers to forward message... merging and sending random walk reply %+v to %s",
-				randWalkMsg,
-				randWalkMsg.Sender.String(),
-			)
-			d.sendMessageTmpTCPChan(walkReply, randWalkMsg.Sender)
-			return
+	defer func() {
+		duplChecker := map[string]bool{}
+		for _, elem := range sampleToSend {
+			k := elem.String()
+			if _, ok := duplChecker[k]; ok {
+				d.logger.Panicf("Duplicate entry in sampleToSend: %+v", sampleToSend)
+			}
+			duplChecker[k] = true
 		}
-		randWalkMsg.Sample = sampleToSend
-		d.logger.Infof(
-			"hopsTaken < d.config.NrHopsToIgnoreWalk, adding peers and forwarding random walk message %+v to: %s",
-			randWalkMsg,
-			p.String(),
-		)
-		d.sendMessage(randWalkMsg, p)
-		return
-	}
+	}()
 
-	if randWalkMsg.TTL > 0 {
-		// toPrint := ""
-		// for _, peer := range neighboursWithoutSenderDescendants {
-		// 	d.logger.Infof("%+v", peer)
-		// 	// d.logger.Infof("neighboursWithoutSenderDescendants peer: %s", peer.String())
-		// }
-		// d.logger.Infof("neighboursWithoutSenderDescendants: %s", toPrint)
-		sampleToSend, neighboursWithoutSenderDescendants := d.mergeSampleWithEview(
-			randWalkMsg.Sample,
-			randWalkMsg.Sender,
-			d.config.NrPeersToMergeInWalkSample,
-			d.config.NrPeersToMergeInWalkSample,
-		)
-		randWalkMsg.TTL--
-		p := getRandomExcluding(
-			neighboursWithoutSenderDescendants,
-			map[string]interface{}{randWalkMsg.Sender.String(): nil, d.self.String(): nil, sender.String(): nil},
-		)
-		if p == nil {
-			d.logger.Infof(
-				"have no peers to forward message... merging and sending random walk reply to %s",
-				randWalkMsg.Sender.String(),
-			)
-			walkReply := NewWalkReplyMessage(sampleToSend)
-			d.sendMessageTmpTCPChan(walkReply, randWalkMsg.Sender)
-			return
+	duplChecker := map[string]bool{}
+	for _, elem := range randWalkMsg.Sample {
+		k := elem.String()
+		if _, ok := duplChecker[k]; ok {
+			d.logger.Panicf("Duplicate entry in sampleToSend: %+v", sampleToSend)
 		}
-		randWalkMsg.Sample = sampleToSend
-		d.logger.Infof(
-			"hopsTaken >= d.config.NrHopsToIgnoreWalk, merging and forwarding random walk message %+v to: %s",
-			randWalkMsg,
-			p.String(),
-		)
-		d.sendMessage(randWalkMsg, p)
-		return
+		duplChecker[k] = true
 	}
 
 	// TTL == 0
 	if randWalkMsg.TTL == 0 {
-		sampleToSend, _ := d.mergeSampleWithEview(
+		sampleToSend, _ = d.mergeSampleWithEview(
 			randWalkMsg.Sample,
 			randWalkMsg.Sender,
-			d.config.NrPeersToMergeInWalkSample,
-			d.config.NrPeersToMergeInWalkSample,
+			nrPeersToMerge,
+			nrPeersToAdd,
 		)
-
-		d.logger.Infof("random walk TTL is 0. Sending random walk reply to %s", randWalkMsg.Sender.String())
+		d.logger.Infof("random walk TTL is 0. Sending random walk reply to original sender: %s", randWalkMsg.Sender.String())
 		d.sendMessageTmpTCPChan(NewWalkReplyMessage(sampleToSend), randWalkMsg.Sender)
 		return
 	}
+
+	if int(randWalkMsg.TTL) > d.config.NrHopsToIgnoreWalk {
+		nrPeersToMerge = 0
+		d.logger.Infof(
+			"hopsTaken < d.config.NrHopsToIgnoreWalk, only adding peers and forwarding random walk message %+v",
+			randWalkMsg,
+		)
+	} else {
+		d.logger.Infof(
+			"hopsTaken >= d.config.NrHopsToIgnoreWalk, merging and forwarding random walk message %+v",
+			randWalkMsg,
+		)
+	}
+
+	sampleToSend, neighboursWithoutSenderDescendants = d.mergeSampleWithEview(
+		randWalkMsg.Sample,
+		randWalkMsg.Sender,
+		nrPeersToMerge,
+		nrPeersToAdd,
+	)
+
+	p := getRandomExcluding(
+		neighboursWithoutSenderDescendants,
+		map[string]bool{randWalkMsg.Sender.String(): true, d.self.String(): true, sender.String(): true},
+	)
+
+	if p == nil {
+		d.logger.Infof(
+			"have no peers to forward message... merging and sending random walk reply to %s",
+			randWalkMsg.Sender.String(),
+		)
+		d.sendMessageTmpTCPChan(NewWalkReplyMessage(sampleToSend), randWalkMsg.Sender)
+		return
+	}
+
+	d.sendMessage(NewRandomWalkMessage(randWalkMsg.TTL-1, randWalkMsg.Sender, sampleToSend), p)
 }
 
 func (d *DemmonTree) handleWalkReplyMessage(sender peer.Peer, m message.Message) {

@@ -342,36 +342,62 @@ func (d *DemmonTree) mergeSampleWithEview(
 	sender *PeerWithIDChain,
 	nrPeersToMerge, nrPeersToAdd int) (sampleToSend,
 	neighboursWithoutSenderDescendants []*PeerWithIDChain) {
+
 	selfInSample := false
+	sampleAsMap := make(map[string]bool)
 
 	for _, peerWithIDChain := range sample {
+		sampleAsMap[peerWithIDChain.String()] = true
 		if peer.PeersEqual(peerWithIDChain, d.babel.SelfPeer()) {
 			selfInSample = true
-			break
 		}
 	}
+
 	d.updateAndMergeSampleEntriesWithEView(sample, nrPeersToMerge)
 	neighbors := d.getNeighborsAsPeerWithIDChainArray()
-
 	neighboursWithoutSenderDescendants = getExcludingDescendantsOf(neighbors, sender.Chain())
-	sampleAsMap := make(map[string]interface{})
-	for _, p := range sample {
-		sampleAsMap[p.String()] = nil
-	}
 	neighboursWithoutSenderDescendantsAndNotInSample := getPeersExcluding(
 		neighboursWithoutSenderDescendants,
 		sampleAsMap,
 	)
-	if !selfInSample && d.self != nil && len(d.self.Chain()) > 0 && !d.self.IsDescendentOf(sender.Chain()) {
+
+	knownPeers := []*PeerWithIDChain{}
+	knownPeers = append(knownPeers, peerMapToArr(d.eView)...)
+	for _, v := range d.measuredPeers {
+		found := false
+		for _, aux := range knownPeers {
+			if peer.PeersEqual(aux, v) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			knownPeers = append(knownPeers, v.PeerWithIDChain)
+		}
+	}
+
+	exclusions := map[string]bool{}
+	for _, aux := range neighboursWithoutSenderDescendantsAndNotInSample {
+		exclusions[aux.String()] = true
+	}
+	for _, aux := range sample {
+		exclusions[aux.String()] = true
+	}
+	knownPeersNotInNeighbors := getPeersExcluding(
+		knownPeers,
+		exclusions,
+	)
+
+	if !selfInSample && len(d.self.Chain()) > 0 && !d.self.IsDescendentOf(sender.Chain()) {
 		sampleToSendMap := getRandSample(
 			nrPeersToAdd-1,
-			append(neighboursWithoutSenderDescendantsAndNotInSample, peerMapToArr(d.eView)...)...,
+			append(knownPeersNotInNeighbors, neighboursWithoutSenderDescendantsAndNotInSample...)...,
 		)
 		sampleToSend = append(peerMapToArr(sampleToSendMap), append(sample, d.self)...)
 	} else {
 		sampleToSendMap := getRandSample(
 			nrPeersToAdd,
-			append(neighboursWithoutSenderDescendantsAndNotInSample, peerMapToArr(d.eView)...)...,
+			append(knownPeersNotInNeighbors, neighboursWithoutSenderDescendantsAndNotInSample...)...,
 		)
 		sampleToSend = append(peerMapToArr(sampleToSendMap), sample...)
 	}
