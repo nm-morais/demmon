@@ -230,7 +230,29 @@ func (t *switchTimer) Duration() time.Duration {
 
 // debugTimer
 
-const debugTimerID = 2010
+const underpopulationTimerID = 2010
+
+type underpopulationTimer struct {
+	duration time.Duration
+}
+
+func NewUnderpopupationTimer(duration time.Duration) timer.Timer {
+	return &underpopulationTimer{
+		duration: duration,
+	}
+}
+
+func (t *underpopulationTimer) ID() timer.ID {
+	return underpopulationTimerID
+}
+
+func (t *underpopulationTimer) Duration() time.Duration {
+	return t.duration
+}
+
+// debugTimer
+
+const debugTimerID = 2011
 
 type debugTimer struct {
 	duration time.Duration

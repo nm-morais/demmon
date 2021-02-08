@@ -61,7 +61,6 @@ var (
 		PhiLevelForNodeDown: 3,
 		// SwitchProbability:             0.5,
 
-		LimitFirstLevelGroupSize:      true,
 		CheckChildenSizeTimerDuration: 3 * time.Second,
 		ParentRefreshTickDuration:     3 * time.Second,
 		ChildrenRefreshTickDuration:   3 * time.Second,
@@ -87,6 +86,8 @@ var (
 		NrPeersToMergeInWalkSample:         5,
 
 		MinLatencyImprovementPerPeerForSwitch: 10 * time.Millisecond,
+
+		UnderpopulatedGroupTimerDuration: 5 * time.Second,
 		// CheckSwitchOportunityTimeout:          7500 * time.Millisecond,
 	}
 )

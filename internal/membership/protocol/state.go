@@ -89,6 +89,12 @@ func (d *DemmonTree) addParent(
 		haveCause = true
 	}
 
+	if peer.PeersEqual(newParent, d.myPendingParentInClimb) {
+		d.logger.Info("climbed successfully")
+		d.myPendingParentInClimb = nil
+		haveCause = true
+	}
+
 	if !haveCause {
 		d.logger.Panicf("adding parent but peer is not in possible pending parents")
 	}
