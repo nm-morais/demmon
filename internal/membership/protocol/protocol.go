@@ -202,7 +202,6 @@ func (d *DemmonTree) Start() {
 	d.babel.RegisterPeriodicTimer(d.ID(), NewCheckChidrenSizeTimer(d.config.CheckChildenSizeTimerDuration))
 	d.babel.RegisterPeriodicTimer(d.ID(), NewDebugTimer(DebugTimerDuration))
 	d.joinOverlay()
-	d.logger.Error("HERE")
 }
 
 func (d *DemmonTree) Init() {
@@ -903,8 +902,8 @@ func (d *DemmonTree) handleAbsorbMessage(sender peer.Peer, m message.Message) {
 		return
 	}
 
-	d.logger.Infof("Got absorbMessage: %+v from %s", m, sender.String())
 	newParent := absorbMessage.peerAbsorber
+	d.logger.Infof("Got absorbMessage with peer absorber: %+v from %s", newParent.StringWithFields(), sender.String())
 
 	if sibling, ok := d.mySiblings[newParent.String()]; ok {
 		delete(d.mySiblings, newParent.String())
@@ -1080,6 +1079,15 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 			upMsg.Parent.StringWithFields(),
 		)
 		d.sendMessageTmpTCPChan(NewDisconnectAsChildMessage(), sender)
+		return
+	}
+
+	if d.myPendingParentInAbsorb != nil {
+		d.logger.Infof(
+			"Discarding UpdateParentMessage because d.myPendingParentInAbsorb != nil (myPendingParentInAbsorb:%s sender:%s)",
+			getStringOrNil(d.myPendingParentInAbsorb),
+			upMsg.Parent.StringWithFields(),
+		)
 		return
 	}
 
@@ -1396,10 +1404,13 @@ func (d *DemmonTree) attemptProgress() {
 
 		currPeerParent := nextLevelPeer.parent
 		if currPeerParent == nil {
+			d.logger.Infof("Discarding peer %s because its parent is nil", nextLevelPeer.peer)
 			continue
 		}
+
 		prevParent, ok := d.joinMap[currPeerParent.String()]
 		if !ok {
+			d.logger.Infof("Discarding peer %s because its parent is not in join map", nextLevelPeer.peer, getStringOrNil(currPeerParent), getStringOrNil(prevParent.parent))
 			continue
 		}
 
@@ -1411,7 +1422,11 @@ func (d *DemmonTree) attemptProgress() {
 		lowestLatencyPeer = nextLevelPeer
 	}
 
-	if lowestLatencyPeer == nil { //cannot progres to next level
+	for _, v := range nextLevelPeers[:idx] {
+		d.unwatchPeers(v.peer)
+	}
+
+	if lowestLatencyPeer == nil { //cannot progress to next level
 		d.logger.Infof("Lowest latency peer is nil")
 		if d.bestPeerlastLevel == nil { // cannot fallback to previous level
 			d.babel.RegisterTimer(d.ID(), NewJoinTimer(d.config.RejoinTimerDuration))

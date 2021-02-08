@@ -387,6 +387,11 @@ func (d *DemmonTree) mergeSiblingsWith(newSiblings []*PeerWithIDChain) {
 		if peer.PeersEqual(d.babel.SelfPeer(), msgSibling) {
 			continue
 		}
+
+		if peer.PeersEqual(msgSibling, d.myPendingParentInAbsorb) {
+			continue
+		}
+
 		sibling, ok := d.mySiblings[msgSibling.String()]
 		if !ok {
 			d.addSibling(msgSibling)
@@ -402,17 +407,12 @@ func (d *DemmonTree) mergeSiblingsWith(newSiblings []*PeerWithIDChain) {
 	for _, mySibling := range d.mySiblings {
 		found := false
 		for _, msgSibling := range newSiblings {
-
 			if peer.PeersEqual(mySibling, msgSibling) {
 				found = true
 				break
 			}
 		}
 		if !found {
-			if peer.PeersEqual(mySibling, d.myPendingParentInAbsorb) {
-				continue
-			}
-
 			if peer.PeersEqual(mySibling, d.myParent) {
 				continue
 			}
