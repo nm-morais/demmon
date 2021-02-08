@@ -81,6 +81,7 @@ type DemmonTree struct {
 	joinMap               map[string]*PeerWithParentAndChildren
 	bestPeerlastLevel     *PeerWithParentAndChildren
 	myPendingParentInJoin *MeasuredPeer
+	rejoinTimerActive     bool
 
 	// state TODO refactor to class
 	self                         *PeerWithIDChain
@@ -242,6 +243,7 @@ func (d *DemmonTree) Init() {
 }
 
 func (d *DemmonTree) handleJoinTimer(joinTimer timer.Timer) {
+	d.rejoinTimerActive = false
 	if !d.joined {
 		d.logger.Info("-------------Rejoining overlay---------------")
 		d.joinOverlay()
@@ -1333,9 +1335,10 @@ func (d *DemmonTree) MessageDeliveryErr(msg message.Message, p peer.Peer, err er
 	case JoinMessage:
 		if !d.joined {
 			d.logger.Warnf(
-				"Deleting peer %s from currLevelPeers because could not deliver join msg",
+				"Deleting peer %s from joinMap because could not deliver join msg",
 				p.String(),
 			)
+
 			delete(d.joinMap, p.String())
 			d.nodeWatcher.Unwatch(p, d.ID())
 			d.attemptProgress()
@@ -1402,20 +1405,19 @@ func (d *DemmonTree) attemptProgress() {
 			break
 		}
 
-		currPeerParent := nextLevelPeer.parent
-		if currPeerParent == nil {
+		if nextLevelPeer.parent == nil {
 			d.logger.Infof("Discarding peer %s because its parent is nil", nextLevelPeer.peer)
 			continue
 		}
 
-		prevParent, ok := d.joinMap[currPeerParent.String()]
+		prevParent, ok := d.joinMap[nextLevelPeer.parent.String()]
 		if !ok {
-			d.logger.Infof("Discarding peer %s because its parent is not in join map", nextLevelPeer.peer, getStringOrNil(currPeerParent), getStringOrNil(prevParent.parent))
+			d.logger.Infof("Discarding peer %s because its parent %s is not in join map", nextLevelPeer.peer, getStringOrNil(nextLevelPeer.parent))
 			continue
 		}
 
-		if !peer.PeersEqual(currPeerParent, prevParent.peer) {
-			d.logger.Infof("Discarding peer %s because parent switched (%s/%s) in the meantime", nextLevelPeer.peer, getStringOrNil(currPeerParent), getStringOrNil(prevParent.parent))
+		if !peer.PeersEqual(nextLevelPeer.parent, prevParent.peer) {
+			d.logger.Infof("Discarding peer %s because parent switched (%s/%s) in the meantime", nextLevelPeer.peer, getStringOrNil(nextLevelPeer.parent), getStringOrNil(prevParent.parent))
 			continue
 		}
 		idx = i
@@ -1429,6 +1431,7 @@ func (d *DemmonTree) attemptProgress() {
 	if lowestLatencyPeer == nil { //cannot progress to next level
 		d.logger.Infof("Lowest latency peer is nil")
 		if d.bestPeerlastLevel == nil { // cannot fallback to previous level
+			d.rejoinTimerActive = true
 			d.babel.RegisterTimer(d.ID(), NewJoinTimer(d.config.RejoinTimerDuration))
 			return
 		}
@@ -1553,8 +1556,9 @@ func (d *DemmonTree) getPeersInNextLevelByLat(lastLevelPeer *PeerWithParentAndCh
 
 			peerWithChildren, responded := d.joinMap[l.String()]
 			if !responded {
-				return false, nil
+				return true, nil
 			}
+
 			if peerWithChildren.peer.MeasuredLatency == math.MaxInt64 {
 				return false, nil
 			}
