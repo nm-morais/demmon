@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/mitchellh/mapstructure"
 	"github.com/nm-morais/demmon-common/body_types"
