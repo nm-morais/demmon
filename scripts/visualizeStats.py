@@ -15,6 +15,7 @@ import os
 import argparse
 
 latency_collection_tag = "<latency_collection>"
+inview_tag = "<inView>"
 
 
 def get_file_list(log_folder):
@@ -101,6 +102,13 @@ def extractLatencyTotal(line):
     return latency_total, n_nodes
 
 
+def extractInView(line):
+    # print("line", line)
+    line_cut = line[line.index(inview_tag) + len(inview_tag) + 1:len(line) - 1]
+    line_cut = line_cut.replace("\\", "")
+    return json.loads(line_cut)
+
+
 def parse_file(file, node_ip, node_infos):
     f = open(file, "r")
 
@@ -147,27 +155,39 @@ def parse_file(file, node_ip, node_infos):
             node_measurements["landmark"] = True
             node_measurements["level"] = 0
 
-        if "My parent changed" in line:
-            split = line.split(" ")
-            split_line = line.split(" ")
-            ip_port = str(split_line[10])
-            ip = str(ip_port.split(":")[0])[6:]
+        # if "My parent changed" in line:
+        #     split = line.split(" ")
 
-            # print(f"parent_name: {ip}")
-            node_measurements["parent"] = ip
-        if "My level" in line:
-            node_measurements["level"] = int(line.split(" ")[-1][:-2])
+        #     split_line = line.split(" ")
+        #     ip_port = str(split_line[11])
+        #     ip = str(ip_port.split(":")[0])[6:]
+
+        #     print(f"parent_name: {ip}")
+        #     node_measurements["parent"] = ip
+
         if "Latency:" in line and "[NodeWatcher]" in line:
             if "Lowest Latency Peer" in line:
                 continue
-
             split = line.split(" ")
-            ip_port = str(split[6])[:-1]
+            ip_port = str(split[7])[:-1]
             ip = str(ip_port.split(":")[0])[6:]
-            latStr = split[10]
+            # for i, j in enumerate(split):
+            #     print(i, j)
+            latStr = split[11]
             latStr2 = latStr[:-1]
             node_measurements["latencies"].append(
                 (node_ip, ip, (int(latStr2) / 1000000) / 2))
+
+        if inview_tag in line:
+            inView = extractInView(line)
+            # print(inView)
+            try:
+                # print("assigning parent", inView["parent"])
+                node_measurements["parent"] = str(
+                    inView["parent"]["Name"].split(":")[0])[6:]
+
+            except KeyError:
+                pass
 
     if added == 0:
         print(
@@ -175,6 +195,18 @@ def parse_file(file, node_ip, node_infos):
         return
 
     node_infos[node_ip] = node_measurements
+
+
+def getNodeLevel(node_infos, nodeID):
+    # print("Finding nodeID", nodeID)
+    try:
+        parent = node_infos[nodeID]["parent"]
+        # print(f"finding parent: {parent}")
+        if parent == "":
+            return 1
+        return 1 + getNodeLevel(node_infos, parent)
+    except KeyError as e:
+        return 0
 
 
 def plotTree(node_infos, max_level, output_folder):
@@ -192,8 +224,11 @@ def plotTree(node_infos, max_level, output_folder):
     pos = {}
     children = {}
     node_level_steps = {}
-
+    levels = {}
     parentPos = {}
+
+    for nodeID in node_infos:
+        children[nodeID] = 0
 
     for nodeID in node_infos:
         if node_infos[nodeID]["landmark"]:
@@ -202,27 +237,35 @@ def plotTree(node_infos, max_level, output_folder):
             # print("landmark xpos: {}".format(xPos))
             landmarks += 1
             parentPos[nodeID] = [xPos, 0]
+            node_level = getNodeLevel(node_infos, nodeID)
+            levels[nodeID] = node_level
             continue
-        if node_infos[nodeID]["level"] == -1:
-            parent_less_nodes += 100
-            parentPos[nodeID] = [parent_less_nodes, -3]
-            continue
+        else:
+            try:
+                parent = node_infos[nodeID]["parent"]
+                children[parent] += 1
+                node_level = getNodeLevel(node_infos, nodeID)
+                levels[nodeID] = node_level
+                # print(f"Assigned level {node_level} to node {nodeID}")
+            except KeyError:
+                levels[nodeID] = -1
+                parentPos[nodeID] = [parent_less_nodes, -3]
+                parent_less_nodes += 100
+                continue
 
-        parentPos[nodeID] = [0, 0]
-        parent = node_infos[nodeID]["parent"]
-        try:
-            children[parent] = children[parent] + 1
-        except KeyError:
-            children[parent] = 1
+    # print(levels)
+    for nodeID in levels:
+        max_level = max(max_level, levels[nodeID])
+        # print(levels[nodeID])
+    # print(max_level)
 
-    for nodeID in sorted(node_infos, key=lambda x: node_infos[x]["level"], reverse=False):
-        level = node_infos[nodeID]["level"]
+    for nodeID in sorted(node_infos, key=lambda x: levels[x], reverse=False):
         landmark = node_infos[nodeID]["landmark"]
         # print(f"{nodeID} - level {level}, landmark: {landmark}")
         if nodeID.startswith("."):
             continue
 
-        if node_infos[nodeID]["level"] == -1:
+        if levels[nodeID] == -1:
             parent_less_nodes += 100
             pos[nodeID] = parentPos[nodeID]
             print("err: {} has no parent".format(nodeID))
@@ -241,7 +284,7 @@ def plotTree(node_infos, max_level, output_folder):
                 parentPos = (parent_less_nodes, -2)
                 parent_less_nodes += 100
                 print(
-                    f"err: {nodeID} has parent but parent {parentId} but parent not in node list")
+                    f"err: {nodeID} has parent but parent: {parentId} not in node list")
                 continue
 
             nodeParentPos = parentPos[parentId]
@@ -253,8 +296,8 @@ def plotTree(node_infos, max_level, output_folder):
             except:
                 children_counter[parentId] = 1
             # print(node_infos[parentId])
-            thisLvlWidth = node_level_steps[parentId]
 
+            thisLvlWidth = node_level_steps[parentId]
             thisLvlStep = float(thisLvlWidth) / \
                 float(max(parent_children - 1, 1))
             node_level_steps[nodeID] = thisLvlStep
@@ -270,6 +313,8 @@ def plotTree(node_infos, max_level, output_folder):
             parent_edges.append((nodeID, parentId))
 
         for latencyPair in node_infos[nodeID]["latencies"]:
+            # print(
+            #     f"Adding latency edge between {latencyPair[0]} and {latencyPair[1]}")
             minLat = min(int(latencyPair[2]), minLat)
             maxLat = max(int(latencyPair[2]), maxLat)
             latencyEdges[(latencyPair[0], latencyPair[1])
@@ -281,20 +326,21 @@ def plotTree(node_infos, max_level, output_folder):
     parent_colors = []
     for p in parent_edges:
         try:
-            parent_colors.append(latencyEdges[p])
             latencyEdgeLabels[p] = latencyEdges[p]
+            parent_colors.append(latencyEdges[p])
         except KeyError:
             try:
-                parent_colors.append(latencyEdges[(p[1], p[0])])
                 latencyEdgeLabels[(p[1], p[0])] = latencyEdges[(p[1], p[0])]
+                parent_colors.append(latencyEdges[(p[1], p[0])])
             except KeyError:
-                parent_colors.append(1000000000)
+                print(f"Missing latency edge between {p[0]} and {p[1]}")
                 latencyEdgeLabels[(p[1], p[0])] = "missing"
+                parent_colors.append(1000000000)
 
     # import matplotlib.pyplot as plt
     # latVals = [latencyEdges[l] for l in latencyEdgeLabels]
     # n, bins, patches = plt.hist(latVals, 50, facecolor='green', alpha=0.75)
-    # plt.savefig("{}/histogram.svg".format(output_folder))
+    # plt.savefig("{}/histogram.svg".format(output_folder), dpi=1200)
 
     import matplotlib.pyplot as plt
     G = nx.Graph()
@@ -312,12 +358,12 @@ def plotTree(node_infos, max_level, output_folder):
     # nx.draw_networkx_edge_labels(
     #     G, pos, latencyEdgeLabels, label_pos=0.33, alpha=0.5, font_size=6, ax=ax)
 
-    cbaxes = fig.add_axes([0.85, 0.05, 0.01, 0.65])
+    cbaxes = fig.add_axes([0.89, 0.6, 0.005, 0.33])
     norm = matplotlib.colors.Normalize(vmin=minLat, vmax=maxLat)
     matplotlib.colorbar.ColorbarBase(
         cbaxes, cmap=cmap, norm=norm, orientation='vertical')
     print(f"saving topology to: {output_folder}")
-    plt.savefig("{}topology.svg".format(output_folder))
+    plt.savefig("{}topology.svg".format(output_folder), dpi=1200)
     # print("parent_edges:\t", parent_edges)
     return parent_edges, landmarks
 
@@ -388,7 +434,7 @@ def plotConfigMapAndConnections(node_positions, node_ids, parent_edges, landmark
                            alpha=1)
     plt.axis("off")
     print(f"saving config with coords to: {output_folder}")
-    plt.savefig(f"{output_folder}topology_coords.svg")
+    plt.savefig(f"{output_folder}topology_coords.svg", dpi=1200)
 
 
 def plot_avg_latency_all_nodes_over_time(df, output_path):
@@ -404,7 +450,7 @@ def plot_avg_latency_all_nodes_over_time(df, output_path):
            title='Average latency over time in active view')
     ax.grid()
     print(f"saving average latency over time in active view to: {output_path}")
-    fig.savefig(f"{output_path}latencies_over_time.svg")
+    fig.savefig(f"{output_path}latencies_over_time.svg", dpi=1200)
 
 
 def plot_avg_degree_all_nodes_over_time(df, output_path):
@@ -417,7 +463,26 @@ def plot_avg_degree_all_nodes_over_time(df, output_path):
            title='Average degree of nodes over time')
     ax.grid()
     print(f"saving average degree of nodes over time to: {output_path}")
-    fig.savefig(f"{output_path}degree_over_time.svg")
+    fig.savefig(f"{output_path}degree_over_time.svg", dpi=1200)
+
+
+def plot_degree_hist_last_sample(node_infos, output_path):
+    fig, ax = plt.subplots()
+    node_degrees = []
+    for info in node_infos:
+        # print(node_infos[info].keys())
+        # print(node_infos[info]["degree"][-1])
+        # print(info, node_infos[info]["degree"][-1])
+        node_degrees.append(node_infos[info]["degree"][-1])
+        # {"degree":, "ip": node_infos[info]["ip"]})
+
+    plt.hist(node_degrees, bins=30)  # density=False would make counts
+    print(node_degrees)
+    ax.set(xlabel='Degree of nodes', ylabel='degree',
+           title='Histogram of degree of nodes in last sample')
+    ax.grid()
+    print(f"saving histogram of degree of nodes in last sample: {output_path}")
+    fig.savefig(f"{output_path}hist_degree.svg", dpi=1200)
 
 
 def read_coords_file(file_path):
@@ -492,9 +557,10 @@ def main():
 
     df = pd.DataFrame(pd_data)
     df.index = df["timestamp"]
-    print(df)
+    # print(df)
     print("system_lat_avg:", system_lat_avg)
-
+    plot_degree_hist_last_sample(
+        node_infos=node_infos, output_path=args.output_path)
     plot_avg_latency_all_nodes_over_time(
         df=df, output_path=args.output_path)
     plot_avg_degree_all_nodes_over_time(

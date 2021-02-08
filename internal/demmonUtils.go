@@ -26,7 +26,9 @@ func (d *Demmon) readPump(c *client) {
 		req := &body_types.Request{}
 		err := c.conn.ReadJSON(req)
 		if err != nil {
-			d.logger.Errorf("error: %v reading from connection", err)
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
+				d.logger.Errorf("Demmon-frontend connection error: %v, ", err)
+			}
 			return
 		}
 		d.handleRequest(req, c)

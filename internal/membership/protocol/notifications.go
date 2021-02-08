@@ -9,11 +9,13 @@ const peerMeasuredNotificationID = 2000
 
 type PeerMeasuredNotification struct {
 	peerMeasured *PeerWithIDChain
+	join         bool
 }
 
-func NewPeerMeasuredNotification(p *PeerWithIDChain) PeerMeasuredNotification {
+func NewPeerMeasuredNotification(p *PeerWithIDChain, join bool) PeerMeasuredNotification {
 	return PeerMeasuredNotification{
 		peerMeasured: p,
+		join:         join,
 	}
 }
 

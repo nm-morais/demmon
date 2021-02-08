@@ -360,11 +360,9 @@ func testMsgBroadcast(cl *client.DemmonClient) {
 		}
 	}()
 
-	go func() {
-		for msg := range msgChan {
-			fmt.Printf("Got message:%+v\n", msg)
-		}
-	}()
+	for msg := range msgChan {
+		fmt.Printf("Got message:%+v\n", msg)
+	}
 }
 
 func testAlarms(cl *client.DemmonClient) {
@@ -423,7 +421,7 @@ func testCustomInterestSets(cl *client.DemmonClient) {
 	)
 
 	cl.Lock()
-	_, errChan, _, err := cl.InstallCustomInterestSet(body_types.CustomInterestSet{
+	setID, errChan, _, err := cl.InstallCustomInterestSet(body_types.CustomInterestSet{
 		DialTimeout:      3 * time.Second,
 		DialRetryBackoff: 5 * time.Second,
 		Hosts: []body_types.CustomInterestSetHost{
@@ -455,6 +453,35 @@ func testCustomInterestSets(cl *client.DemmonClient) {
 	go func() {
 		for err := range errChan {
 			panic(err)
+		}
+	}()
+
+	go func() {
+		i := 0
+		for range time.NewTicker(10 * time.Second).C {
+			cl.Lock()
+			var err error
+			if i%2 == 0 {
+				err = cl.UpdateCustomInterestSet(body_types.UpdateCustomInterestSetReq{
+					SetID: *setID,
+					Hosts: []body_types.CustomInterestSetHost{
+						{
+							IP:   demmonTreeConf.Landmarks[0].Peer.IP(),
+							Port: 8090,
+						},
+					},
+				})
+			} else {
+				err = cl.UpdateCustomInterestSet(body_types.UpdateCustomInterestSetReq{
+					SetID: *setID,
+					Hosts: []body_types.CustomInterestSetHost{},
+				})
+			}
+			cl.Unlock()
+			if err != nil {
+				panic(err)
+			}
+			i++
 		}
 	}()
 
@@ -505,6 +532,7 @@ func testDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 		err, errChan = cl.ConnectTimeout(connectTimeout)
 		cl.Unlock()
 		if err != nil {
+			fmt.Println("failed to connect to demmon")
 			time.Sleep(connectBackoffTime)
 			continue
 		}

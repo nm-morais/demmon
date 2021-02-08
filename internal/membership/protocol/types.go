@@ -119,6 +119,8 @@ func (c PeerIDChain) String() string {
 
 type PeerWithIDChain struct {
 	Coordinates
+	outConnActive bool
+	inConnActive  bool
 	peer.Peer
 	chain     PeerIDChain
 	nChildren uint16
@@ -133,11 +135,13 @@ func NewPeerWithIDChain(
 	coords Coordinates,
 ) *PeerWithIDChain {
 	return &PeerWithIDChain{
-		Peer:        self,
-		version:     version,
-		nChildren:   nChildren,
-		chain:       peerIdChain,
-		Coordinates: coords,
+		outConnActive: false,
+		inConnActive:  true,
+		Peer:          self,
+		version:       version,
+		nChildren:     nChildren,
+		chain:         peerIdChain,
+		Coordinates:   coords,
 	}
 }
 
