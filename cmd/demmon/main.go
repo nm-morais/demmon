@@ -270,7 +270,6 @@ func start(
 	})
 
 	fmt.Printf("Starting db with conf: %+v\n", dbConf)
-
 	db := tsdb.GetDB(dbConf)
 	me := engine.NewMetricsEngine(db, *meConf, true)
 	fm := membershipFrontend.New(babel)
@@ -285,8 +284,8 @@ func start(
 	}
 
 	go monitor.Listen()
-	<-time.After(3 * time.Second)
-	go testDemmonMetrics(eConf, isLandmark)
+	// <-time.After(3 * time.Second)
+	// go testDemmonMetrics(eConf, isLandmark)
 	select {}
 
 	// buf := make([]byte, 1<<20)
