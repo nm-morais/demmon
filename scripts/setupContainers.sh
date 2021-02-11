@@ -3,19 +3,25 @@
 set -e
 
 if [ -z $SWARM_NET ]; then
-  echo "Docker SWARM_NET is not setup, pls run setup first"
+  echo "Pls specify env var SWARM_NET"
   exit
 fi
 
 if [ -z $DOCKER_IMAGE ]; then
-  echo "Pls specify a Docker image"
+  echo "Pls specify env var DOCKER_IMAGE"
   exit
 fi
 
 if [ -z $CONFIG_FILE ]; then
-  echo "Pls specify config file"
+  echo "Pls specify env var CONFIG_FILE"
   exit
 fi
+
+if [ -z $LATENCY_MAP ]; then
+  echo "Pls specify env var LATENCY_MAP"
+  exit
+fi
+
 
 echo "SWARM_NET: $SWARM_NET"
 echo "DOCKER_IMAGE: $DOCKER_IMAGE"
@@ -38,7 +44,7 @@ echo "Building images..."
 
 currdir=$(pwd)
 delete_containers_cmd='docker rm -f $(docker ps -a -q)  > /dev/null || true'
-build_cmd="cd ${currdir}; source config/swarmConfig.sh ; ./scripts/buildImage.sh"
+build_cmd="export CONFIG_FILE=$CONFIG_FILE; export LATENCY_MAP=$LATENCY_MAP; export CONFIG_FILE=$CONFIG_FILE export DOCKER_IMAGE=$DOCKER_IMAGE; cd ${currdir}; ./scripts/buildImage.sh"
 delete_logs_cmd="docker run --rm -v $SWARM_VOL:/data bash sh -c 'rm -rf /data/*'"
 host=$(hostname)
 

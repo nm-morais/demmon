@@ -17,7 +17,7 @@ echo "number of nodes: $n_nodes"
 
 currdir=$(pwd)
 delete_containers_cmd='docker rm -f $(docker ps -a -q)'
-build_cmd="cd ${currdir}; source config/swarmConfig.sh ; ./scripts/buildImage.sh"
+build_cmd="cd ${currdir}; ./scripts/buildImage.sh"
 delete_logs_cmd="docker run -v demmon_volume:/data busybox sh -c 'rm -rf /data/*'"
 host=$(hostname)
 

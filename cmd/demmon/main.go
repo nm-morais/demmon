@@ -43,27 +43,31 @@ var (
 	logFolder         string
 
 	demmonTreeConf = &membershipProtocol.DemmonTreeConfig{
-		LandmarkRedialTimer:           1 * time.Second,
-		JoinMessageTimeout:            4 * time.Second,
-		MaxTimeToProgressToNextLevel:  4 * time.Second,
-		MaxRetriesJoinMsg:             3,
-		Landmarks:                     nil,
-		MinGrpSize:                    6,
-		MaxGrpSize:                    9,
-		NrPeersToKickPerParent:        3,
-		NrPeersToBecomeParentInAbsorb: 1,
-		PhiLevelForNodeDown:           3,
+		LandmarkRedialTimer:          1 * time.Second,
+		JoinMessageTimeout:           4 * time.Second,
+		MaxTimeToProgressToNextLevel: 4 * time.Second,
+		MaxRetriesJoinMsg:            3,
+		Landmarks:                    nil,
+
+		MinGrpSize: 2,
+		MaxGrpSize: 9,
+
+		NrPeersToBecomeParentInAbsorb:            3,
+		NrPeersToBecomeChildrenPerParentInAbsorb: 2,
+
+		// NrPeersToKickPerParent:                 3,
+		MinLatencyImprovementToImprovePosition: 10 * time.Millisecond,
+
+		PhiLevelForNodeDown: 3,
 		// SwitchProbability:             0.5,
 
-		LimitFirstLevelGroupSize:      true,
-		CheckChildenSizeTimerDuration: 3 * time.Second,
+		CheckChildenSizeTimerDuration: 5 * time.Second,
 		ParentRefreshTickDuration:     3 * time.Second,
 		ChildrenRefreshTickDuration:   3 * time.Second,
 		RejoinTimerDuration:           10 * time.Second,
 
-		MinLatencyImprovementToImprovePosition: 10 * time.Millisecond,
-		AttemptImprovePositionProbability:      0.2,
-		EvalMeasuredPeersRefreshTickDuration:   5 * time.Second,
+		AttemptImprovePositionProbability:    0.2,
+		EvalMeasuredPeersRefreshTickDuration: 5 * time.Second,
 
 		// EnableSwitch: false,
 
@@ -81,8 +85,10 @@ var (
 		NrPeersToMeasureRandom:             1,
 		NrPeersToMergeInWalkSample:         5,
 
+		MinLatencyImprovementPerPeerForSwitch: 10 * time.Millisecond,
+
+		UnderpopulatedGroupTimerDuration: 5 * time.Second,
 		// CheckSwitchOportunityTimeout:          7500 * time.Millisecond,
-		MinLatencyImprovementPerPeerForSwitch: 25 * time.Millisecond,
 	}
 )
 
@@ -264,7 +270,6 @@ func start(
 	})
 
 	fmt.Printf("Starting db with conf: %+v\n", dbConf)
-
 	db := tsdb.GetDB(dbConf)
 	me := engine.NewMetricsEngine(db, *meConf, true)
 	fm := membershipFrontend.New(babel)
@@ -278,11 +283,9 @@ func start(
 		babel.StartAsync()
 	}
 
-	// go testDemmonMetrics(eConf, isLandmark)
-
 	go monitor.Listen()
-
-	// <-time.After(3 * time.Minute)
+	// <-time.After(3 * time.Second)
+	// go testDemmonMetrics(eConf, isLandmark)
 	select {}
 
 	// buf := make([]byte, 1<<20)

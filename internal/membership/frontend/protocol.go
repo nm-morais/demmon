@@ -85,7 +85,7 @@ func (f *MembershipFrontend) handleBcastMessageReceived(notifGeneric notificatio
 	select {
 	case f.broadcastMessages <- notif.Message:
 	case <-time.After(time.Second):
-		f.logger.Error("Discarding broadcast message because channel had no listener")
+		f.logger.Error("Discarding broadcast message after 3 seconds because channel had no listener")
 	}
 }
 
@@ -99,7 +99,7 @@ func (f *MembershipFrontend) handleNodeUp(n notification.Notification) {
 		View: convertView(nodeUp.InView),
 	}:
 	case <-time.After(time.Second):
-		f.logger.Error("Discarding node update because channel had no listener")
+		f.logger.Error("Discarding broadcast message after 3 seconds because channel had no listener")
 	}
 }
 
@@ -114,7 +114,7 @@ func (f *MembershipFrontend) handleNodeDown(n notification.Notification) {
 	}:
 
 	case <-time.After(time.Second):
-		f.logger.Error("Discarding node update because channel had no listener")
+		f.logger.Error("Discarding broadcast message after 3 seconds because channel had no listener")
 	}
 }
 

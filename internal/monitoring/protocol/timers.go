@@ -9,12 +9,12 @@ import (
 const RebroadcastInterestSetTimerID = 6000
 
 type rebroadcastInterestSetTimer struct {
-	deadline time.Time
+	duration time.Duration
 }
 
 func NewRebroadcastInterestSetsTimer(duration time.Duration) timer.Timer {
 	return &rebroadcastInterestSetTimer{
-		deadline: time.Now().Add(duration),
+		duration: duration,
 	}
 }
 
@@ -22,20 +22,20 @@ func (t *rebroadcastInterestSetTimer) ID() timer.ID {
 	return RebroadcastInterestSetTimerID
 }
 
-func (t *rebroadcastInterestSetTimer) Deadline() time.Time {
-	return t.deadline
+func (t *rebroadcastInterestSetTimer) Duration() time.Duration {
+	return t.duration
 }
 
 const ExportNeighInterestSetMetricsTimerID = 6001
 
 type exportNeighInterestSetMetricsTimer struct {
-	deadline      time.Time
+	duration      time.Duration
 	InterestSetID int64
 }
 
 func NewExportNeighInterestSetMetricsTimer(duration time.Duration, interestSetID int64) timer.Timer {
 	return &exportNeighInterestSetMetricsTimer{
-		deadline:      time.Now().Add(duration),
+		duration:      duration,
 		InterestSetID: interestSetID,
 	}
 }
@@ -44,19 +44,19 @@ func (t *exportNeighInterestSetMetricsTimer) ID() timer.ID {
 	return ExportNeighInterestSetMetricsTimerID
 }
 
-func (t *exportNeighInterestSetMetricsTimer) Deadline() time.Time {
-	return t.deadline
+func (t *exportNeighInterestSetMetricsTimer) Duration() time.Duration {
+	return t.duration
 }
 
 const CleanupInsterestSetsTimerID = 6002
 
 type cleanupInterestSetTimer struct {
-	deadline time.Time
+	duration time.Duration
 }
 
 func NewCleanupInterestSetsTimer(duration time.Duration) timer.Timer {
 	return &cleanupInterestSetTimer{
-		deadline: time.Now().Add(duration),
+		duration: duration,
 	}
 }
 
@@ -64,20 +64,20 @@ func (t *cleanupInterestSetTimer) ID() timer.ID {
 	return CleanupInsterestSetsTimerID
 }
 
-func (t *cleanupInterestSetTimer) Deadline() time.Time {
-	return t.deadline
+func (t *cleanupInterestSetTimer) Duration() time.Duration {
+	return t.duration
 }
 
 const ExportTreeAggregationFuncTimerID = 6003
 
 type exportTreeAggregationFuncTimer struct {
-	deadline      time.Time
+	duration      time.Duration
 	InterestSetID int64
 }
 
 func NewExportTreeAggregationFuncTimer(duration time.Duration, interestSetID int64) timer.Timer {
 	return &exportTreeAggregationFuncTimer{
-		deadline:      time.Now().Add(duration),
+		duration:      duration,
 		InterestSetID: interestSetID,
 	}
 }
@@ -86,19 +86,19 @@ func (t *exportTreeAggregationFuncTimer) ID() timer.ID {
 	return ExportTreeAggregationFuncTimerID
 }
 
-func (t *exportTreeAggregationFuncTimer) Deadline() time.Time {
-	return t.deadline
+func (t *exportTreeAggregationFuncTimer) Duration() time.Duration {
+	return t.duration
 }
 
 const RebroadcastTreeAggregationFuncsTimerID = 6004
 
 type BroadcastTreeAggregationFuncsTimer struct {
-	deadline time.Time
+	duration time.Duration
 }
 
 func NewBroadcastTreeAggregationFuncsTimer(duration time.Duration) timer.Timer {
 	return &BroadcastTreeAggregationFuncsTimer{
-		deadline: time.Now().Add(duration),
+		duration: duration,
 	}
 }
 
@@ -106,8 +106,8 @@ func (t *BroadcastTreeAggregationFuncsTimer) ID() timer.ID {
 	return RebroadcastTreeAggregationFuncsTimerID
 }
 
-func (t *BroadcastTreeAggregationFuncsTimer) Deadline() time.Time {
-	return t.deadline
+func (t *BroadcastTreeAggregationFuncsTimer) Duration() time.Duration {
+	return t.duration
 }
 
 // NewBroadcastGlobalAggregationFuncsTimer
@@ -115,13 +115,13 @@ func (t *BroadcastTreeAggregationFuncsTimer) Deadline() time.Time {
 const ExportGlobalAggregationFuncTimerID = 6005
 
 type ExportGlobalAggregationFuncTimer struct {
-	deadline      time.Time
+	duration      time.Duration
 	InterestSetID int64
 }
 
 func NewExportGlobalAggregationFuncTimer(duration time.Duration, interestSetID int64) timer.Timer {
 	return &ExportGlobalAggregationFuncTimer{
-		deadline:      time.Now().Add(duration),
+		duration:      duration,
 		InterestSetID: interestSetID,
 	}
 }
@@ -130,19 +130,19 @@ func (t *ExportGlobalAggregationFuncTimer) ID() timer.ID {
 	return ExportGlobalAggregationFuncTimerID
 }
 
-func (t *ExportGlobalAggregationFuncTimer) Deadline() time.Time {
-	return t.deadline
+func (t *ExportGlobalAggregationFuncTimer) Duration() time.Duration {
+	return t.duration
 }
 
 const RebroadcastGlobalAggregationFuncsTimerID = 6006
 
 type BroadcastGlobalAggregationFuncsTimer struct {
-	deadline time.Time
+	duration time.Duration
 }
 
 func NewBroadcastGlobalAggregationFuncsTimer(duration time.Duration) timer.Timer {
 	return &BroadcastGlobalAggregationFuncsTimer{
-		deadline: time.Now().Add(duration),
+		duration: duration,
 	}
 }
 
@@ -150,6 +150,6 @@ func (t *BroadcastGlobalAggregationFuncsTimer) ID() timer.ID {
 	return RebroadcastGlobalAggregationFuncsTimerID
 }
 
-func (t *BroadcastGlobalAggregationFuncsTimer) Deadline() time.Time {
-	return t.deadline
+func (t *BroadcastGlobalAggregationFuncsTimer) Duration() time.Duration {
+	return t.duration
 }
