@@ -165,18 +165,21 @@ def parse_file(file, node_ip, node_infos):
         #     print(f"parent_name: {ip}")
         #     node_measurements["parent"] = ip
 
-        if "Latency:" in line and "[NodeWatcher]" in line:
-            if "Lowest Latency Peer" in line:
-                continue
-            split = line.split(" ")
-            ip_port = str(split[7])[:-1]
-            ip = str(ip_port.split(":")[0])[6:]
-            # for i, j in enumerate(split):
-            #     print(i, j)
-            latStr = split[11]
-            latStr2 = latStr[:-1]
-            node_measurements["latencies"].append(
-                (node_ip, ip, (int(latStr2) / 1000000) / 2))
+        # if "Latency:" in line and "[NodeWatcher]" in line:
+        #     if "Lowest Latency Peer" in line:
+        #         continue
+        #     split = line.split(" ")
+        #     ip_port = str(split[6])[:-1]
+        #     ip = str(ip_port.split(":")[0])[6:]
+        #     for i, j in enumerate(split):
+        #         print(i, j)
+        #     try:
+        #         latStr = split[10]
+        #         latStr2 = latStr[:-1]
+        #         node_measurements["latencies"].append(
+        #             (node_ip, ip, (int(latStr2) / 1000000) / 2))
+        #     except Exception as e:
+        #         print(f"got exception {e} on line {line}")
 
         if inview_tag in line:
             inView = extractInView(line)
@@ -190,8 +193,8 @@ def parse_file(file, node_ip, node_infos):
                 pass
 
     if added == 0:
-        print(
-            f"warn: node {node_ip} has no active view latencies")
+        # print(
+        #     f"warn: node {node_ip} has no active view latencies")
         return
 
     node_infos[node_ip] = node_measurements
@@ -267,8 +270,10 @@ def plotTree(node_infos, max_level, output_folder):
 
         if levels[nodeID] == -1:
             parent_less_nodes += 100
-            pos[nodeID] = parentPos[nodeID]
+            pos[nodeID] = (parent_less_nodes, -2)
+            parent_less_nodes += 100
             print("err: {} has no parent".format(nodeID))
+            continue
 
         if landmark is True:
             pos[nodeID] = (parentPos[nodeID][0], parentPos[nodeID][1])

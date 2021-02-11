@@ -11,8 +11,8 @@ import signal
 import sys
 
 
-default_nr_landmarks = 3
-n_nodes_generated_conf = 100
+default_nr_landmarks = 10
+n_nodes_generated_conf = 250
 network = "demmon_network"
 cidr_provided = "10.10.0.0/16"
 vol_dir = "/home/nunomorais/demmon_logs/"
@@ -21,8 +21,8 @@ swarm_gateway = "10.10.1.1"
 image_name = "nmmorais/demmon:latest"
 
 config_file = "config/generated_config.txt"
-coords_file = "config/bruno_2_100_coords.txt"
-latency_map = "config/bruno_2_100_latencies.txt"
+coords_file = "config/config_global.txt"
+latency_map = "config/lats_global.txt"
 
 
 def assign_env_vars(env):

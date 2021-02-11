@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Credit : https://github.com/pedroAkos
-
 if [ -z $SWARM_SUBNET ] || [ -z $SWARM_GATEWAY ] || [ -z $SWARM_NET ] || [ -z $SWARM_VOL ]  || [ -z $SWARM_VOL_DIR ]; then
   echo "setup needs exactly 4 environment variables:"
   echo "SWARM_SUBNET SWARM_GATEWAY SWARM_NET SWARM_VOL SWARM_VOL_DIR"
@@ -21,6 +19,6 @@ for node in $@; do
   fi
 done
 
+docker network create -d overlay --attachable --subnet $SWARM_SUBNET --gateway $SWARM_GATEWAY $SWARM_NET
 mkdir $SWARM_VOL_DIR
 docker volume create $SWARM_VOL --opt type=none --opt device=$SWARM_VOL_DIR --opt o=bind
-docker network create -d overlay --attachable --subnet $SWARM_SUBNET --gateway $SWARM_GATEWAY $SWARM_NET
