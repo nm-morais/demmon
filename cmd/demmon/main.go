@@ -43,11 +43,10 @@ var (
 	logFolder         string
 
 	demmonTreeConf = &membershipProtocol.DemmonTreeConfig{
-		LandmarkRedialTimer:          1 * time.Second,
-		JoinMessageTimeout:           4 * time.Second,
-		MaxTimeToProgressToNextLevel: 4 * time.Second,
-		MaxRetriesJoinMsg:            3,
-		Landmarks:                    nil,
+		LandmarkRedialTimer: 5 * time.Second,
+		JoinMessageTimeout:  10 * time.Second,
+		MaxRetriesJoinMsg:   3,
+		Landmarks:           nil,
 
 		MinGrpSize: 2,
 		MaxGrpSize: 9,
@@ -56,14 +55,14 @@ var (
 		NrPeersToBecomeChildrenPerParentInAbsorb: 2,
 
 		// NrPeersToKickPerParent:                 3,
-		MinLatencyImprovementToImprovePosition: 10 * time.Millisecond,
+		MinLatencyImprovementToImprovePosition: 30 * time.Millisecond,
 
 		PhiLevelForNodeDown: 3,
 		// SwitchProbability:             0.5,
 
-		CheckChildenSizeTimerDuration: 5 * time.Second,
-		ParentRefreshTickDuration:     3 * time.Second,
-		ChildrenRefreshTickDuration:   3 * time.Second,
+		CheckChildenSizeTimerDuration: 10 * time.Second,
+		ParentRefreshTickDuration:     5 * time.Second,
+		ChildrenRefreshTickDuration:   5 * time.Second,
 		RejoinTimerDuration:           10 * time.Second,
 
 		AttemptImprovePositionProbability:    0.2,
@@ -152,11 +151,11 @@ func main() {
 	// }
 
 	nodeWatcherConf := &pkg.NodeWatcherConf{
-		PrintLatencyToInterval:    5 * time.Second,
+		PrintLatencyToInterval:    10 * time.Second,
 		EvalConditionTickDuration: 1500 * time.Millisecond,
 		MaxRedials:                2,
-		TcpTestTimeout:            3 * time.Second,
-		UdpTestTimeout:            3 * time.Second,
+		TcpTestTimeout:            10 * time.Second,
+		UdpTestTimeout:            10 * time.Second,
 		NrTestMessagesToSend:      1,
 		NrMessagesWithoutWait:     3,
 		NrTestMessagesToReceive:   1,
@@ -179,19 +178,12 @@ func main() {
 		SmConf: pkg.StreamManagerConf{
 			BatchMaxSizeBytes: 1500,
 			BatchTimeout:      500 * time.Millisecond,
-			DialTimeout:       3 * time.Second,
+			DialTimeout:       7 * time.Second,
 		},
 		Silent:           silent,
 		LogFolder:        logFolder,
-		HandshakeTimeout: 3 * time.Second,
+		HandshakeTimeout: 15 * time.Second,
 		Peer:             peer.NewPeer(GetLocalIP(), uint16(protosPortVar), uint16(analyticsPortVar)),
-	}
-
-	advertiseListenAddr, ok := GetAdvertiseListenAddrVar()
-	if ok {
-		fmt.Println("Got advertise listen addr from env var:", advertiseListenAddr)
-		nodeWatcherConf.AdvertiseListenAddr = net.ParseIP(advertiseListenAddr)
-		babelConf.Peer = peer.NewPeer(net.ParseIP(advertiseListenAddr), uint16(protosPortVar), uint16(analyticsPortVar))
 	}
 
 	exporterConfs := &exporter.Conf{
@@ -204,6 +196,13 @@ func main() {
 		DialBackoffTime: 1 * time.Second,
 		DialTimeout:     3 * time.Second,
 		RequestTimeout:  3 * time.Second,
+	}
+
+	advertiseListenAddr, ok := GetAdvertiseListenAddrVar()
+	if ok {
+		fmt.Println("Got advertise listen addr from env var:", advertiseListenAddr)
+		nodeWatcherConf.AdvertiseListenAddr = net.ParseIP(advertiseListenAddr)
+		babelConf.Peer = peer.NewPeer(net.ParseIP(advertiseListenAddr), uint16(protosPortVar), uint16(analyticsPortVar))
 	}
 
 	dConf := &internal.DemmonConf{
