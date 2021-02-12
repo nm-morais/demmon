@@ -75,8 +75,8 @@ func (d *DemmonTree) addParent(
 		haveCause = true
 	}
 
-	if peer.PeersEqual(newParent, d.myPendingParentInJoin) {
-		existingLatencyMeasurement = &d.myPendingParentInJoin.MeasuredLatency
+	if d.myPendingParentInJoin != nil && peer.PeersEqual(newParent, d.myPendingParentInJoin.peer) {
+		existingLatencyMeasurement = &d.myPendingParentInJoin.peer.MeasuredLatency
 		d.joined = true
 		d.joinMap = nil // TODO cleanup join function
 		d.bestPeerlastLevel = nil

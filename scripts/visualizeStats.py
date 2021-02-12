@@ -7,9 +7,8 @@ import threading
 import networkx as nx
 import pandas as pd
 from dateutil.parser import parse
-import time
 import matplotlib
-import matplotlib.pyplot as plt
+import time
 import numpy as np
 import os
 import argparse
@@ -185,11 +184,12 @@ def parse_file(file, node_ip, node_infos):
             inView = extractInView(line)
             # print(inView)
             try:
-                # print("assigning parent", inView["parent"])
-                node_measurements["parent"] = str(
-                    inView["parent"]["Name"].split(":")[0])[6:]
-
-            except KeyError:
+                p = inView["parent"]
+                # print("assigning parent", p)
+                node_measurements["parent"] = str(p["Name"].split(":")[0])[6:]
+                node_measurements["parentLat"] = int(p["Latency"])
+            except Exception as e:
+                # print(e)
                 pass
 
     if added == 0:
@@ -219,7 +219,7 @@ def plotTree(node_infos, max_level, output_folder):
     parent_less_nodes = 0
     children_counter = {}
     parent_edges = []
-    latencyEdges = {}
+    # latencyEdges = {}
     latencyEdgeLabels = {}
     nodeLabels = {}
     minLat = 0
@@ -261,13 +261,15 @@ def plotTree(node_infos, max_level, output_folder):
         max_level = max(max_level, levels[nodeID])
         # print(levels[nodeID])
     # print(max_level)
+    latencyEdges = {}
 
     for nodeID in sorted(node_infos, key=lambda x: levels[x], reverse=False):
         landmark = node_infos[nodeID]["landmark"]
-        # print(f"{nodeID} - level {level}, landmark: {landmark}")
+        print(nodeID)
         if nodeID.startswith("."):
+            print(f"skipping: {nodeID}")
             continue
-
+        nodeLabels[nodeID] = nodeID
         if levels[nodeID] == -1:
             parent_less_nodes += 100
             pos[nodeID] = (parent_less_nodes, -2)
@@ -282,7 +284,7 @@ def plotTree(node_infos, max_level, output_folder):
         else:
             parentId = node_infos[nodeID]["parent"]
             # print("parentID: ", parentId)
-
+            # print("node_infos[nodeID]", node_infos[nodeID])
             try:
                 parent = node_infos[parentId]
             except KeyError:
@@ -298,7 +300,7 @@ def plotTree(node_infos, max_level, output_folder):
             try:
                 curr_children = children_counter[parentId]
                 children_counter[parentId] += 1
-            except:
+            except Exception as e:
                 children_counter[parentId] = 1
             # print(node_infos[parentId])
 
@@ -316,17 +318,17 @@ def plotTree(node_infos, max_level, output_folder):
             parentPos[nodeID] = nodePos
             pos[nodeID] = nodePos
             parent_edges.append((nodeID, parentId))
+            latencyEdges[(nodeID, parentId)] = node_infos[nodeID]["parentLat"]
 
-        for latencyPair in node_infos[nodeID]["latencies"]:
-            # print(
-            #     f"Adding latency edge between {latencyPair[0]} and {latencyPair[1]}")
-            minLat = min(int(latencyPair[2]), minLat)
-            maxLat = max(int(latencyPair[2]), maxLat)
-            latencyEdges[(latencyPair[0], latencyPair[1])
-                         ] = int(latencyPair[2])
-        nodeLabels[nodeID] = nodeID
+        # for latencyPair in node_infos[nodeID]["latencies"]:
+        #     print(
+        #         f"Adding latency edge between {latencyPair[0]} and {latencyPair[1]}")
+        #     minLat = min(int(latencyPair[2]), minLat)
+        #     maxLat = max(int(latencyPair[2]), maxLat)
+        #     latencyEdges[(latencyPair[0], latencyPair[1])
+        #                  ] = int(latencyPair[2])
 
-    edge_colors = [latencyEdges[l] for l in latencyEdges]
+    # edge_colors = [latencyEdges[l] for l in latencyEdges]
 
     parent_colors = []
     for p in parent_edges:
@@ -342,33 +344,41 @@ def plotTree(node_infos, max_level, output_folder):
                 latencyEdgeLabels[(p[1], p[0])] = "missing"
                 parent_colors.append(1000000000)
 
-    # import matplotlib.pyplot as plt
     # latVals = [latencyEdges[l] for l in latencyEdgeLabels]
     # n, bins, patches = plt.hist(latVals, 50, facecolor='green', alpha=0.75)
     # plt.savefig("{}/histogram.svg".format(output_folder), dpi=1200)
 
-    import matplotlib.pyplot as plt
-    G = nx.Graph()
-    fig, ax = plt.subplots()
-    fig.tight_layout()
-    cmap = plt.cm.rainbow
+    minY = 100000
+    maxY = -100000
 
+    for p in pos:
+        minY = min(pos[p][1], minY)
+        maxY = max(pos[p][1], maxY)
+    # print(minY, maxY)
+    import matplotlib.pyplot as plt
+    print(len(pos))
+    G = nx.Graph()
+    cmap = plt.cm.rainbow
+    fig, ax = plt.subplots(figsize=(10, 10))
+    plt.ylim(minY - 2, maxY + 2)
+    fig.tight_layout()
+    cbaxes = fig.add_axes([0.89, 0.6, 0.005, 0.33])
+
+    norm = matplotlib.colors.Normalize(vmin=minLat, vmax=maxLat)
+    matplotlib.colorbar.ColorbarBase(
+        cbaxes, cmap=cmap, norm=norm, orientation='vertical')
     nx.draw_networkx_nodes(G, pos, nodelist=nodeLabels,
                            node_size=50, ax=ax, node_shape="o")
     nx.draw_networkx_labels(G, pos, nodeLabels, font_size=2, ax=ax)
     nx.draw_networkx_edges(G, pos, edgelist=parent_edges,
-                           edge_color=parent_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, width=1, ax=ax)
+                           edge_color=parent_colors, edge_cmap=cmap, width=1, ax=ax)
     # nx.draw_networkx_edges(G, pos, style='dashed', edgelist=latencyEdges, width=1,
     #                        alpha=0.5, edge_color=edge_colors, edge_cmap=cmap, edge_vmin=25.6, edge_vmax=459.52, ax=ax)
     # nx.draw_networkx_edge_labels(
     #     G, pos, latencyEdgeLabels, label_pos=0.33, alpha=0.5, font_size=6, ax=ax)
 
-    cbaxes = fig.add_axes([0.89, 0.6, 0.005, 0.33])
-    norm = matplotlib.colors.Normalize(vmin=minLat, vmax=maxLat)
-    matplotlib.colorbar.ColorbarBase(
-        cbaxes, cmap=cmap, norm=norm, orientation='vertical')
     print(f"saving topology to: {output_folder}")
-    plt.savefig("{}topology.svg".format(output_folder), dpi=1200)
+    plt.savefig("{}topology.svg".format(output_folder))
     # print("parent_edges:\t", parent_edges)
     return parent_edges, landmarks
 
@@ -393,6 +403,7 @@ def parse_file_list(file_list):
 
 def plotConfigMapAndConnections(node_positions, node_ids, parent_edges, landmarks, latencies, output_folder):
     pos = node_positions
+    import matplotlib.pyplot as plt
     fig, ax = plt.subplots()
     ax.autoscale(enable=True, axis='both', tight=True)
     fig.tight_layout()
@@ -443,7 +454,7 @@ def plotConfigMapAndConnections(node_positions, node_ids, parent_edges, landmark
 
 
 def plot_avg_latency_all_nodes_over_time(df, output_path):
-
+    import matplotlib.pyplot as plt
     fig, ax = plt.subplots()
     resampled = df[["latency_avg", "latency_avg_global"]
                    ].resample('5s').mean()
@@ -459,6 +470,7 @@ def plot_avg_latency_all_nodes_over_time(df, output_path):
 
 
 def plot_avg_degree_all_nodes_over_time(df, output_path):
+    import matplotlib.pyplot as plt
     fig, ax = plt.subplots()
     resampled = df[["degree"]].resample('5s').mean()
     resampled.drop(resampled.tail(1).index,
@@ -472,6 +484,7 @@ def plot_avg_degree_all_nodes_over_time(df, output_path):
 
 
 def plot_degree_hist_last_sample(node_infos, output_path):
+    import matplotlib.pyplot as plt
     fig, ax = plt.subplots()
     node_degrees = []
     for info in node_infos:
@@ -573,8 +586,8 @@ def main():
     parent_edges = plotTree(node_infos, max_level, args.output_path)
 
     node_positions, _ = read_coords_file(args.coords_file)
-    plotConfigMapAndConnections(node_positions, node_ids, parent_edges,
-                                landmarks, latencies, args.output_path)
+    # plotConfigMapAndConnections(node_positions, node_ids, parent_edges,
+    #                             landmarks, latencies, args.output_path)
 
 
 if __name__ == "__main__":
