@@ -306,7 +306,7 @@ func (ts *timeSeries) init(name string,
 // AddWithTime records an observation at the specified time.
 func (ts *timeSeries) addWithTime(observation Observable, t time.Time) {
 
-	ts.logger.Infof("Adding %+v at time %s", observation, t)
+	// ts.logger.Infof("Adding %+v at time %s", observation, t)
 
 	if t.After(ts.lastAdd) {
 		ts.lastAdd = t
