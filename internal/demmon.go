@@ -734,7 +734,7 @@ func (d *Demmon) handleBroadcastMessages() {
 							TTL:     bcastMsg.TTL,
 							Content: bcastMsg.Content,
 						}), cl.client)
-						d.logger.Infof("Delivered Bcast message to client: %+v", bcastMsg)
+						d.logger.Infof("Delivered Bcast message of type %s to client", bcastMsg.ID)
 					case <-cl.client.done:
 						for idx, sub := range subs.subs {
 							if sub.client.id == cl.client.id {
