@@ -362,9 +362,9 @@ func (d *DemmonTree) handleLandmarkMeasuredNotification(nGeneric notification.No
 		if err != nil {
 			d.logger.Panic("landmark was measured but has no measurement...")
 		}
-
-		d.self.Coordinates[idx] = uint64(landmarkStats.LatencyCalc().CurrValue().Milliseconds())
-		d.updateSelfVersion()
+		coordsCopy := d.self.Coordinates
+		coordsCopy[idx] = uint64(landmarkStats.LatencyCalc().CurrValue().Milliseconds())
+		d.self = NewPeerWithIDChain(d.self.chain, d.self, d.self.nChildren, d.self.version+1, coordsCopy)
 		d.logger.Infof("My Coordinates: %+v", d.self.Coordinates)
 		return
 	}
@@ -1008,7 +1008,11 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 	upMsg := m.(UpdateParentMessage)
 	// d.logger.Infof("got UpdateParentMessage %+v from %s", upMsg, sender.String())
 
-	if !peer.PeersEqual(sender, d.myParent) {
+	if !peer.PeersEqual(sender, d.myParent) &&
+		!peer.PeersEqual(sender, d.myPendingParentInAbsorb) &&
+		!peer.PeersEqual(sender, d.myPendingParentInClimb) &&
+		!peer.PeersEqual(sender, d.myPendingParentInRecovery) &&
+		!(d.myPendingParentInJoin != nil && peer.PeersEqual(sender, d.myPendingParentInJoin.peer)) {
 		d.logger.Errorf(
 			"Received UpdateParentMessage from not my parent (parent:%s sender:%s)",
 			getStringOrNil(d.myParent),
