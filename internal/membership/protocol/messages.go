@@ -7,6 +7,7 @@ import (
 
 	"github.com/nm-morais/demmon-common/body_types"
 	"github.com/nm-morais/go-babel/pkg/message"
+	"github.com/sirupsen/logrus"
 )
 
 // -------------- Join --------------
@@ -615,6 +616,14 @@ func (DisconnectAsChildMsgSerializer) Deserialize(_ []byte) message.Message {
 const randomWalkMessageID = 2009
 
 func NewRandomWalkMessage(ttl uint16, sender *PeerWithIDChain, sample []*PeerWithIDChain) RandomWalkMessage {
+	duplChecker := map[string]bool{}
+	for _, elem := range sample {
+		k := elem.String()
+		if _, ok := duplChecker[k]; ok {
+			logrus.Panicf("Duplicate entry in sample: %+v", sample)
+		}
+		duplChecker[k] = true
+	}
 	return RandomWalkMessage{
 		TTL:    ttl,
 		Sample: sample,

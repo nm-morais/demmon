@@ -862,7 +862,9 @@ func (d *DemmonTree) handleJoinMessage(sender peer.Peer, msg message.Message) {
 func (d *DemmonTree) handleJoinMessageResponseTimeout(t timer.Timer) {
 	p := t.(*peerJoinMessageResponseTimeout).Peer
 	if _, ok := d.joinTimeoutTimerIds[p.String()]; ok {
+		d.logger.Warnf("Peer %s timed out responding to join message", p.String())
 		d.handlePeerDownInJoin(p)
+		return
 	}
 	d.logger.Warnf("Got join message response timeout for node %s but node responded meanwhile...", p.String())
 }
@@ -1450,7 +1452,7 @@ func (d *DemmonTree) sendMessageAndMeasureLatency(toSend message.Message, destPe
 	}
 	// d.logger.Infof("Doing NotifyOnCondition for node %s...", p.String())
 	d.nodeWatcher.NotifyOnCondition(c)
-	d.sendMessageTmpTCPChan(toSend, destPeer)
+	d.sendMessageTmpUDPChan(toSend, destPeer)
 }
 
 func (d *DemmonTree) sendMessageTmpTCPChan(toSend message.Message, destPeer peer.Peer) {
@@ -1480,7 +1482,7 @@ func (d *DemmonTree) getPeersInNextLevelByLat(lastLevelPeer *PeerWithParentAndCh
 		for idx, l := range d.config.Landmarks {
 			peerWithChildren, ok := d.joinMap[l.String()]
 			if !ok {
-				d.logger.Infof("Cannot progress because peer %s has went down", l.String())
+				d.logger.Infof("Cannot progress because landmark %s has gone down", l.String())
 				return false, nil
 			}
 
@@ -1515,7 +1517,7 @@ func (d *DemmonTree) getPeersInNextLevelByLat(lastLevelPeer *PeerWithParentAndCh
 			continue
 		}
 		if !c.replied {
-			d.logger.Infof("Cannot progress because peer %s has not replied", c.peer.String())
+			d.logger.Infof("Cannot progress because peer %s has not replied yet", c.peer.String())
 			return false, nil
 		}
 		if c.peer.MeasuredLatency == math.MaxInt64 {
