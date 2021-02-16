@@ -84,7 +84,7 @@ var (
 		NrPeersToMeasureRandom:             1,
 		NrPeersToMergeInWalkSample:         5,
 
-		MinLatencyImprovementPerPeerForSwitch: 10 * time.Millisecond,
+		MinLatencyImprovementPerPeerForSwitch: 20 * time.Millisecond,
 
 		UnderpopulatedGroupTimerDuration: 5 * time.Second,
 		// CheckSwitchOportunityTimeout:          7500 * time.Millisecond,

@@ -680,40 +680,57 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 	}
 
 	for i := 0; i < d.config.NrPeersToBecomeChildrenPerParentInAbsorb*d.config.NrPeersToBecomeParentInAbsorb; i++ {
-		peerAbsorberStats := peersToKickPerAbsorber[i%d.config.NrPeersToBecomeParentInAbsorb]
-		peerAbsorber := peerAbsorberStats.absorber
-		peerAbsorberSiblingLatencies := d.myChildrenLatencies[peerAbsorber.String()]
-		sort.Sort(peerAbsorberSiblingLatencies)
-		// d.logger.Infof("peer %s sibling latencies: %s", peerAbsorber.StringWithFields(), peerAbsorberSiblingLatencies.String())
-		for _, candidateToKick := range peerAbsorberSiblingLatencies {
+		bestLat := time.Duration(math.MaxInt64)
+		var bestPeerToKick *MeasuredPeer
+		var bestPeerAbsorber *struct {
+			totalLatency int
+			absorber     *MeasuredPeer
+			peersToKick  MeasuredPeersByLat
+		}
 
+		for _, peerAbsorberStats := range peersToKickPerAbsorber {
 			if len(peerAbsorberStats.peersToKick) == d.config.NrPeersToBecomeChildrenPerParentInAbsorb {
-				break
-			}
-
-			if candidateToKick == nil {
 				continue
 			}
 
-			if _, isChild := d.myChildren[candidateToKick.String()]; !isChild {
-				continue
-			}
+			peerAbsorber := peerAbsorberStats.absorber
+			peerAbsorberSiblingLatencies := d.myChildrenLatencies[peerAbsorber.String()]
+			sort.Sort(peerAbsorberSiblingLatencies)
+			// d.logger.Infof("peer %s sibling latencies: %s", peerAbsorber.StringWithFields(), peerAbsorberSiblingLatencies.String())
+			for _, candidateToKick := range peerAbsorberSiblingLatencies {
 
-			if peer.PeersEqual(candidateToKick, peerAbsorber) {
-				continue
-			}
+				if candidateToKick == nil {
+					continue
+				}
 
-			if candidateToKick.MeasuredLatency == 0 {
-				continue
-			}
+				if _, isChild := d.myChildren[candidateToKick.String()]; !isChild {
+					continue
+				}
 
-			if alreadyKicked(candidateToKick.String()) {
-				continue
+				if peer.PeersEqual(candidateToKick, peerAbsorber) {
+					continue
+				}
+
+				if candidateToKick.MeasuredLatency == 0 {
+					continue
+				}
+
+				if alreadyKicked(candidateToKick.String()) {
+					continue
+				}
+
+				if candidateToKick.MeasuredLatency < bestLat {
+					bestPeerToKick = candidateToKick
+					bestPeerAbsorber = peerAbsorberStats
+				}
+
 			}
-			peerAbsorberStats.peersToKick = append(peerAbsorberStats.peersToKick, candidateToKick)
-			peerAbsorberStats.totalLatency += int(candidateToKick.MeasuredLatency)
+		}
+		if bestPeerAbsorber == nil {
 			break
 		}
+		bestPeerAbsorber.peersToKick = append(bestPeerAbsorber.peersToKick, bestPeerToKick)
+		bestPeerAbsorber.totalLatency += int(bestPeerToKick.MeasuredLatency)
 	}
 
 	for _, absorberStats := range peersToKickPerAbsorber {
@@ -827,6 +844,11 @@ func (d *DemmonTree) handleAbsorbMessage(sender peer.Peer, m message.Message) {
 		return
 	}
 
+	if d.myPendingParentInAbsorb != nil {
+		d.logger.Warn("Got absorbMessage but returning due to already having pending parent in absorb")
+		return
+	}
+
 	newParent := absorbMessage.peerAbsorber
 	d.logger.Infof("Got absorbMessage with peer absorber: %+v from %s", newParent.StringWithFields(), sender.String())
 
@@ -937,7 +959,7 @@ func (d *DemmonTree) canBecomeParentOf(other *PeerWithIDChain, isRecovery, isImp
 	}
 
 	if isImprovement && len(d.myChildren) == 0 {
-		d.logger.Warn("cannot become parent of %s because it is an improvement and i do not have enough children",
+		d.logger.Warnf("cannot become parent of %s because it is an improvement and i do not have enough children",
 			other.StringWithFields())
 		return false
 	}
