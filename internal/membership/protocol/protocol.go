@@ -323,13 +323,14 @@ func (d *DemmonTree) handleMeasuringPeerInJoinFinish(peerMeasured *PeerWithIDCha
 
 func (d *DemmonTree) handleMeasuringPeerInEViewFinish(peerMeasured *PeerWithIDChain) {
 	delete(d.measuringPeers, peerMeasured.String())
+	defer d.nodeWatcher.Unwatch(peerMeasured.Peer, d.ID())
 	if d.isNeighbour(peerMeasured.Peer) {
 		return
 	}
 
 	currNodeStats, err := d.nodeWatcher.GetNodeInfo(peerMeasured)
 	if err != nil {
-		d.logger.Panic(err.Reason())
+		d.logger.Error(err.Reason())
 		return
 	}
 
@@ -346,7 +347,6 @@ func (d *DemmonTree) handleMeasuringPeerInEViewFinish(peerMeasured *PeerWithIDCh
 		),
 	)
 
-	d.nodeWatcher.Unwatch(peerMeasured.Peer, d.ID())
 	// d.logger.Infof("d.measuredPeers:  %+v:", d.measuredPeers)
 }
 
