@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nm-morais/go-babel/pkg/peer"
+	"github.com/sirupsen/logrus"
 )
 
 const IDSegmentLen = 8
@@ -216,11 +217,12 @@ func UnmarshalPeerWithIdChain(byteArr []byte) (int, *PeerWithIDChain) {
 
 func DeserializePeerWithIDChainArray(buf []byte) (int, []*PeerWithIDChain) {
 	nrPeers := int(binary.BigEndian.Uint32(buf[:4]))
+	logrus.Infof("Nr peers: %d", nrPeers)
 	peers := make([]*PeerWithIDChain, nrPeers)
 	bufPos := 4
 
 	if nrPeers > 0 && len(buf)-4 < 0 {
-		panic(fmt.Sprintf("have %d more peers to deserialize but buf size is too little (%d)", nrPeers, len(buf)-4))
+		panic(fmt.Sprintf("have %d more peers to deserialize but buf size is too little (%d) ", nrPeers, len(buf)-4))
 	}
 	for i := 0; i < nrPeers; i++ {
 		read, p := UnmarshalPeerWithIdChain(buf[bufPos:])

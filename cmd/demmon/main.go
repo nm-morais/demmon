@@ -178,11 +178,11 @@ func main() {
 		SmConf: pkg.StreamManagerConf{
 			BatchMaxSizeBytes: 1500,
 			BatchTimeout:      500 * time.Millisecond,
-			DialTimeout:       7 * time.Second,
+			DialTimeout:       10 * time.Second,
 		},
 		Silent:           silent,
 		LogFolder:        logFolder,
-		HandshakeTimeout: 15 * time.Second,
+		HandshakeTimeout: 20 * time.Second,
 		Peer:             peer.NewPeer(GetLocalIP(), uint16(protosPortVar), uint16(analyticsPortVar)),
 	}
 
@@ -194,7 +194,7 @@ func main() {
 		LogFile:         "exporter.log",
 		DialAttempts:    3,
 		DialBackoffTime: 1 * time.Second,
-		DialTimeout:     3 * time.Second,
+		DialTimeout:     5 * time.Second,
 		RequestTimeout:  3 * time.Second,
 	}
 

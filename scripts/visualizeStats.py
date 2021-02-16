@@ -403,6 +403,7 @@ def parse_file_list(file_list):
 
 def plotConfigMapAndConnections(node_positions, node_ids, parent_edges, landmarks, latencies, output_folder):
     pos = node_positions
+    print(pos)
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots()
     ax.autoscale(enable=True, axis='both', tight=True)
@@ -411,19 +412,6 @@ def plotConfigMapAndConnections(node_positions, node_ids, parent_edges, landmark
     regNodes = []
     labels = {}
     pos_higher = {}
-    latencyEdges = {}
-
-    for node_idx, node_id in enumerate(node_ids):
-        if node_id == "10.28":
-            node_latencies = latencies[node_idx]
-            for lat_idx, lat in enumerate(node_latencies):
-
-                if lat_idx == node_idx:
-                    continue
-                if lat_idx == len(node_ids):
-                    break
-
-                latencyEdges[(node_id, node_ids[lat_idx])] = lat
 
     for k in node_positions:
         v = node_positions[k]
@@ -487,18 +475,27 @@ def plot_degree_hist_last_sample(node_infos, output_path):
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots()
     node_degrees = []
+    max_degree = -10
     for info in node_infos:
         # print(node_infos[info].keys())
         # print(node_infos[info]["degree"][-1])
         # print(info, node_infos[info]["degree"][-1])
+        max_degree = max(max_degree, node_infos[info]["degree"][-1])
         node_degrees.append(node_infos[info]["degree"][-1])
         # {"degree":, "ip": node_infos[info]["ip"]})
 
-    plt.hist(node_degrees, bins=30)  # density=False would make counts
-    print(node_degrees)
-    ax.set(xlabel='Degree of nodes', ylabel='degree',
-           title='Histogram of degree of nodes in last sample')
+    # density=False would make counts
+    bins = range(0, max_degree)
+    counts, bins, patches = plt.hist(node_degrees, bins=bins)
+    maxCount = 0
+    for curr in counts:
+        maxCount = max(maxCount, curr)
     ax.grid()
+    yTticks = range(0, int(maxCount) + 3)
+    ax.set_xticks(bins)
+    ax.set_yticks(yTticks)
+    ax.set(xlabel='Degree of nodes', ylabel='number of nodes',
+           title='Histogram of degree of nodes in last sample')
     print(f"saving histogram of degree of nodes in last sample: {output_path}")
     fig.savefig(f"{output_path}hist_degree.svg", dpi=1200)
 
@@ -509,7 +506,6 @@ def read_coords_file(file_path):
     node_ids = []
     for aux in f.readlines():
         line = aux.strip()
-        # print(line)
         split = line.split(" ")
         node_id = split[0]
         node_x = split[1]

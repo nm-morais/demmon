@@ -445,17 +445,27 @@ func (d *DemmonTree) handleExternalNeighboringTimer(joinTimer timer.Timer) {
 
 	// r = rand.Float32()
 	var msgToSend message.Message
-
 	var peerToSendTo *PeerWithIDChain
 	// if r < d.config.BiasedWalkProbability {
 	// 	msgToSend = NewBiasedWalkMessage(uint16(d.config.RandomWalkTTL), selfPeerWithChain, sample)
 	// 	peerToSendTo = getBiasedPeerExcluding(possibilitiesToSend, selfPeerWithChain)
 	// } else {
-	msgToSend = NewRandomWalkMessage(uint16(d.config.RandomWalkTTL), d.self, peerMapToArr(sample))
+	sampleToSend := peerMapToArr(sample)
+	msgToSend = NewRandomWalkMessage(uint16(d.config.RandomWalkTTL), d.self, sampleToSend)
 	peerToSendTo = getRandomExcluding(
 		getExcludingDescendantsOf(neighbors, d.self.Chain()),
 		map[string]bool{d.self.String(): true},
 	)
+
+	duplChecker := map[string]bool{}
+	for _, elem := range sampleToSend {
+		k := elem.String()
+		if _, ok := duplChecker[k]; ok {
+			d.logger.Panicf("Duplicate entry in sampleToSend: %+v", sampleToSend)
+		}
+		duplChecker[k] = true
+	}
+
 	// }
 
 	if peerToSendTo == nil {
@@ -587,7 +597,6 @@ func (d *DemmonTree) handleMeasureNewPeersTimer(measureNewPeersTimer timer.Timer
 
 	peersRandom := peerMapToArr(d.eView)
 	rand.Shuffle(len(peersRandom), func(i, j int) { peersRandom[i], peersRandom[j] = peersRandom[j], peersRandom[i] })
-
 	nrMeasuredRand := 0
 	for i := 0; i < d.config.NrPeersToMeasureRandom && nrMeasuredRand < d.config.NrPeersToMeasureRandom; i++ {
 		p := peersRandom[i]
@@ -621,6 +630,7 @@ func (d *DemmonTree) measurePeerExternalProcedure(p *PeerWithIDChain) bool {
 	// d.logger.Infof("Doing NotifyOnCondition for node %s...", p.String())
 	d.nodeWatcher.NotifyOnCondition(c)
 	d.measuringPeers[p.String()] = true
+
 	return true
 }
 
@@ -737,6 +747,15 @@ func (d *DemmonTree) handleRandomWalkMessage(sender peer.Peer, m message.Message
 	var sampleToSend,
 		neighboursWithoutSenderDescendants []*PeerWithIDChain
 
+	duplChecker := map[string]bool{}
+	for _, elem := range randWalkMsg.Sample {
+		k := elem.String()
+		if _, ok := duplChecker[k]; ok {
+			d.logger.Panicf("Duplicate entry in randWalkMsg.Sample: %+v", randWalkMsg.Sample)
+		}
+		duplChecker[k] = true
+	}
+
 	defer func() {
 		duplChecker := map[string]bool{}
 		for _, elem := range sampleToSend {
@@ -747,15 +766,6 @@ func (d *DemmonTree) handleRandomWalkMessage(sender peer.Peer, m message.Message
 			duplChecker[k] = true
 		}
 	}()
-
-	duplChecker := map[string]bool{}
-	for _, elem := range randWalkMsg.Sample {
-		k := elem.String()
-		if _, ok := duplChecker[k]; ok {
-			d.logger.Panicf("Duplicate entry in sampleToSend: %+v", sampleToSend)
-		}
-		duplChecker[k] = true
-	}
 
 	// TTL == 0
 	if randWalkMsg.TTL == 0 {
@@ -820,7 +830,7 @@ func (d *DemmonTree) handleAbsorbMessage(sender peer.Peer, m message.Message) {
 	newParent := absorbMessage.peerAbsorber
 	d.logger.Infof("Got absorbMessage with peer absorber: %+v from %s", newParent.StringWithFields(), sender.String())
 
-	if sibling, ok := d.mySiblings[newParent.String()]; ok {
+	if sibling, ok := d.mySiblings[newParent.String()]; ok && sibling.outConnActive {
 		delete(d.mySiblings, newParent.String())
 		var peerLat time.Duration
 		if nodeInfo, err := d.nodeWatcher.GetNodeInfo(sibling); err == nil {
@@ -867,6 +877,7 @@ func (d *DemmonTree) handlePeerDownInJoin(p peer.Peer) {
 	_, isLandmark := d.isLandmark(p)
 	if isLandmark {
 		if !d.rejoinTimerActive {
+			d.rejoinTimerActive = true
 			d.babel.RegisterTimer(d.ID(), NewJoinTimer(d.config.RejoinTimerDuration))
 		}
 		return
@@ -1482,9 +1493,10 @@ func (d *DemmonTree) getPeersInNextLevelByLat(lastLevelPeer *PeerWithParentAndCh
 				d.logger.Infof("Cannot progress because peer %s has not been measured", peerWithChildren.peer.String())
 				return false, nil
 			}
-
-			d.self.Coordinates[idx] = uint64(peerWithChildren.peer.MeasuredLatency)
-			d.updateSelfVersion()
+			coordsCopy := d.self.Coordinates
+			coordsCopy[idx] = uint64(peerWithChildren.peer.MeasuredLatency.Milliseconds())
+			d.self = NewPeerWithIDChain(d.self.chain, d.self, d.self.nChildren, d.self.version+1, coordsCopy)
+			d.logger.Infof("My Coordinates: %+v", d.self.Coordinates)
 			measuredPeersInLvl = append(measuredPeersInLvl, peerWithChildren)
 		}
 		sort.SliceStable(measuredPeersInLvl, func(i, j int) bool {
@@ -1522,6 +1534,7 @@ func (d *DemmonTree) getPeersInNextLevelByLat(lastLevelPeer *PeerWithParentAndCh
 func (d *DemmonTree) fallbackToPreviousLevel(node *PeerWithParentAndChildren) {
 	if node.parent == nil {
 		if !d.rejoinTimerActive {
+			d.rejoinTimerActive = true
 			d.babel.RegisterTimer(d.ID(), NewJoinTimer(d.config.RejoinTimerDuration))
 		}
 		return
