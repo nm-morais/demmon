@@ -7,12 +7,11 @@ from netaddr import IPNetwork
 import json
 import os
 import subprocess
-import signal
 import sys
 
 
-default_nr_landmarks = 10
-n_nodes_generated_conf = 50
+default_nr_landmarks = 5
+n_nodes_generated_conf = 150
 network = "demmon_network"
 cidr_provided = "10.10.0.0/16"
 vol_dir = "/home/nunomorais/demmon_logs/"

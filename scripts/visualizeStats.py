@@ -136,9 +136,8 @@ def parse_file(file, node_ip, node_infos):
                 continue
             latency_avg = latency_total / n_nodes_in_measurement
 
-            timeStr = "time="
             levelStr = " level="
-
+            timeStr = "time="
             ts = line[line.find(timeStr) + len(timeStr) + 1:]
             ts = ts[:line.find(levelStr) - len(levelStr) - 1]
             ts_parsed = parse(ts)
@@ -359,7 +358,7 @@ def plotTree(node_infos, max_level, output_folder):
     print(len(pos))
     G = nx.Graph()
     cmap = plt.cm.rainbow
-    fig, ax = plt.subplots(figsize=(10, 10))
+    fig, ax = plt.subplots(figsize=(20, 10))
     plt.ylim(minY - 2, maxY + 2)
     fig.tight_layout()
     cbaxes = fig.add_axes([0.89, 0.6, 0.005, 0.33])
@@ -445,7 +444,7 @@ def plot_avg_latency_all_nodes_over_time(df, output_path):
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots()
     resampled = df[["latency_avg", "latency_avg_global"]
-                   ].resample('5s').mean()
+                   ].resample('15s').mean()
     resampled.drop(resampled.tail(1).index,
                    inplace=True)
     resampled.plot(ax=ax)
@@ -460,7 +459,7 @@ def plot_avg_latency_all_nodes_over_time(df, output_path):
 def plot_avg_degree_all_nodes_over_time(df, output_path):
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots()
-    resampled = df[["degree"]].resample('5s').mean()
+    resampled = df[["degree"]].resample('15s').mean()
     resampled.drop(resampled.tail(1).index,
                    inplace=True)
     resampled.plot(ax=ax)

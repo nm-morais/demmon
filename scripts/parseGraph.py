@@ -59,8 +59,8 @@ if __name__ == "__main__":
 
     added_map = {}
     added = []
-    conf_f = open("config.txt", 'w', newline='')
-    lat_f = open("lats.txt", 'w', newline='')
+    conf_f = open("config/coords_file.txt", 'w', newline='')
+    lat_f = open("lats_file.txt", 'w', newline='')
     conf_writer = csv.writer(conf_f, delimiter=" ")
     lats_writer = csv.writer(lat_f, delimiter=" ")
 
@@ -76,4 +76,7 @@ if __name__ == "__main__":
         dist_map = shortest_distance(
             g, source=v, target=[_v for _v in added_map], weights=g.ep.lat)
         lats_writer.writerow(['{:.2f}'.format(x) for x in dist_map])
-        conf_writer.writerow([f"node{i}", g.vp.lat[v], g.vp.long[v]])
+        conf_writer.writerow([g.vp.lat[v], g.vp.long[v]])
+
+    print(f"Wrote coords file to: config/coords_file.txt")
+    print(f"Wrote coords file to: config/lats_file.txt")
