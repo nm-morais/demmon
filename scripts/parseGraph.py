@@ -72,8 +72,8 @@ if __name__ == "__main__":
         added.append((g.vp.lat[v], g.vp.long[v]))
         added_map[v] = True
 
-    for v in added_map:
+    for i, v in enumerate(added_map):
         dist_map = shortest_distance(
             g, source=v, target=[_v for _v in added_map], weights=g.ep.lat)
         lats_writer.writerow(['{:.2f}'.format(x) for x in dist_map])
-        conf_writer.writerow([g.vp.nid[v], g.vp.lat[v], g.vp.long[v]])
+        conf_writer.writerow([f"node{i}", g.vp.lat[v], g.vp.long[v]])
