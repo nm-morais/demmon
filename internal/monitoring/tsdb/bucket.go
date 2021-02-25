@@ -126,11 +126,12 @@ func filterMatchesTs(tagsToMatch map[string]string, ts TimeSeries) bool {
 	for tagKey, tagVal := range tagsToMatch {
 		timeseriesTag, hasKey := tsTags[tagKey]
 		if !hasKey {
+			allMatching = false
 			break
 		}
 		matched, err := regexp.MatchString(tagVal, timeseriesTag)
 		if err != nil {
-			break
+			panic(err)
 		}
 		if !matched {
 			allMatching = false

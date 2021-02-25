@@ -141,7 +141,7 @@ outer:
 }
 
 func peerMapToArr(peers map[string]*PeerWithIDChain) []*PeerWithIDChain {
-	toReturn := make([]*PeerWithIDChain, 0, len(peers))
+	toReturn := make([]*PeerWithIDChain, 0)
 	for _, p := range peers {
 		toReturn = append(toReturn, p)
 	}
@@ -154,7 +154,7 @@ func getRandSample(nrPeersToSelect int, peers ...*PeerWithIDChain) map[string]*P
 	if nrPeersToReturn > len(peers) {
 		nrPeersToReturn = len(peers)
 	}
-	toReturn := make(map[string]*PeerWithIDChain, nrPeersToSelect)
+	toReturn := make(map[string]*PeerWithIDChain)
 	for i := 0; i < len(peers) && i < nrPeersToReturn; i++ {
 		toReturn[peers[i].String()] = peers[i]
 	}
@@ -210,7 +210,7 @@ func getExcludingDescendantsOf(toFilter []*PeerWithIDChain, ascendantChain PeerI
 }
 
 func (d *DemmonTree) getPeerMapAsPeerMeasuredArr(peerMap map[string]*PeerWithIDChain, exclusions ...*PeerWithIDChain) MeasuredPeersByLat {
-	measuredPeers := make(MeasuredPeersByLat, 0, len(peerMap))
+	measuredPeers := make(MeasuredPeersByLat, 0)
 
 	for _, p := range peerMap {
 

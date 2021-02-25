@@ -58,7 +58,7 @@ wait
 sleep 1s
 
 # FOR USE IN NAS
-docker run --rm -v $SWARM_VOL:/data bash sh -c 'rm -rf /data/*'
+docker run --rm -v $SWARM_VOL:/data bash sh -c 'rm -rf /data/*' || true
 # UNCOMMENT FOR LOCAL FILES ON NODES
 # for node in $@; do
 #   {

@@ -7,12 +7,11 @@ from netaddr import IPNetwork
 import json
 import os
 import subprocess
-import signal
 import sys
 
 
-default_nr_landmarks = 10
-n_nodes_generated_conf = 50
+default_nr_landmarks = 5
+n_nodes_generated_conf = 150
 network = "demmon_network"
 cidr_provided = "10.10.0.0/16"
 vol_dir = "/home/nunomorais/demmon_logs/"
@@ -273,8 +272,12 @@ def exec_cmd_on_node(node, cmd, env={}):
 def setup_anchors(nodes):
     entrypoints_ips = set()
     for node in nodes:
+
+        rm_anchor_cmd = f"docker rm -f anchor-{node} || true"
+        exec_cmd_on_node(node, rm_anchor_cmd)
+
         print(f"Setting up anchor at {node}")
-        anchor_cmd = f"docker run -d --name=anchor-{node} --network {network} alpine sleep 30m"
+        anchor_cmd = f"docker run -d --name=anchor-{node} --network={network} alpine sleep 30m"
         exec_cmd_on_node(node, anchor_cmd)
 
         """

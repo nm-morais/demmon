@@ -372,19 +372,12 @@ func (d *DemmonTree) mergeSampleWithEview(
 		sampleAsMap,
 	)
 
-	knownPeers := []*PeerWithIDChain{}
-	knownPeers = append(knownPeers, peerMapToArr(d.eView)...)
+	knownPeers := peerMapToArr(d.eView)
 	for _, v := range d.measuredPeers {
-		found := false
-		for _, aux := range knownPeers {
-			if peer.PeersEqual(aux, v) {
-				found = true
-				break
-			}
+		if _, ok := d.eView[v.String()]; ok {
+			continue
 		}
-		if !found {
-			knownPeers = append(knownPeers, v.PeerWithIDChain)
-		}
+		knownPeers = append(knownPeers, v.PeerWithIDChain)
 	}
 
 	exclusions := map[string]bool{}
@@ -394,6 +387,7 @@ func (d *DemmonTree) mergeSampleWithEview(
 	for _, aux := range sample {
 		exclusions[aux.String()] = true
 	}
+
 	knownPeersNotInNeighbors := getPeersExcluding(
 		knownPeers,
 		exclusions,
@@ -474,10 +468,6 @@ func (d *DemmonTree) updateAndMergeSampleEntriesWithEView(sample []*PeerWithIDCh
 			continue
 		}
 
-		if d.isNeighbour(currPeer) {
-			continue
-		}
-
 		if peer.PeersEqual(d.myParent, currPeer) {
 			if currPeer.IsHigherVersionThan(d.myParent) {
 				d.myParent = currPeer
@@ -526,7 +516,7 @@ func (d *DemmonTree) updateAndMergeSampleEntriesWithEView(sample []*PeerWithIDCh
 					continue
 				}
 				d.measuredPeers[currPeer.String()] = NewMeasuredPeer(
-					measuredPeer.PeerWithIDChain,
+					currPeer,
 					measuredPeer.MeasuredLatency,
 				)
 			}
