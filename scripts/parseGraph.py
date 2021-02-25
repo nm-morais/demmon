@@ -55,12 +55,14 @@ if __name__ == "__main__":
     # faz load do graph para memoria
     g = load_graph("config/graph.xml.gz")
     # Vais buscar a maior component conexa que é o dos 8mil
+    g = GraphView(g, efilt=lambda e: g.ep.lat[e] < 2000)
+
     g = GraphView(g, vfilt=label_largest_component(g))
 
     added_map = {}
     added = []
     conf_f = open("config/coords_file.txt", 'w', newline='')
-    lat_f = open("lats_file.txt", 'w', newline='')
+    lat_f = open("config/lats_file.txt", 'w', newline='')
     conf_writer = csv.writer(conf_f, delimiter=" ")
     lats_writer = csv.writer(lat_f, delimiter=" ")
 
