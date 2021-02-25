@@ -1326,6 +1326,8 @@ func (d *DemmonTree) MessageDeliveryErr(msg message.Message, p peer.Peer, err er
 		d.handlePeerDown(p)
 	case RandomWalkMessage:
 		d.sendMessageTmpUDPChan(msg, p)
+	case WalkReplyMessage:
+		d.sendMessageTmpUDPChan(msg, p)
 
 	case DisconnectAsChildMessage:
 		d.babel.Disconnect(d.ID(), p)
@@ -1474,7 +1476,7 @@ func (d *DemmonTree) sendMessageAndMeasureLatency(toSend message.Message, destPe
 	}
 	// d.logger.Infof("Doing NotifyOnCondition for node %s...", p.String())
 	d.nodeWatcher.NotifyOnCondition(c)
-	d.sendMessageTmpUDPChan(toSend, destPeer)
+	d.sendMessageTmpTCPChan(toSend, destPeer)
 }
 
 func (d *DemmonTree) sendMessageTmpTCPChan(toSend message.Message, destPeer peer.Peer) {
