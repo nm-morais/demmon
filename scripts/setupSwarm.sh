@@ -20,5 +20,5 @@ for node in $@; do
 done
 
 docker network create -d overlay --attachable --subnet $SWARM_SUBNET --gateway $SWARM_GATEWAY $SWARM_NET
-mkdir $SWARM_VOL_DIR
+mkdir $SWARM_VOL_DIR 
 docker volume create $SWARM_VOL --opt type=none --opt device=$SWARM_VOL_DIR --opt o=bind

@@ -18,8 +18,7 @@ vol_dir = "/home/nunomorais/demmon_logs/"
 vol_name = "demmon_volume"
 swarm_gateway = "10.10.1.1"
 image_name = "nmmorais/demmon:latest"
-
-config_file = "config/generated_config.txt"
+IPS_FILE = "config/generated_config.txt"
 coords_file = "config/config_global.txt"
 latency_map = "config/lats_global.txt"
 
@@ -31,7 +30,7 @@ def assign_env_vars(env):
     env["SWARM_VOL"] = vol_name
     env["SWARM_VOL_DIR"] = vol_dir
     env["DOCKER_IMAGE"] = image_name
-    env["CONFIG_FILE"] = config_file
+    env["IPS_FILE"] = IPS_FILE
     env["LATENCY_MAP"] = latency_map
 
 
@@ -178,7 +177,7 @@ def visualize_stats(nodeList):
     assign_env_vars(d)
     visualize_cmd = f"""python3 /home/nunomorais/git/nm-morais/demmon/scripts/visualizeStats.py  \
     --output_path={output_path} \
-    --config_file=/home/nunomorais/git/nm-morais/demmon/{config_file} \
+    --IPS_FILE=/home/nunomorais/git/nm-morais/demmon/{IPS_FILE} \
     --latencies_file=/home/nunomorais/git/nm-morais/demmon/{latency_map} \
     --coords_file=/home/nunomorais/git/nm-morais/demmon/{coords_file} \
     --logs_folder={vol_dir} \
@@ -198,7 +197,7 @@ def deploy(nodeList, landmarks_nr, landmark_list=""):
     assign_env_vars(d)
     landmarks = []
     if landmark_list is None:
-        f = open(config_file, "r")
+        f = open(IPS_FILE, "r")
         for i in range(landmarks_nr):
             landmarks.append(f.readline().split(" ")[0])
     else:
@@ -221,7 +220,7 @@ def writeGeneratedConf(nodeList):
     ips = ips[2:-1]
     entrypoints = setup_anchors(nodeList)
     print(f"entrypoints: {entrypoints}")
-    f = open(config_file, "w")
+    f = open(IPS_FILE, "w")
     added = 0
     for i, ip in enumerate(reversed(ips)):
         if ip not in entrypoints:
@@ -231,7 +230,7 @@ def writeGeneratedConf(nodeList):
         if added == n_nodes_generated_conf:
             break
 
-    print(f"wrote configuration to file: {config_file}")
+    print(f"wrote configuration to file: {IPS_FILE}")
     f.close()
 
 
@@ -272,42 +271,23 @@ def exec_cmd_on_node(node, cmd, env={}):
 def setup_anchors(nodes):
     entrypoints_ips = set()
     for node in nodes:
-
         rm_anchor_cmd = f"docker rm -f anchor-{node} || true"
         exec_cmd_on_node(node, rm_anchor_cmd)
-
         print(f"Setting up anchor at {node}")
         anchor_cmd = f"docker run -d --name=anchor-{node} --network={network} alpine sleep 30m"
         exec_cmd_on_node(node, anchor_cmd)
-
-        """
-        Output is like:
-        "lb-swarm-network": {
-            "Name": "swarm-network-endpoint",
-            "EndpointID": "ab543cead9c04275a95df7632165198601de77c183945f2a6ab82ed77a68fdd3",
-            "MacAddress": "02:42:c0:a8:a0:03",
-            "IPv4Address": "192.168.160.3/20",
-            "IPv6Address": ""
-        }
-        so we split at max once thus giving us only the value and not the key
-        """
-
         get_entrypoint_cmd = f"docker network inspect {network} | grep 'lb-{network}' -A 6"
         output = exec_cmd_on_node_with_output(
             get_entrypoint_cmd, node).strip().split(" ", 1)[1]
-
         entrypoint_json = json.loads(output)
-
         entrypoints_ips.add(entrypoint_json["IPv4Address"].split("/")[0])
         get_anchor_cmd = f"docker network inspect {network} | grep 'anchor' -A 5 -B 1"
         output = exec_cmd_on_node_with_output(
             get_anchor_cmd, node).strip().split(" ", 1)[1]
         if output[-1] == ",":
             output = output[:-1]
-
         anchor_json = json.loads(output)
         entrypoints_ips.add(anchor_json["IPv4Address"].split("/")[0])
-
     return entrypoints_ips
 
 

@@ -60,7 +60,7 @@ def read_parent_edges_file(file_path):
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--config_file",  metavar='config_file',
+    parser.add_argument("--IPS_FILE",  metavar='IPS_FILE',
                         type=str, help="the log file")
 
     parser.add_argument("--latencies_file",  metavar='latencies_file',
@@ -533,7 +533,7 @@ def main():
 
     args = parse_args()
     print("args: ", args)
-    node_ids = read_conf_file(args.config_file)
+    node_ids = read_conf_file(args.IPS_FILE)
     latencies = read_latencies_file(args.latencies_file)
     file_list, n_nodes = get_file_list(args.logs_folder)
     print(f"Processing {n_nodes} nodes")

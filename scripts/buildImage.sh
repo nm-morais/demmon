@@ -5,8 +5,8 @@ if [ -z $LATENCY_MAP ]; then
   exit
 fi
 
-if [ -z $CONFIG_FILE ]; then
-  echo "Pls specify CONFIG_FILE"
+if [ -z $IPS_FILE ]; then
+  echo "Pls specify IPS_FILE"
   exit
 fi
 
@@ -15,7 +15,7 @@ if [ -z $DOCKER_IMAGE ]; then
   exit
 fi
 
-echo "CONFIG_FILE: $CONFIG_FILE"
+echo "IPS_FILE: $IPS_FILE"
 echo "LATENCY_MAP: $LATENCY_MAP"
 echo "DOCKER_IMAGE: $DOCKER_IMAGE"
 
@@ -37,4 +37,4 @@ cd demmon-exporter
 cd ..
 
 cd demmon
-docker build --build-arg LATENCY_MAP=$LATENCY_MAP --build-arg CONFIG_FILE=$CONFIG_FILE -f build/Dockerfile -t $DOCKER_IMAGE . 
+docker build --build-arg LATENCY_MAP=$LATENCY_MAP --build-arg IPS_FILE=$IPS_FILE -f build/Dockerfile -t $DOCKER_IMAGE . 
