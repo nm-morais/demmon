@@ -19,22 +19,9 @@ echo "IPS_FILE: $IPS_FILE"
 echo "LATENCY_MAP: $LATENCY_MAP"
 echo "DOCKER_IMAGE: $DOCKER_IMAGE"
 
+(cd ../go-babel && ./scripts/buildImage.sh)
+(cd ../demmon-common && ./scripts/buildImage.sh)
+(cd ../demmon-client && ./scripts/buildImage.sh)
+(cd ../demmon-exporter && ./scripts/buildImage.sh)
 
-cd ../go-babel
-./scripts/buildImage.sh
-cd ..
-
-cd demmon-common
-./scripts/buildImage.sh
-cd ..
-
-cd demmon-client
-./scripts/buildImage.sh
-cd ..
-
-cd demmon-exporter
-./scripts/buildImage.sh
-cd ..
-
-cd demmon
 docker build --build-arg LATENCY_MAP=$LATENCY_MAP --build-arg IPS_FILE=$IPS_FILE -f build/Dockerfile -t $DOCKER_IMAGE . 
