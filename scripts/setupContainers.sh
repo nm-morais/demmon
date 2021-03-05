@@ -37,6 +37,9 @@ maxcpu=$(nproc)
 nContainers=$(wc -l $IPS_FILE)
 i=0
 
+bootstrap_peer_full_line=$(head -n 1 $IPS_FILE)
+bootstrap_peer=$(echo "$bootstrap_peer_full_line" | cut -d' ' -f 1)
+
 echo "Lauching containers..."
 while read -r ip name
 do
