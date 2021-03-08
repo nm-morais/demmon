@@ -20,7 +20,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const ProtoID = 2000
+const ProtoID = 1000
 const ProtoName = "DemonTree"
 
 type DemmonTreeConfig = struct {
@@ -399,8 +399,7 @@ func (d *DemmonTree) handleRefreshParentTimer(t timer.Timer) {
 			continue
 		}
 		childrenArr := getMapAsPeerWithIDChainArray(d.myChildren, child)
-		d.logger.Infof("Sending children: %+v to %s", childrenArr, child.StringWithFields())
-
+		// d.logger.Infof("Sending children: %+v to %s", childrenArr, child.StringWithFields())
 		toSend := NewUpdateParentMessage(
 			d.myParent,
 			d.self,

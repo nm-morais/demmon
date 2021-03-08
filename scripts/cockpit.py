@@ -27,7 +27,6 @@ def assign_env_vars(env):
     env["SWARM_GATEWAY"] = swarm_gateway
     env["SWARM_SUBNET"] = cidr_provided
     env["SWARM_NET"] = network
-    env["SWARM_VOL"] = vol_name
     env["SWARM_VOL_DIR"] = vol_dir
     env["DOCKER_IMAGE"] = image_name
     env["IPS_FILE"] = IPS_FILE

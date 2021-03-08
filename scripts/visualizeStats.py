@@ -12,9 +12,15 @@ import time
 import numpy as np
 import os
 import argparse
+import datetime
 
 latency_collection_tag = "<latency_collection>"
 inview_tag = "<inView>"
+
+
+def getLatForIpPair(ip1, ip2, latency_map):
+    # print(f"IP1: {ip1} IP2: {ip2}")
+    return latency_map[ip1][ip2]
 
 
 def get_file_list(log_folder):
@@ -60,7 +66,7 @@ def read_parent_edges_file(file_path):
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--IPS_FILE",  metavar='IPS_FILE',
+    parser.add_argument("--ips_file",  metavar='ips_file',
                         type=str, help="the log file")
 
     parser.add_argument("--latencies_file",  metavar='latencies_file',
@@ -101,100 +107,122 @@ def extractLatencyTotal(line):
     return latency_total, n_nodes
 
 
-def extractInView(line):
+def extractJsonFromLine(line, tag):
     # print("line", line)
-    line_cut = line[line.index(inview_tag) + len(inview_tag) + 1:len(line) - 1]
+    line_cut = line[line.index(tag) + len(tag) + 1:len(line) - 1]
     line_cut = line_cut.replace("\\", "")
     return json.loads(line_cut)
 
 
-def parse_file(file, node_ip, node_infos):
+def parse_file(file, node_ip, node_infos, latency_map):
     f = open(file, "r")
 
     node_measurements = {
         "latency_avg": [],
         "latency_totals": [],
-        "timestamp": [],
         "ip": [],
         "timestamp_dt": [],
         "latencies": [],
         "degree": [],
+        "peers": [],
         "landmark": False,
         "level": -1,
         "parent": "",
         "pos": [0, 0],
+        "ctrl_msgs_sent": [],
+        "ctrl_msgs_rcvd": [],
+        "app_msgs_sent": [],
+        "app_msgs_rcvd": [],
     }
 
-    added = 0
+    ctrl_msgs_sent = 0
+    ctrl_msgs_rcvd = 0
+    app_msgs_rcvd = 0
+    app_msgs_sent = 0
+
     for aux in f.readlines():
         line = aux.strip()
-        if latency_collection_tag in line:
-            latency_total, n_nodes_in_measurement = extractLatencyTotal(
-                line)
+        levelStr = " level="
+        timeStr = "time="
 
-            if n_nodes_in_measurement == 0:
-                continue
-            latency_avg = latency_total / n_nodes_in_measurement
-
-            levelStr = " level="
-            timeStr = "time="
-            ts = line[line.find(timeStr) + len(timeStr) + 1:]
-            ts = ts[:line.find(levelStr) - len(levelStr) - 1]
-            ts_parsed = parse(ts)
-            added += 1
-            node_measurements["latency_avg"].append(latency_avg)
-            node_measurements["latency_totals"].append(latency_total)
-            node_measurements["timestamp"].append(ts_parsed)
-            node_measurements["timestamp_dt"].append(pd.to_datetime(ts_parsed))
-            node_measurements["degree"].append(n_nodes_in_measurement)
-            node_measurements["ip"].append(node_ip)
+        # if latency_collection_tag in line:
+        #     latency_total, n_nodes_in_measurement = extractLatencyTotal(
+        #         line)
+        #     node_measurements["degree"].append(n_nodes_in_measurement)
+        #     node_measurements["ip"].append(node_ip)
 
         if "I am landmark" in line:
             node_measurements["landmark"] = True
             node_measurements["level"] = 0
 
-        # if "My parent changed" in line:
-        #     split = line.split(" ")
-
-        #     split_line = line.split(" ")
-        #     ip_port = str(split_line[11])
-        #     ip = str(ip_port.split(":")[0])[6:]
-
-        #     print(f"parent_name: {ip}")
-        #     node_measurements["parent"] = ip
-
-        # if "Latency:" in line and "[NodeWatcher]" in line:
-        #     if "Lowest Latency Peer" in line:
-        #         continue
-        #     split = line.split(" ")
-        #     ip_port = str(split[6])[:-1]
-        #     ip = str(ip_port.split(":")[0])[6:]
-        #     for i, j in enumerate(split):
-        #         print(i, j)
-        #     try:
-        #         latStr = split[10]
-        #         latStr2 = latStr[:-1]
-        #         node_measurements["latencies"].append(
-        #             (node_ip, ip, (int(latStr2) / 1000000) / 2))
-        #     except Exception as e:
-        #         print(f"got exception {e} on line {line}")
-
-        if inview_tag in line:
-            inView = extractInView(line)
-            # print(inView)
-            try:
-                p = inView["parent"]
-                # print("assigning parent", p)
-                node_measurements["parent"] = str(p["Name"].split(":")[0])[6:]
-                node_measurements["parentLat"] = int(p["Latency"])
-            except Exception as e:
-                # print(e)
+        try:
+            if "<control-messages-stats>" in line:
+                stats = extractJsonFromLine(line, "<control-messages-stats>")
+                ctrl_msgs_rcvd = stats["ControlMessagesReceived"]
+                ctrl_msgs_sent = stats["ControlMessagesSent"]
+                # print(ctrl_msgs_rcvd)
                 pass
 
-    if added == 0:
-        # print(
-        #     f"warn: node {node_ip} has no active view latencies")
-        return
+            if "<app-messages-stats>" in line:
+                stats = extractJsonFromLine(line, "<app-messages-stats>")
+                app_msgs_rcvd = stats["ApplicationalMessagesReceived"]
+                app_msgs_sent = stats["ApplicationalMessagesSent"]
+                app_msgs_sent = app_msgs_sent["1000"]
+                app_msgs_rcvd = app_msgs_rcvd["1000"]
+                # print(stats)
+                pass
+        except Exception as e:
+            print(e)
+
+        if inview_tag in line:
+
+            ts = line[line.find(timeStr) + len(timeStr) + 1:]
+            ts = ts[:line.find(levelStr) - len(levelStr) - 1]
+            ts_parsed = parse(ts)
+            inView = extractJsonFromLine(line, inview_tag)
+            in_view_parsed = []
+
+            try:
+                in_view_parsed = np.append(in_view_parsed, [p["ip"]
+                                                            for p in inView["siblings"]])
+            except Exception:
+                pass
+            try:
+                in_view_parsed = np.append(in_view_parsed, [p["ip"]
+                                                            for p in inView["children"]])
+            except Exception:
+                pass
+            try:
+                p = inView["parent"]
+                in_view_parsed.append(p["ip"])
+                # print("assigning parent", p)
+                node_measurements["parent"] = p["ip"]
+                node_measurements["parentLat"] = int(
+                    getLatForIpPair(p["ip"], node_ip, latency_map))
+            except Exception as e:
+                # print(f"Exception: {e}")
+                # print(f"Node {node_ip} has no parent")
+                # print(inView)
+                pass
+
+            if len(in_view_parsed) == 0:
+                continue
+
+            print(in_view_parsed)
+
+            node_measurements["ctrl_msgs_rcvd"].append(ctrl_msgs_rcvd)
+            node_measurements["ctrl_msgs_sent"].append(ctrl_msgs_sent)
+            node_measurements["app_msgs_rcvd"].append(app_msgs_rcvd)
+            node_measurements["app_msgs_sent"].append(app_msgs_sent)
+            node_measurements["peers"] = in_view_parsed
+            node_measurements["latencies"].append(
+                [getLatForIpPair(p, node_ip, latency_map) for p in in_view_parsed])
+            node_measurements["timestamp_dt"].append(
+                pd.to_datetime(ts_parsed))
+            node_measurements["ip"].append(node_ip)
+            node_measurements["degree"].append(len(in_view_parsed))
+            node_measurements["latency_avg"].append(
+                np.mean([getLatForIpPair(p, node_ip, latency_map) for p in in_view_parsed]))
 
     node_infos[node_ip] = node_measurements
 
@@ -274,6 +302,7 @@ def plotTree(node_infos, max_level, output_folder):
             pos[nodeID] = (parent_less_nodes, -2)
             parent_less_nodes += 100
             print("err: {} has no parent".format(nodeID))
+            print(node_infos[nodeID])
             continue
 
         if landmark is True:
@@ -382,15 +411,15 @@ def plotTree(node_infos, max_level, output_folder):
     return parent_edges, landmarks
 
 
-def parse_file_list(file_list):
+def parse_file_list(file_list, latency_map):
     manager = Manager()
     d = manager.dict()
     processes = []
     for file in file_list:
         node_name = str(file.split("/")[-2])
-        node_ip = node_name.split(":")[0][6:]
+        node_ip = node_name.split(":")[0]
         p = Process(target=parse_file, args=(
-            file, node_ip, d))
+            file, node_ip, d, latency_map))
         p.start()
         processes.append(p)
 
@@ -522,22 +551,40 @@ def read_conf_file(file_path):
         split = line.split(" ")
         # print(line)
         node_ip = split[0]
-        identifier = str(node_ip[6:])
+        identifier = str(node_ip)
         # print(identifier)
         node_ids.append(identifier)
 
     return node_ids
 
 
+def build_latencies_map(latencies, node_ips):
+    latency_map = {}
+    for ip in node_ips:
+        latency_map[ip] = {}
+
+    for idx1,  ip in enumerate(node_ips):
+        for idx2, ip2 in enumerate(node_ips):
+            latency_map[ip][ip2] = latencies[idx1][idx2]
+
+    for i, v in enumerate(latency_map):
+        # print(v, latency_map[v])
+        if i == 0:
+            break
+
+    return latency_map
+
+
 def main():
 
     args = parse_args()
     print("args: ", args)
-    node_ids = read_conf_file(args.IPS_FILE)
+    node_ips = read_conf_file(args.ips_file)
     latencies = read_latencies_file(args.latencies_file)
+    latency_map = build_latencies_map(latencies, node_ips)
     file_list, n_nodes = get_file_list(args.logs_folder)
     print(f"Processing {n_nodes} nodes")
-    node_infos = parse_file_list(file_list=file_list)
+    node_infos = parse_file_list(file_list=file_list, latency_map=latency_map)
     landmarks = []
     for node in sorted(node_infos, key=lambda x: node_infos[x]["level"], reverse=False):
         if node_infos[node]["level"] == 0:
@@ -550,17 +597,28 @@ def main():
             node_lat_avg += lat / n_nodes
         # print(node_lat_avg)
         system_lat_avg += node_lat_avg / n_nodes
-
+    # print(node_infos)
     pd_data = {
         "ip": [],
         "latency_avg": [],
         "timestamp": [],
         "latency_avg_global": [],
         "degree": [],
+
+        "ctrl_msgs_sent": [],
+        "ctrl_msgs_rcvd": [],
+        "app_msgs_sent": [],
+        "app_msgs_rcvd": [],
     }
     max_level = -2
     for k in node_infos:
         max_level = max(max_level, node_infos[k]["level"])
+
+        pd_data["ctrl_msgs_sent"] += node_infos[k]["ctrl_msgs_sent"]
+        pd_data["ctrl_msgs_rcvd"] += node_infos[k]["ctrl_msgs_rcvd"]
+        pd_data["app_msgs_sent"] += node_infos[k]["app_msgs_sent"]
+        pd_data["app_msgs_rcvd"] += node_infos[k]["app_msgs_rcvd"]
+
         pd_data["degree"] += node_infos[k]["degree"]
         pd_data["ip"] += node_infos[k]["ip"]
         pd_data["latency_avg"] += node_infos[k]["latency_avg"]
@@ -570,7 +628,6 @@ def main():
 
     df = pd.DataFrame(pd_data)
     df.index = df["timestamp"]
-    # print(df)
     print("system_lat_avg:", system_lat_avg)
     plot_degree_hist_last_sample(
         node_infos=node_infos, output_path=args.output_path)
@@ -580,9 +637,17 @@ def main():
         df=df, output_path=args.output_path)
     parent_edges = plotTree(node_infos, max_level, args.output_path)
 
-    node_positions, _ = read_coords_file(args.coords_file)
+    df.to_csv(f"{args.output_path}stats.csv")
+    with open(f'{args.output_path}node_infos.json', 'w') as outfile:
+        json.dump(node_infos.copy(), outfile, default=myconverter)
+    # node_positions, _ = read_coords_file(args.coords_file)
     # plotConfigMapAndConnections(node_positions, node_ids, parent_edges,
     #                             landmarks, latencies, args.output_path)
+
+
+def myconverter(o):
+    if isinstance(o, datetime.datetime):
+        return o.__str__()
 
 
 if __name__ == "__main__":
