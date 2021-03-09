@@ -22,6 +22,11 @@ if [ -z $LATENCY_MAP ]; then
   exit
 fi
 
+if [ -z $SWARM_VOL_DIR ]; then
+  echo "Pls specify env var SWARM_VOL_DIR"
+  exit
+fi
+
 n_nodes=0
 for var in $@
 do
@@ -36,7 +41,6 @@ fi
 maxcpu=$(nproc)
 nContainers=$(wc -l $IPS_FILE)
 i=0
-
 echo "Lauching containers..."
 while read -r ip name
 do
@@ -46,7 +50,7 @@ do
   idx=$((idx+1))
   node=${!idx}
 
-  cmd="docker run -v $SWARM_VOL:/tmp/logs -d -t --cap-add=NET_ADMIN \
+  cmd="docker run -v $SWARM_VOL_DIR:/tmp/logs -d -t --cap-add=NET_ADMIN \
    --net $SWARM_NET \
    --ip $ip \
    --name $name \

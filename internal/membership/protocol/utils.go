@@ -53,8 +53,8 @@ func (d *DemmonTree) printLatencyCollectionStats() {
 
 func (d *DemmonTree) printInViewStats() {
 	type peerWithLatency struct {
-		Name    string
-		Latency int
+		IP      string `json:"ip,omitempty"`
+		Latency int    `json:"latency,omitempty"`
 	}
 
 	type viewWithLatencies struct {
@@ -78,7 +78,7 @@ func (d *DemmonTree) printInViewStats() {
 			return nil
 		}
 		return &peerWithLatency{
-			Name:    p.String(),
+			IP:      p.IP().String(),
 			Latency: int(nodeInfo.LatencyCalc().CurrValue()),
 		}
 	}

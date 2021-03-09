@@ -17,7 +17,6 @@ echo "number of nodes: $n_nodes"
 docker swarm leave --force 
 for node in $@; do
   oarsh $node 'docker rm -f $(docker ps -a -q)'
-  oarsh $node "docker volume rm $SWARM_VOL"
   oarsh $node "docker swarm leave --force"
 done
 docker network rm $SWARM_NET
