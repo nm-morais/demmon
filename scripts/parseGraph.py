@@ -55,7 +55,7 @@ if __name__ == "__main__":
     # faz load do graph para memoria
     g = load_graph("config/graph.xml.gz")
     # Vais buscar a maior component conexa que é o dos 8mil
-    g = GraphView(g, efilt=lambda e: g.ep.lat[e] < 2000)
+    g = GraphView(g, efilt=lambda e: g.ep.lat[e] < 100)
 
     g = GraphView(g, vfilt=label_largest_component(g))
 
