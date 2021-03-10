@@ -8,8 +8,9 @@ if [ -z $DOCKER_IMAGE ]; then
   exit
 fi
 
-cd "$HOME"/go/src/github.com/nm-morais/go-babel || exit
+set -e
 
+cd "$HOME"/go/src/github.com/nm-morais/go-babel || exit
 ./scripts/buildImage.sh
 cd ..
 
