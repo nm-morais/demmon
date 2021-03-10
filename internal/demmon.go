@@ -899,7 +899,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 				defer wg.Done()
 				res, err := cl.Query(query.Expression, query.Timeout)
 				if err != nil {
-					d.logger.Errorf("Got error %s querying  node %s in custom interest set %s", err.Error(), p.IP.String(), taskID)
+					d.logger.Errorf("Got error %s querying node %s in custom interest set %s", err.Error(), p.IP.String(), taskID)
 					job.Lock()
 					nrRetries, ok := job.nrRetries[p.IP.String()]
 					if !ok {
