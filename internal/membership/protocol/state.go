@@ -139,6 +139,8 @@ func (d *DemmonTree) addParent(
 			child.version,
 			child.Coordinates,
 		)
+		newChildrenPtr.inConnActive = child.inConnActive
+		newChildrenPtr.outConnActive = child.outConnActive
 		d.myChildren[childStr] = newChildrenPtr
 	}
 }
