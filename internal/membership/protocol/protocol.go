@@ -323,11 +323,11 @@ func (d *DemmonTree) handleMeasuringPeerInJoinFinish(peerMeasured *PeerWithIDCha
 
 func (d *DemmonTree) handleMeasuringPeerInEViewFinish(peerMeasured *PeerWithIDChain) {
 	delete(d.measuringPeers, peerMeasured.String())
-	defer d.nodeWatcher.Unwatch(peerMeasured.Peer, d.ID())
 	if d.isNeighbour(peerMeasured.Peer) {
 		return
 	}
 
+	defer d.nodeWatcher.Unwatch(peerMeasured.Peer, d.ID())
 	currNodeStats, err := d.nodeWatcher.GetNodeInfo(peerMeasured)
 	if err != nil {
 		d.logger.Error(err.Reason())
@@ -569,6 +569,14 @@ func (d *DemmonTree) handleMeasureNewPeersTimer(measureNewPeersTimer timer.Timer
 	if len(d.eView) == 0 {
 		d.logger.Infof("handleMeasureNewPeersTimer returning because len(eView) == 0")
 		return
+	}
+
+	for k, p := range d.eView {
+		if d.self.IsDescendentOf(p.chain) ||
+			d.isNeighbour(p) ||
+			d.myPendingParentInImprovement != nil && peer.PeersEqual(d.myPendingParentInImprovement, p) {
+			delete(d.eView, k)
+		}
 	}
 
 	peersSorted := peerMapToArr(d.eView)
@@ -941,10 +949,15 @@ func (d *DemmonTree) handleJoinReplyMessage(sender peer.Peer, msg message.Messag
 	d.attemptProgress()
 }
 
-func (d *DemmonTree) canBecomeParentOf(other *PeerWithIDChain, isRecovery, isImprovement bool) bool {
+func (d *DemmonTree) canBecomeParentOf(other *PeerWithIDChain, expectedChain PeerIDChain, isRecovery, isImprovement bool) bool {
 
 	if len(d.self.Chain()) == 0 {
 		d.logger.Warnf("cannot become parent of %s because my chain is nil", other.StringWithFields())
+		return false
+	}
+
+	if d.myParent == nil && !d.landmark {
+		d.logger.Warnf("cannot become parent of %s because my parent is nil", other.StringWithFields())
 		return false
 	}
 
@@ -957,10 +970,18 @@ func (d *DemmonTree) canBecomeParentOf(other *PeerWithIDChain, isRecovery, isImp
 		return false
 	}
 
-	if isImprovement && len(d.myChildren) == 0 {
-		d.logger.Warnf("cannot become parent of %s because it is an improvement and i do not have enough children",
-			other.StringWithFields())
-		return false
+	if isImprovement {
+		if len(d.myChildren) == 0 {
+			d.logger.Warnf("cannot become parent of %s because it is an improvement and i do not have enough children",
+				other.StringWithFields())
+			return false
+		}
+
+		if !d.self.chain.Equal(expectedChain) {
+			d.logger.Warnf("cannot become parent of %s because it is an improvement sent chain is wrong",
+				other.StringWithFields())
+			return false
+		}
 	}
 
 	return true
@@ -970,7 +991,7 @@ func (d *DemmonTree) handleJoinAsChildMessage(sender peer.Peer, m message.Messag
 	jacMsg := m.(JoinAsChildMessage)
 	d.logger.Infof("got JoinAsChildMessage %+v from %s", jacMsg, sender.String())
 
-	if !d.canBecomeParentOf(jacMsg.Sender, jacMsg.Urgent, jacMsg.Improvement) {
+	if !d.canBecomeParentOf(jacMsg.Sender, jacMsg.ExpectedID, jacMsg.Urgent, jacMsg.Improvement) {
 		toSend := NewJoinAsChildMessageReply(false, PeerID{}, d.self.Chain().Level(), d.self, nil, nil)
 		d.sendMessageTmpTCPChan(toSend, sender)
 		return
