@@ -75,11 +75,11 @@ var (
 		BiasedWalkTTL:                      5,
 		RandomWalkTTL:                      6,
 		EmitWalkTimeout:                    8 * time.Second,
-		MaxPeersInEView:                    15,
+		MaxPeersInEView:                    10,
 		MeasureNewPeersRefreshTickDuration: 7 * time.Second,
 		MaxMeasuredPeers:                   5,
 		NrHopsToIgnoreWalk:                 2,
-		NrPeersInWalkMessage:               20,
+		NrPeersInWalkMessage:               15,
 		NrPeersToMeasureBiased:             2,
 		NrPeersToMeasureRandom:             1,
 		NrPeersToMergeInWalkSample:         5,
@@ -283,9 +283,9 @@ func start(
 	}
 
 	go monitor.Listen()
+	select {}
 	// <-time.After(3 * time.Second)
 	// go testDemmonMetrics(eConf, isLandmark)
-	select {}
 
 	// buf := make([]byte, 1<<20)
 	// stacklen := runtime.Stack(buf, true)

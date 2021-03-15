@@ -605,7 +605,11 @@ func (d *DemmonTree) handleMeasureNewPeersTimer(measureNewPeersTimer timer.Timer
 	peersRandom := peerMapToArr(d.eView)
 	rand.Shuffle(len(peersRandom), func(i, j int) { peersRandom[i], peersRandom[j] = peersRandom[j], peersRandom[i] })
 	nrMeasuredRand := 0
-	for i := 0; i < d.config.NrPeersToMeasureRandom && nrMeasuredRand < d.config.NrPeersToMeasureRandom; i++ {
+
+	for i := 0; i < len(peersRandom) &&
+		i < d.config.NrPeersToMeasureRandom &&
+		nrMeasuredRand < d.config.NrPeersToMeasureRandom; i++ {
+
 		p := peersRandom[i]
 		if d.measurePeerExternalProcedure(p) {
 			nrMeasuredRand++
