@@ -46,6 +46,22 @@ func GetWaitForStartEnvVar() bool {
 	return waitForStartEnvVarVal == "true"
 }
 
+func GetBenchmarkMembershipEnvVar() bool {
+	benchmarkEnvVarVal, exists := os.LookupEnv(BenchmarkMembershipEnvName)
+	if !exists {
+		return false
+	}
+	return benchmarkEnvVarVal == "true"
+}
+
+func GetBenchmarkDemmonEnvVar() bool {
+	benchmarkEnvVarVal, exists := os.LookupEnv(BenchmarkDemmonEnvName)
+	if !exists {
+		return false
+	}
+	return benchmarkEnvVarVal == "true"
+}
+
 func GetLandmarksEnv() ([]*membershipProtocol.PeerWithIDChain, bool) {
 	landmarksEnv, exists := os.LookupEnv(LandmarksEnvVarName)
 	if !exists {

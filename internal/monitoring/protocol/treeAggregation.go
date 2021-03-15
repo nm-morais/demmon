@@ -29,6 +29,7 @@ func (m *Monitor) AddTreeAggregationFuncReq(key int64, interestSet body_types.Tr
 // BROADCAST TIMER
 
 func (m *Monitor) handleRebroadcastTreeInterestSetsTimer(t timer.Timer) {
+	m.logger.Info("Export timer for tree aggregation set broadcasts")
 	m.babel.RegisterTimer(
 		m.ID(),
 		NewBroadcastTreeAggregationFuncsTimer(RebroadcastTreeAggFuncTimerDuration),
@@ -141,6 +142,13 @@ func (m *Monitor) handleExportTreeAggregationFuncTimer(t timer.Timer) {
 		if err != nil {
 			m.logger.Panic(err)
 		}
+		m.babel.RegisterTimer(
+			m.ID(),
+			NewExportTreeAggregationFuncTimer(
+				treeAggFunc.AggSet.OutputBucketOpts.Granularity.Granularity,
+				interestSetID,
+			),
+		)
 		return
 	}
 
@@ -240,9 +248,12 @@ func (m *Monitor) handleInstallTreeAggFuncMetricsMessage(sender peer.Peer, msg m
 
 func (m *Monitor) cleanupTreeInterestSets() {
 	for isID, is := range m.treeAggFuncs {
+		if is.local {
+			continue
+		}
 		if time.Since(is.lastRefresh) > ExpireTreeAggFuncTimeout {
 			m.logger.Errorf(
-				"Removing tree agg func from peer %s because entry expired",
+				"Removing tree agg func %d from peer %s because entry expired",
 				is.sender,
 				isID,
 			)

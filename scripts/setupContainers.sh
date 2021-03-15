@@ -56,6 +56,8 @@ do
    --name $name \
    -h $name \
    -e LANDMARKS='$LANDMARKS' \
+   -e BENCKMARK_MEMBERSHIP='$BENCKMARK_MEMBERSHIP' \
+   -e BENCKMARK_METRICS='$BENCKMARK_METRICS' \
     $DOCKER_IMAGE $i $nContainers"
   
   # echo "running command: '$cmd'"

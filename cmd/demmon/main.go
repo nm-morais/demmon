@@ -22,8 +22,11 @@ const (
 	WaitForStartEnvVar            = "WAIT_FOR_START"
 	LandmarksEnvVarName           = "LANDMARKS"
 	AdvertiseListenAddrEnvVarName = "NODE_IP"
-	minProtosPort                 = 7000
-	maxProtosPort                 = 8000
+	BenchmarkMembershipEnvName    = "BENCKMARK_MEMBERSHIP"
+	BenchmarkDemmonEnvName        = "BENCKMARK_METRICS"
+
+	minProtosPort = 7000
+	maxProtosPort = 8000
 
 	minAnalyticsPort = 8000
 	maxAnalyticsPort = 9000
@@ -94,6 +97,8 @@ var (
 func main() {
 	ParseFlags()
 	landmarks, ok := GetLandmarksEnv()
+	benchmarkDemmonMetrics := GetBenchmarkDemmonEnvVar()
+	benchmarkMembership := GetBenchmarkMembershipEnvVar()
 	if !ok {
 		landmarks = []*membershipProtocol.PeerWithIDChain{
 			membershipProtocol.NewPeerWithIDChain(
@@ -243,13 +248,23 @@ func main() {
 		}
 	}
 	waitForStart := GetWaitForStartEnvVar()
-	start(babelConf, nodeWatcherConf, exporterConfs, dConf, demmonTreeConf, meConf, dbConf, isLandmark, waitForStart)
+	start(babelConf,
+		nodeWatcherConf,
+		exporterConfs,
+		dConf,
+		demmonTreeConf,
+		meConf,
+		dbConf,
+		isLandmark,
+		waitForStart,
+		benchmarkDemmonMetrics,
+		benchmarkMembership)
 }
 
 func start(
 	babelConf *pkg.Config, nwConf *pkg.NodeWatcherConf, eConf *exporter.Conf,
 	dConf *internal.DemmonConf, membershipConf *membershipProtocol.DemmonTreeConfig,
-	meConf *engine.Conf, dbConf *tsdb.Conf, isLandmark, waitForStart bool,
+	meConf *engine.Conf, dbConf *tsdb.Conf, isLandmark, waitForStart, isBenchmarkDemmonMetrics, benchmarkMembership bool,
 ) {
 
 	babel := pkg.NewProtoManager(*babelConf)
@@ -268,24 +283,27 @@ func start(
 		Port: protosPortVar,
 	})
 
-	fmt.Printf("Starting db with conf: %+v\n", dbConf)
+	fm := membershipFrontend.New(babel)
+	babel.RegisterProtocol(membershipProtocol.New(membershipConf, babel, nw))
+	if benchmarkMembership {
+		fmt.Println("Benchmarking demmon membership protocol")
+		babel.StartSync()
+	}
+
 	db := tsdb.GetDB(dbConf)
 	me := engine.NewMetricsEngine(db, *meConf, true)
-	fm := membershipFrontend.New(babel)
 	monitorProto := monitoringProto.New(babel, db, me)
 	monitor := internal.New(*dConf, monitorProto, me, db, fm, babel)
-
 	babel.RegisterProtocol(monitorProto)
-	babel.RegisterProtocol(membershipProtocol.New(membershipConf, babel, nw))
-
 	if !waitForStart {
 		babel.StartAsync()
 	}
-
 	go monitor.Listen()
+	if isBenchmarkDemmonMetrics {
+		fmt.Println("Benchmarking demmon metrics protocol")
+		benchmarkDemmonMetrics(eConf, isLandmark)
+	}
 	select {}
-	// <-time.After(3 * time.Second)
-	// go testDemmonMetrics(eConf, isLandmark)
 
 	// buf := make([]byte, 1<<20)
 	// stacklen := runtime.Stack(buf, true)
