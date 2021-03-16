@@ -194,21 +194,21 @@ func (d *DemmonTree) Start() {
 		d.myParent = nil
 		d.myChildren = make(map[string]*PeerWithIDChain)
 
-		d.babel.RegisterPeriodicTimer(d.ID(), NewCheckChidrenSizeTimer(d.config.CheckChildenSizeTimerDuration))
-		d.babel.RegisterPeriodicTimer(d.ID(), NewParentRefreshTimer(d.config.ParentRefreshTickDuration))
-		d.babel.RegisterPeriodicTimer(d.ID(), NewDebugTimer(DebugTimerDuration))
-		d.babel.RegisterPeriodicTimer(d.ID(), NewUpdateChildTimer(d.config.ChildrenRefreshTickDuration))
+		d.babel.RegisterPeriodicTimer(d.ID(), NewCheckChidrenSizeTimer(d.config.CheckChildenSizeTimerDuration), false)
+		d.babel.RegisterPeriodicTimer(d.ID(), NewParentRefreshTimer(d.config.ParentRefreshTickDuration), false)
+		d.babel.RegisterPeriodicTimer(d.ID(), NewDebugTimer(DebugTimerDuration), false)
+		d.babel.RegisterPeriodicTimer(d.ID(), NewUpdateChildTimer(d.config.ChildrenRefreshTickDuration), false)
 		return
 	}
 
-	d.babel.RegisterPeriodicTimer(d.ID(), NewUnderpopupationTimer(d.config.UnderpopulatedGroupTimerDuration))
-	d.babel.RegisterPeriodicTimer(d.ID(), NewUpdateChildTimer(d.config.ChildrenRefreshTickDuration))
-	d.babel.RegisterPeriodicTimer(d.ID(), NewParentRefreshTimer(d.config.ParentRefreshTickDuration))
-	d.babel.RegisterPeriodicTimer(d.ID(), NewMeasureNewPeersTimer(d.config.MeasureNewPeersRefreshTickDuration))
-	d.babel.RegisterPeriodicTimer(d.ID(), NewExternalNeighboringTimer(d.config.EmitWalkTimeout))
-	d.babel.RegisterPeriodicTimer(d.ID(), NewEvalMeasuredPeersTimer(d.config.EvalMeasuredPeersRefreshTickDuration))
-	d.babel.RegisterPeriodicTimer(d.ID(), NewCheckChidrenSizeTimer(d.config.CheckChildenSizeTimerDuration))
-	d.babel.RegisterPeriodicTimer(d.ID(), NewDebugTimer(DebugTimerDuration))
+	d.babel.RegisterPeriodicTimer(d.ID(), NewUnderpopupationTimer(d.config.UnderpopulatedGroupTimerDuration), false)
+	d.babel.RegisterPeriodicTimer(d.ID(), NewUpdateChildTimer(d.config.ChildrenRefreshTickDuration), false)
+	d.babel.RegisterPeriodicTimer(d.ID(), NewParentRefreshTimer(d.config.ParentRefreshTickDuration), false)
+	d.babel.RegisterPeriodicTimer(d.ID(), NewMeasureNewPeersTimer(d.config.MeasureNewPeersRefreshTickDuration), false)
+	d.babel.RegisterPeriodicTimer(d.ID(), NewExternalNeighboringTimer(d.config.EmitWalkTimeout), false)
+	d.babel.RegisterPeriodicTimer(d.ID(), NewEvalMeasuredPeersTimer(d.config.EvalMeasuredPeersRefreshTickDuration), false)
+	d.babel.RegisterPeriodicTimer(d.ID(), NewCheckChidrenSizeTimer(d.config.CheckChildenSizeTimerDuration), false)
+	d.babel.RegisterPeriodicTimer(d.ID(), NewDebugTimer(DebugTimerDuration), false)
 	d.joinOverlay()
 }
 
@@ -277,8 +277,8 @@ func (d *DemmonTree) handleUnderpopulatedTimer(joinTimer timer.Timer) {
 	}
 
 	r := rand.Float64()
-	probToStay := float64(nrPeersInGrp-1) / float64(d.config.MinGrpSize)
-	if r > probToStay {
+	probToStay := float64(nrPeersInGrp) / float64(d.config.MinGrpSize)
+	if r < probToStay {
 		d.logger.Infof("underpop timer returning (r=%f > prob=%f)", r, probToStay)
 		return
 	}

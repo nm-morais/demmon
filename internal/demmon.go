@@ -111,13 +111,13 @@ func (ac *alarmControl) OnTrigger() (bool, *time.Time) {
 		return true, &nextTrigger
 	}
 
-	ac.d.logger.Infof("evaluating alarm %d", ac.id)
+	ac.d.logger.Infof("evaluating alarm %s", ac.id)
 	res, err := ac.d.me.MakeBoolQuery(ac.alarm.Query.Expression, ac.alarm.Query.Timeout)
 	if err != nil {
-		ac.d.logger.Errorf("alarm %d failed with error: %s", ac.id, err)
+		ac.d.logger.Errorf("alarm %s failed with error: %s", ac.id, err)
 		ac.nrRetries++
 		if ac.nrRetries == ac.alarm.MaxRetries {
-			ac.d.logger.Errorf("alarm %d has exceeded maxRetries (%d), sending err msg and deleting alarm", ac.id, ac.nrRetries)
+			ac.d.logger.Errorf("alarm %s has exceeded maxRetries (%d), sending err msg and deleting alarm", ac.id, ac.nrRetries)
 			ac.d.sendResponse(body_types.NewResponse(ac.subID, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
 				ID:       ac.id,
 				Error:    true,
@@ -135,7 +135,7 @@ func (ac *alarmControl) OnTrigger() (bool, *time.Time) {
 		return true, &nextTrigger
 	}
 
-	if res == true {
+	if res {
 		ac.d.sendResponse(body_types.NewResponse(ac.subID, true, nil, 200, routes.InstallAlarm, body_types.AlarmUpdate{
 			ID:       ac.id,
 			Error:    false,
@@ -544,7 +544,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		}
 
 		treeSetID := utils.GetRandInt(math.MaxInt64)
-		d.monitorProto.AddTreeAggregationFuncReq(treeSetID, reqBody)
+		d.monitorProto.AddTreeAggregationFuncReq(treeSetID, &reqBody)
 		d.logger.Infof("Added new tree aggregation function: %+v", reqBody)
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, treeSetID)
 	case routes.InstallGlobalAggregationFunction:

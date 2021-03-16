@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/csv"
 	"fmt"
 	"runtime"
 	"time"
@@ -10,6 +11,11 @@ import (
 	"github.com/nm-morais/demmon-common/body_types"
 	exporter "github.com/nm-morais/demmon-exporter"
 )
+
+type metricWithName struct {
+	Name  string      `json:"name,omitempty"`
+	Value interface{} `json:"values,omitempty"`
+}
 
 func benchmarkDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 	const (
@@ -33,6 +39,7 @@ func benchmarkDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 
 	var err error
 	var errChan chan error
+
 	for i := 0; i < 3; i++ {
 		cl.Lock()
 		err, errChan = cl.ConnectTimeout(connectTimeout)
@@ -55,32 +62,48 @@ func benchmarkDemmonMetrics(eConf *exporter.Conf, isLandmark bool) {
 		fmt.Println("CONNECTED TO DEMMON")
 	}
 
-	go setupBenchmarkExporter(eConf)
+	go setupBenchmarkExporter(eConf, logFolder)
 	if isLandmark {
 		benchmarkTreeAggFunc(cl)
 	}
 }
 
-func setupBenchmarkExporter(eConf *exporter.Conf) {
+func setupBenchmarkExporter(eConf *exporter.Conf, logFolder string) {
+	csvWriter := setupCSVWriter(logFolder, "/local-values.csv", []string{"nr_goroutines", "timestamp"})
+
 	e, err, errChan := exporter.New(eConf, GetLocalIP().String(), "demmon", nil)
 	if err != nil {
 		panic(err)
 	}
 
-	go func() {
-		panic(<-errChan)
-	}()
-
 	exportFrequncy := 5 * time.Second
 	g := e.NewGauge("nr_goroutines", 12)
 	setTicker := time.NewTicker(1 * time.Second)
-	go e.ExportLoop(context.TODO(), exportFrequncy)
-	for range setTicker.C {
-		g.Set(float64(runtime.NumGoroutine()))
+
+	go func() {
+		for {
+			select {
+			case <-setTicker.C:
+				val := runtime.NumGoroutine()
+				g.Set(float64(val))
+				writeOrPanic(csvWriter, []string{fmt.Sprint(val), fmt.Sprintf("%d", time.Now().UnixNano())})
+			case err := <-errChan:
+				panic(err)
+			}
+		}
+	}()
+	e.ExportLoop(context.TODO(), exportFrequncy)
+}
+
+func writeOrPanic(csvWriter *csv.Writer, records []string) {
+	if err := csvWriter.Write(records); err != nil {
+		panic(err)
 	}
+	csvWriter.Flush()
 }
 
 func benchmarkTreeAggFunc(cl *client.DemmonClient) {
+	csvWriter := setupCSVWriter(logFolder, "/results.csv", []string{"avg_nr_goroutines_tree", "timestamp"})
 	const (
 		connectBackoffTime = 1 * time.Second
 		expressionTimeout  = 1 * time.Second
@@ -140,6 +163,11 @@ func benchmarkTreeAggFunc(cl *client.DemmonClient) {
 
 		for idx, ts := range res {
 			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
+		}
+
+		if len(res) > 0 {
+			valInt := res[0].Values[0].Fields["value"].(float64)
+			writeOrPanic(csvWriter, []string{fmt.Sprintf("%d", int(valInt)), fmt.Sprintf("%d", time.Now().UnixNano())})
 		}
 	}
 }

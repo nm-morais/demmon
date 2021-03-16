@@ -238,10 +238,10 @@ const InstallTreeAggFuncMsgID = 6004
 var installTreeAggFuncMsgSerializerVar = installTreeAggFuncMsgSerializer{}
 
 type InstallTreeAggFuncMsg struct {
-	InterestSets map[int64]body_types.TreeAggregationSet
+	InterestSets map[int64]*body_types.TreeAggregationSet
 }
 
-func NewInstallTreeAggFuncMessage(interestSets map[int64]body_types.TreeAggregationSet) InstallTreeAggFuncMsg {
+func NewInstallTreeAggFuncMessage(interestSets map[int64]*body_types.TreeAggregationSet) InstallTreeAggFuncMsg {
 	return InstallTreeAggFuncMsg{
 		InterestSets: interestSets,
 	}

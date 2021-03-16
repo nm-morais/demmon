@@ -144,7 +144,7 @@ func main() {
 	}
 
 	logFolder = fmt.Sprintf("%s/%s:%d", logFolder, GetLocalIP(), uint16(protosPortVar))
-	os.MkdirAll(logFolder, os.ModePerm)
+	_ = os.MkdirAll(logFolder, os.ModePerm)
 
 	// f, err := os.Create(fmt.Sprintf("%s/%s", logFolder, "cpuProfile"))
 	// if err != nil {
@@ -298,6 +298,7 @@ func start(
 	if !waitForStart {
 		babel.StartAsync()
 	}
+
 	go monitor.Listen()
 	if isBenchmarkDemmonMetrics {
 		fmt.Println("Benchmarking demmon metrics protocol")

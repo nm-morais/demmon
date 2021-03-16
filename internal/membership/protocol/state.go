@@ -61,6 +61,8 @@ func (d *DemmonTree) addParent(
 	myNewChain PeerIDChain) {
 
 	haveCause := false
+	hasInConnection := false
+	hasOutConnection := false
 	var existingLatencyMeasurement *time.Duration
 
 	// TODO add to measured peers
@@ -86,6 +88,11 @@ func (d *DemmonTree) addParent(
 
 	if peer.PeersEqual(newParent, d.myPendingParentInAbsorb) {
 		d.myPendingParentInAbsorb = nil
+		if s, ok := d.mySiblings[newParent.String()]; ok {
+			hasOutConnection = s.outConnActive
+			hasInConnection = s.inConnActive
+			delete(d.mySiblings, newParent.String())
+		}
 		haveCause = true
 	}
 
@@ -127,8 +134,14 @@ func (d *DemmonTree) addParent(
 	} else {
 		d.nodeWatcher.Watch(newParent, d.ID())
 	}
-	d.babel.Dial(d.ID(), newParent, newParent.ToTCPAddr())
 	d.removeFromMeasuredPeers(newParent)
+	if hasOutConnection {
+		d.myParent.outConnActive = hasOutConnection
+		d.myParent.inConnActive = hasInConnection
+		d.babel.SendNotification(NewNodeUpNotification(d.myParent, d.getInView()))
+	} else {
+		d.babel.Dial(d.ID(), newParent, newParent.ToTCPAddr())
+	}
 
 	for childStr, child := range d.myChildren {
 		childID := child.Chain()[len(child.Chain())-1]

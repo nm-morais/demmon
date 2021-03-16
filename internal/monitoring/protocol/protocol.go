@@ -66,7 +66,7 @@ func New(babel protocolManager.ProtocolManager, db *tsdb.TSDB, me *engine.Metric
 // BOILERPLATE
 
 func (m *Monitor) MessageDelivered(msg message.Message, p peer.Peer) {
-	// m.logger.Infof("Message of %s delivered to: %s", reflect.TypeOf(msg), p)
+	m.logger.Infof("Message of type %s delivered to: %s", reflect.TypeOf(msg), p)
 }
 
 func (m *Monitor) MessageDeliveryErr(msg message.Message, p peer.Peer, err errors.Error) {
@@ -170,31 +170,34 @@ func (m *Monitor) Init() { // REPLY HANDLERS
 }
 
 func (m *Monitor) Start() {
-	m.babel.RegisterTimer(
+	m.babel.RegisterPeriodicTimer(
 		m.ID(),
 		NewRebroadcastInterestSetsTimer(RebroadcastNeighInterestSetsTimerDuration),
+		false,
 	)
 
-	m.babel.RegisterTimer(
+	m.babel.RegisterPeriodicTimer(
 		m.ID(),
 		NewBroadcastTreeAggregationFuncsTimer(RebroadcastTreeAggFuncTimerDuration),
+		false,
 	)
 
-	m.babel.RegisterTimer(
+	m.babel.RegisterPeriodicTimer(
 		m.ID(),
 		NewBroadcastGlobalAggregationFuncsTimer(RebroadcastGlobalAggFuncTimerDuration),
+		false,
 	)
 
-	m.babel.RegisterTimer(
+	m.babel.RegisterPeriodicTimer(
 		m.ID(),
 		NewCleanupInterestSetsTimer(CleanupInterestSetTimerDuration),
+		false,
 	)
 }
 
 // TIMER HANDLERS
 
 func (m *Monitor) handleCleanupInterestSetsTimer(t timer.Timer) {
-	m.babel.RegisterTimer(m.ID(), NewCleanupInterestSetsTimer(CleanupInterestSetTimerDuration))
 	m.cleanupNeighInterestSets()
 	m.cleanupTreeInterestSets()
 	m.cleanupGlobalAggFuncs()

@@ -62,10 +62,6 @@ func (m *Monitor) handleAddGlobalAggFuncRequest(req request.Request) request.Rep
 // BROADCAST AGG FUNCS TIMER
 
 func (m *Monitor) handleRebroadcastGlobalInterestSetsTimer(t timer.Timer) {
-	m.babel.RegisterTimer(
-		m.ID(),
-		NewBroadcastGlobalAggregationFuncsTimer(RebroadcastGlobalAggFuncTimerDuration),
-	)
 	// m.logger.Infof("Broadcasting global interest sets...")
 	m.broadcastGlobalAggFuncsToChildren()
 	m.broadcastGlobalAggFuncsToParent()
@@ -382,7 +378,7 @@ func (m *Monitor) handleInstallGlobalAggFuncMessage(sender peer.Peer, msg messag
 	installGlobalAggFuncMsg := msg.(InstallGlobalAggFuncMsg)
 
 	if !m.isPeerInView(sender) {
-		m.logger.Warn("received install global interest set from peer not in my view")
+		m.logger.Warnf("received install global interest set from peer (%s) not in my view", sender.String())
 		return
 	}
 

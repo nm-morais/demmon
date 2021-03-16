@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/csv"
 	"math/big"
 	"net"
 	"os"
@@ -91,4 +92,19 @@ func getRandInt(max int64) int64 {
 	}
 
 	return n.Int64()
+}
+
+func setupCSVWriter(folder, fileName string, headers []string) *csv.Writer {
+	err := os.MkdirAll(folder, 0777)
+	if err != nil {
+		panic(err)
+	}
+	allLogsFile, err := os.Create(folder + fileName)
+	if err != nil {
+		panic(err)
+	}
+
+	writer := csv.NewWriter(allLogsFile)
+	writeOrPanic(writer, headers)
+	return writer
 }

@@ -187,10 +187,6 @@ func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 // BROADCAST TIMER
 
 func (m *Monitor) handleRebroadcastInterestSetsTimer(t timer.Timer) {
-	m.babel.RegisterTimer(
-		m.ID(),
-		NewRebroadcastInterestSetsTimer(RebroadcastNeighInterestSetsTimerDuration),
-	)
 	m.broadcastNeighInterestSetsToSiblings()
 	m.broadcastNeighInterestSetsToChildren()
 	m.broadcastNeighInterestSetsToParent()

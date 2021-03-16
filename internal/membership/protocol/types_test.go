@@ -21,7 +21,7 @@ func TestSerializePeerWithIDChain(t *testing.T) {
 		Coordinates{0, 1, 2, 3},
 	)
 	PwIDbytes := toSerialize.MarshalWithFields()
-	_, deserialized := UnmarshalPeerWithIdChain(PwIDbytes)
+	_, deserialized := UnmarshalPeerWithIDChain(PwIDbytes)
 
 	t.Logf("%+v,", toSerialize)
 	t.Logf("%+v,", deserialized)
