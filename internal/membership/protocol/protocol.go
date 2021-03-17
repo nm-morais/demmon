@@ -398,13 +398,12 @@ func (d *DemmonTree) handleRefreshParentTimer(t timer.Timer) {
 			d.logger.Warnf("Could not send message to children because there is no active conn to it %s", child.StringWithFields())
 			continue
 		}
-		childrenArr := getMapAsPeerWithIDChainArray(d.myChildren, child)
 		// d.logger.Infof("Sending children: %+v to %s", childrenArr, child.StringWithFields())
 		toSend := NewUpdateParentMessage(
 			d.myParent,
 			d.self,
 			child.Chain()[len(child.Chain())-1],
-			childrenArr,
+			getMapAsPeerWithIDChainArray(d.myChildren, child),
 		)
 		d.sendMessage(toSend, child.Peer)
 	}
@@ -870,6 +869,8 @@ func (d *DemmonTree) handleAbsorbMessage(sender peer.Peer, m message.Message) {
 			peerLat = nodeInfo.LatencyCalc().CurrValue()
 		}
 		d.myPendingParentInAbsorb = newParent
+		d.myPendingParentInAbsorb.inConnActive = sibling.inConnActive
+		d.myPendingParentInAbsorb.outConnActive = sibling.outConnActive
 		toSend := NewJoinAsChildMessage(d.self, peerLat, newParent.Chain(), false, false)
 		d.sendMessage(toSend, newParent)
 	} else {
@@ -1065,7 +1066,7 @@ func getStringOrNil(p *PeerWithIDChain) string {
 
 func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Message) {
 	upMsg := m.(UpdateParentMessage)
-	// d.logger.Infof("got UpdateParentMessage %+v from %s", upMsg, sender.String())
+	d.logger.Infof("got UpdateParentMessage %+v from %s", upMsg, sender.String())
 
 	if !peer.PeersEqual(sender, d.myParent) &&
 		!peer.PeersEqual(sender, d.myPendingParentInAbsorb) &&
@@ -1101,8 +1102,13 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 		}
 	}
 
+	d.logger.Infof("Conns before: in: %+v, out: %+v", d.myParent.inConnActive, d.myParent.outConnActive)
 	d.myGrandParent = upMsg.GrandParent
+	aux := d.myParent
 	d.myParent = upMsg.Parent
+	d.myParent.outConnActive = aux.outConnActive
+	d.myParent.inConnActive = aux.inConnActive
+	d.logger.Infof("Conns after: in: %+v, out: %+v", d.myParent.inConnActive, d.myParent.outConnActive)
 
 	myNewChain := append(upMsg.Parent.Chain(), upMsg.ProposedID)
 	if !myNewChain.Equal(d.self.Chain()) {
@@ -1115,6 +1121,7 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 
 		d.self = NewPeerWithIDChain(myNewChain, d.self.Peer, d.self.nChildren, d.self.Version()+1, d.self.Coordinates)
 	}
+
 	d.mergeSiblingsWith(upMsg.Siblings)
 }
 

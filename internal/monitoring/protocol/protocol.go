@@ -215,6 +215,8 @@ func (m *Monitor) handleNodeUp(n notification.Notification) {
 	m.currView = nodeUpNotification.InView
 	m.logger.Infof("Node up: %s", nodeUpNotification.PeerUp.String())
 	m.logger.Infof("Curr View: %+v", m.currView)
+	m.handleNodeUpTreeAggFunc(nodeUpNotification.PeerUp)
+
 }
 
 func (m *Monitor) handleNodeDown(n notification.Notification) {

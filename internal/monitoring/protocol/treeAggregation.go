@@ -31,7 +31,10 @@ func (m *Monitor) AddTreeAggregationFuncReq(key int64, interestSet *body_types.T
 
 func (m *Monitor) handleRebroadcastTreeInterestSetsTimer(t timer.Timer) {
 	m.logger.Info("Export timer for tree aggregation set broadcasts")
+	m.broadcastInterestSets()
+}
 
+func (m *Monitor) broadcastInterestSets(specificChildren ...peer.Peer) {
 	treeAggFuncstoSend := make(map[int64]*body_types.TreeAggregationSet)
 
 	for isID, is := range m.treeAggFuncs {
@@ -51,9 +54,16 @@ func (m *Monitor) handleRebroadcastTreeInterestSetsTimer(t timer.Timer) {
 	}
 
 	toSend := NewInstallTreeAggFuncMessage(treeAggFuncstoSend)
-	for _, child := range m.currView.Children {
-		m.SendMessage(toSend, child)
+	if len(specificChildren) > 0 {
+		for _, child := range specificChildren {
+			m.SendMessage(toSend, child)
+		}
+	} else {
+		for _, child := range m.currView.Children {
+			m.SendMessage(toSend, child)
+		}
 	}
+
 }
 
 // EXPORT TIMER
@@ -69,11 +79,22 @@ func (m *Monitor) handleExportTreeAggregationFuncTimer(t timer.Timer) {
 		return
 	}
 
+	if !peer.PeersEqual(m.currView.Parent, treeAggFunc.sender) && !treeAggFunc.local {
+		m.logger.Errorf(
+			"tree aggregation function %d could not propagate to parent because sender is not same as current parent",
+			interestSetID,
+		)
+	}
+
 	m.logger.Infof(
 		"Exporting metric values for tree aggregation func %d: %s",
 		interestSetID,
 		treeAggFunc.AggSet.OutputBucketOpts.Name,
 	)
+	m.propagateTreeIntSetMetrics(interestSetID, treeAggFunc)
+}
+
+func (m *Monitor) propagateTreeIntSetMetrics(interestSetID int64, treeAggFunc *treeAggSet) {
 
 	query := treeAggFunc.AggSet.Query
 	queryResult, err := m.me.MakeQuerySingleReturn(query.Expression, query.Timeout)
@@ -139,22 +160,18 @@ func (m *Monitor) handleExportTreeAggregationFuncTimer(t timer.Timer) {
 		return
 	}
 
-	toSendMsg := NewPropagateTreeAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: time.Now(), Fields: mergedVal})
-
-	if peer.PeersEqual(m.currView.Parent, treeAggFunc.sender) {
-		m.logger.Infof(
-			"propagating metrics for tree aggregation function %d (%+v) to parent %s",
-			interestSetID,
-			mergedVal,
-			m.currView.Parent.String(),
-		)
-		m.SendMessage(toSendMsg, m.currView.Parent)
-	} else {
-		m.logger.Errorf(
-			"tree aggregation function %d could not propagate to parent due to not having parent",
-			interestSetID,
-		)
+	if peer.PeersEqual(treeAggFunc.sender, m.babel.SelfPeer()) {
+		return
 	}
+
+	toSendMsg := NewPropagateTreeAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: time.Now(), Fields: mergedVal})
+	m.logger.Infof(
+		"propagating metrics for tree aggregation function %d (%+v) to: %s",
+		interestSetID,
+		mergedVal,
+		treeAggFunc.sender.String(),
+	)
+	m.SendMessage(toSendMsg, treeAggFunc.sender)
 }
 
 // MESSAGES
@@ -193,7 +210,7 @@ func (m *Monitor) handleInstallTreeAggFuncMetricsMessage(sender peer.Peer, msg m
 	installTreeAggFuncMsg := msg.(InstallTreeAggFuncMsg)
 	_, _, parent := m.getPeerRelationshipType(sender)
 	if !parent {
-		m.logger.Warn("received install tree aggregation function from peer not in my view")
+		m.logger.Warnf("received install tree aggregation function from peer not in my view (%s)", sender.String())
 		return
 	}
 
@@ -210,6 +227,7 @@ func (m *Monitor) handleInstallTreeAggFuncMetricsMessage(sender peer.Peer, msg m
 		if ok {
 			alreadyExisting.lastRefresh = time.Now()
 			alreadyExisting.sender = sender
+			m.propagateTreeIntSetMetrics(treeAggFuncID, alreadyExisting)
 			continue
 		}
 
@@ -250,16 +268,6 @@ func (m *Monitor) cleanupTreeInterestSets() {
 			m.babel.CancelTimer(is.timerID)
 			continue
 		}
-
-		if !peer.PeersEqual(m.currView.Parent, is.sender) {
-			m.logger.Infof(
-				"Removing tree agg func %d from peer %s because peer is not my parent anymore",
-				isID,
-				is.sender.String(),
-			)
-			delete(m.treeAggFuncs, isID)
-			m.babel.CancelTimer(is.timerID)
-		}
 	}
 }
 
@@ -294,12 +302,17 @@ func (m *Monitor) handleAddTreeAggregationFuncRequest(req request.Request) reque
 
 func (m *Monitor) handleNodeDownTreeAggFunc(nodeDown peer.Peer) {
 	// remove all child values from tree agg func
-	for ID, treeAggFunc := range m.treeAggFuncs {
-		if peer.PeersEqual(treeAggFunc.sender, nodeDown) {
-			delete(m.treeAggFuncs, ID)
-			m.babel.CancelTimer(treeAggFunc.timerID)
-			continue
-		}
+	for _, treeAggFunc := range m.treeAggFuncs {
 		delete(treeAggFunc.childValues, nodeDown.String())
+	}
+}
+
+// HANDLE NODE UP
+
+func (m *Monitor) handleNodeUpTreeAggFunc(nodeUp peer.Peer) {
+	// remove all child values from tree agg func
+	_, isChildren, _ := m.getPeerRelationshipType(nodeUp)
+	if isChildren {
+		m.broadcastInterestSets(nodeUp)
 	}
 }

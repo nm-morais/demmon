@@ -87,12 +87,9 @@ func (d *DemmonTree) addParent(
 	}
 
 	if peer.PeersEqual(newParent, d.myPendingParentInAbsorb) {
+		hasOutConnection = d.myPendingParentInAbsorb.outConnActive
+		hasInConnection = d.myPendingParentInAbsorb.inConnActive
 		d.myPendingParentInAbsorb = nil
-		if s, ok := d.mySiblings[newParent.String()]; ok {
-			hasOutConnection = s.outConnActive
-			hasInConnection = s.inConnActive
-			delete(d.mySiblings, newParent.String())
-		}
 		haveCause = true
 	}
 
@@ -106,12 +103,20 @@ func (d *DemmonTree) addParent(
 		d.logger.Panicf("adding parent but peer is not in possible pending parents")
 	}
 
+	oldParent := d.myParent
 	if d.myParent != nil && !peer.PeersEqual(d.myParent, newParent) {
 		toSend := NewDisconnectAsChildMessage()
-		d.babel.SendNotification(NewNodeDownNotification(d.myParent, d.getInView()))
-		d.sendMessageAndDisconnect(toSend, d.myParent)
-		d.nodeWatcher.Unwatch(d.myParent, d.ID())
+		d.myParent = nil
+		d.babel.SendNotification(NewNodeDownNotification(oldParent, d.getInView()))
+		d.sendMessageAndDisconnect(toSend, oldParent)
+		d.nodeWatcher.Unwatch(oldParent, d.ID())
 	}
+	if !myNewChain.Equal(d.self.chain) {
+		d.babel.SendNotification(NewIDChangeNotification(myNewChain))
+	}
+
+	d.myGrandParent = newGrandParent
+	d.myParent = newParent
 
 	d.logger.Infof(
 		"My level changed: (%d -> %d)",
@@ -119,14 +124,10 @@ func (d *DemmonTree) addParent(
 		newParent.Chain().Level()+1,
 	) // IMPORTANT FOR VISUALIZER
 	d.logger.Infof("My chain changed: (%+v -> %+v)", d.self.Chain(), myNewChain)
-	d.logger.Infof("My parent changed: (%+v -> %+v)", d.myParent, newParent)
+	d.logger.Infof("My parent changed: (%+v -> %+v)", oldParent, d.myParent)
+	d.logger.Infof("HasOutConn: %+v", hasOutConnection)
+	d.logger.Infof("HasInConn: %+v", hasInConnection)
 
-	if !myNewChain.Equal(d.self.chain) {
-		d.babel.SendNotification(NewIDChangeNotification(myNewChain))
-	}
-
-	d.myGrandParent = newGrandParent
-	d.myParent = newParent
 	d.self = NewPeerWithIDChain(myNewChain, d.self.Peer, d.self.nChildren, d.self.Version()+1, d.self.Coordinates)
 
 	if existingLatencyMeasurement != nil {
@@ -135,9 +136,9 @@ func (d *DemmonTree) addParent(
 		d.nodeWatcher.Watch(newParent, d.ID())
 	}
 	d.removeFromMeasuredPeers(newParent)
+	d.myParent.outConnActive = hasOutConnection
+	d.myParent.inConnActive = hasInConnection
 	if hasOutConnection {
-		d.myParent.outConnActive = hasOutConnection
-		d.myParent.inConnActive = hasInConnection
 		d.babel.SendNotification(NewNodeUpNotification(d.myParent, d.getInView()))
 	} else {
 		d.babel.Dial(d.ID(), newParent, newParent.ToTCPAddr())
@@ -302,8 +303,13 @@ func (d *DemmonTree) getInView() InView {
 		siblingArr = append(siblingArr, sibling)
 	}
 
-	if d.myParent != nil && !d.myParent.outConnActive {
-		parent = d.myParent
+	if d.myParent != nil {
+		if d.myParent.outConnActive {
+			parent = d.myParent
+		} else {
+			d.logger.Infof("Have parent %s but no active connection to it", d.myParent.String())
+
+		}
 	}
 
 	return InView{
@@ -485,6 +491,8 @@ func (d *DemmonTree) updateAndMergeSampleEntriesWithEView(sample []*PeerWithIDCh
 
 		if peer.PeersEqual(d.myParent, currPeer) {
 			if currPeer.IsHigherVersionThan(d.myParent) {
+				currPeer.inConnActive = d.myParent.inConnActive
+				currPeer.outConnActive = d.myParent.outConnActive
 				d.myParent = currPeer
 			}
 
