@@ -180,18 +180,21 @@ const propagateTreeAggFuncMetricsMsgID = 6003
 var propagateTreeAggFuncMsgSerializerVar = propagateTreeAggFuncMsgSerializer{}
 
 type PropagateTreeAggFuncMetricsMsg struct {
-	InterestSetID int64
-	Value         *body_types.ObservableDTO
+	InterestSetID    int64
+	Value            *body_types.ObservableDTO
+	MembershipChange bool
 }
 
 func NewPropagateTreeAggFuncMetricsMessage(
 	interestSetID int64,
 	value *body_types.ObservableDTO,
+	membershipChange bool,
 ) PropagateTreeAggFuncMetricsMsg {
 
 	toReturn := PropagateTreeAggFuncMetricsMsg{
-		InterestSetID: interestSetID,
-		Value:         value,
+		InterestSetID:    interestSetID,
+		Value:            value,
+		MembershipChange: membershipChange,
 	}
 
 	return toReturn
@@ -238,12 +241,14 @@ const InstallTreeAggFuncMsgID = 6004
 var installTreeAggFuncMsgSerializerVar = installTreeAggFuncMsgSerializer{}
 
 type InstallTreeAggFuncMsg struct {
-	InterestSets map[int64]*body_types.TreeAggregationSet
+	ConfirmedIntSets      []int64
+	InterestSetsToInstall map[int64]*body_types.TreeAggregationSet
 }
 
-func NewInstallTreeAggFuncMessage(interestSets map[int64]*body_types.TreeAggregationSet) InstallTreeAggFuncMsg {
+func NewInstallTreeAggFuncMessage(interestSetsToInstall map[int64]*body_types.TreeAggregationSet, confirmedIntSets []int64) InstallTreeAggFuncMsg {
 	return InstallTreeAggFuncMsg{
-		InterestSets: interestSets,
+		InterestSetsToInstall: interestSetsToInstall,
+		ConfirmedIntSets:      confirmedIntSets,
 	}
 }
 
@@ -283,9 +288,93 @@ func (installTreeAggFuncMsgSerializer) Deserialize(msgBytes []byte) message.Mess
 	return toDeserialize
 }
 
+const DeleteChildValMsgID = 6005
+
+var deleteChildValMsgSerializerVar = deleteChildValMsgSerializer{}
+
+type DeleteChildValMsg struct {
+}
+
+func NewDeleteChildValMessage() DeleteChildValMsg {
+	return DeleteChildValMsg{}
+}
+
+func (DeleteChildValMsg) Type() message.ID {
+	return DeleteChildValMsgID
+}
+
+func (DeleteChildValMsg) Serializer() message.Serializer {
+	return deleteChildValMsgSerializerVar
+}
+
+func (DeleteChildValMsg) Deserializer() message.Deserializer {
+	return deleteChildValMsgSerializerVar
+}
+
+type deleteChildValMsgSerializer struct{}
+
+func (deleteChildValMsgSerializer) Serialize(m message.Message) []byte {
+	return []byte{}
+}
+
+func (deleteChildValMsgSerializer) Deserialize(msgBytes []byte) message.Message {
+	return NewDeleteChildValMessage()
+}
+
+const RequestTreeAggFuncMsgID = 6006
+
+var requestTreeAggFuncMsgSerializerVar = requestTreeAggFuncMsgSerializer{}
+
+type RequestTreeAggFuncMsg struct {
+	OwnedIntSets []int64
+}
+
+func NewRequestTreeAggFuncMessage(interestSets []int64) RequestTreeAggFuncMsg {
+
+	return RequestTreeAggFuncMsg{
+		OwnedIntSets: interestSets,
+	}
+}
+
+func (RequestTreeAggFuncMsg) Type() message.ID {
+	return RequestTreeAggFuncMsgID
+}
+
+func (RequestTreeAggFuncMsg) Serializer() message.Serializer {
+	return requestTreeAggFuncMsgSerializerVar
+}
+
+func (RequestTreeAggFuncMsg) Deserializer() message.Deserializer {
+	return requestTreeAggFuncMsgSerializerVar
+}
+
+type requestTreeAggFuncMsgSerializer struct{}
+
+func (requestTreeAggFuncMsgSerializer) Serialize(m message.Message) []byte {
+	mConverted := m.(RequestTreeAggFuncMsg)
+	msgBytes, err := json.Marshal(mConverted)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return msgBytes
+}
+
+func (requestTreeAggFuncMsgSerializer) Deserialize(msgBytes []byte) message.Message {
+	toDeserialize := RequestTreeAggFuncMsg{}
+	err := json.Unmarshal(msgBytes, &toDeserialize)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return toDeserialize
+}
+
 // GLOBAL AGG FUNCS
 
-const propagateGlobalAggFuncMetricsMsgID = 6005
+const propagateGlobalAggFuncMetricsMsgID = 6007
 
 var propagateGlobalAggFuncMsgSerializerVar = propagateGlobalAggFuncMsgSerializer{}
 
@@ -343,7 +432,7 @@ func (propagateGlobalAggFuncMsgSerializer) Deserialize(msgBytes []byte) message.
 	return toDeserialize
 }
 
-const InstallGlobalAggFuncMsgID = 6006
+const InstallGlobalAggFuncMsgID = 6008
 
 var installGlobalAggFuncMsgSerializerVar = installGlobalAggFuncMsgSerializer{}
 

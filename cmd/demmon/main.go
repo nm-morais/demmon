@@ -58,7 +58,7 @@ var (
 		NrPeersToBecomeChildrenPerParentInAbsorb: 3,
 
 		// NrPeersToKickPerParent:                 3,
-		MinLatencyImprovementToImprovePosition: 30 * time.Millisecond,
+		MinLatencyImprovementToImprovePosition: 50 * time.Millisecond,
 
 		PhiLevelForNodeDown: 3,
 		// SwitchProbability:             0.5,
@@ -89,7 +89,7 @@ var (
 
 		MinLatencyImprovementPerPeerForSwitch: 20 * time.Millisecond,
 
-		UnderpopulatedGroupTimerDuration: 5 * time.Second,
+		UnderpopulatedGroupTimerDuration: 12 * time.Second,
 		// CheckSwitchOportunityTimeout:          7500 * time.Millisecond,
 	}
 )
@@ -302,7 +302,7 @@ func start(
 	go monitor.Listen()
 	if isBenchmarkDemmonMetrics {
 		fmt.Println("Benchmarking demmon metrics protocol")
-		benchmarkDemmonMetrics(eConf, isLandmark)
+		benchmarkDemmonMetrics(eConf, isLandmark, BenchmarkGlobalAggFunc)
 	}
 	select {}
 

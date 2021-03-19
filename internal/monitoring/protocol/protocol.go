@@ -28,12 +28,13 @@ const (
 	ExpireNeighInterestSetTimeout             = 3 * RebroadcastNeighInterestSetsTimerDuration
 
 	// tree agg funcs
-	RebroadcastTreeAggFuncTimerDuration   = 5 * time.Second
-	RebroadcastGlobalAggFuncTimerDuration = 5 * time.Second
+	RebroadcastTreeAggFuncTimerDuration = 3 * time.Second
+	ExpireTreeAggFuncTimeout            = 3 * RebroadcastTreeAggFuncTimerDuration
+	ExpireTreeAggFuncValues             = 5 * time.Second
 
 	// global agg funcs
-	ExpireGlobalAggFuncTimeout = 3 * RebroadcastNeighInterestSetsTimerDuration
-	ExpireTreeAggFuncTimeout   = 3 * RebroadcastTreeAggFuncTimerDuration
+	RebroadcastGlobalAggFuncTimerDuration = 3 * time.Second
+	ExpireGlobalAggFuncTimeout            = 3 * RebroadcastGlobalAggFuncTimerDuration
 )
 
 type Monitor struct {
@@ -90,6 +91,11 @@ func (m *Monitor) SendMessage(msg message.Message, p peer.Peer) {
 	m.babel.SendMessage(msg, p, m.ID(), m.ID(), true)
 }
 
+func (m *Monitor) SendMessageUDPStream(msg message.Message, p peer.Peer) {
+	// m.logger.Infof("Sending message of type %s to %s", reflect.TypeOf(msg), p.String())
+	m.babel.SendMessageSideStream(msg, p, p.ToUDPAddr(), m.ID(), m.ID())
+}
+
 func (m *Monitor) Init() { // REPLY HANDLERS
 	m.babel.RegisterNotificationHandler(m.ID(), membershipProtocol.NodeUpNotification{}, m.handleNodeUp)
 	m.babel.RegisterNotificationHandler(m.ID(), membershipProtocol.NodeDownNotification{}, m.handleNodeDown)
@@ -126,12 +132,22 @@ func (m *Monitor) Init() { // REPLY HANDLERS
 
 	m.babel.RegisterMessageHandler(
 		m.ID(),
-		NewInstallTreeAggFuncMessage(nil),
+		NewInstallTreeAggFuncMessage(nil, nil),
 		m.handleInstallTreeAggFuncMetricsMessage,
 	)
 	m.babel.RegisterMessageHandler(
 		m.ID(),
-		NewPropagateTreeAggFuncMetricsMessage(0, nil),
+		NewDeleteChildValMessage(),
+		m.handleDeleteChildValuesMessage,
+	)
+	m.babel.RegisterMessageHandler(
+		m.ID(),
+		NewRequestTreeAggFuncMessage(nil),
+		m.handleRequestTreeAggFuncMsg,
+	)
+	m.babel.RegisterMessageHandler(
+		m.ID(),
+		NewPropagateTreeAggFuncMetricsMessage(0, nil, false),
 		m.handlePropagateTreeAggFuncMetricsMessage,
 	)
 	m.babel.RegisterTimerHandler(

@@ -198,12 +198,16 @@ func (d *DemmonTree) addChild(newChild *PeerWithIDChain, childrenLatency time.Du
 			d.nodeWatcher.Watch(newChild, d.ID())
 		}
 		d.babel.Dial(d.ID(), newChild, newChild.ToTCPAddr())
+	} else {
+		d.myChildren[newChild.String()] = newChildWithID
+		d.babel.SendNotification(NewNodeUpNotification(newChild, d.getInView()))
 	}
 
 	d.myChildren[newChild.String()] = newChildWithID
 	d.updateSelfVersion()
 	d.logger.Infof("added children: %s", newChildWithID.String())
 	d.removeFromMeasuredPeers(newChild)
+
 	return proposedID
 }
 

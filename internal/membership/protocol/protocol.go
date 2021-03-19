@@ -657,7 +657,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 		totalLatency int
 		absorber     *MeasuredPeer
 		peersToKick  MeasuredPeersByLat
-	}, 0) // bit weird, but works for what i need
+	}, 0)
 
 	for _, child := range childrenAsMeasuredPeers {
 		if len(peersToKickPerAbsorber) == d.config.NrPeersToBecomeParentInAbsorb {
@@ -1006,6 +1006,7 @@ func (d *DemmonTree) handleJoinAsChildMessage(sender peer.Peer, m message.Messag
 	var outConnActive, inConnActive bool
 	if isSibling {
 		delete(d.mySiblings, sender.String())
+		d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView()))
 		outConnActive = sibling.outConnActive
 		inConnActive = sibling.inConnActive
 	}
