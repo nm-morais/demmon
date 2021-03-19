@@ -36,7 +36,6 @@ func (m *Monitor) AddTreeAggregationFuncReq(key int64, interestSet *body_types.T
 // BROADCAST TIMER
 
 func (m *Monitor) handleRebroadcastTreeInterestSetsTimer(t timer.Timer) {
-	m.logger.Info("Export timer for tree aggregation set broadcasts")
 	m.requestInterestSets()
 }
 
@@ -62,7 +61,6 @@ func (m *Monitor) handleExportTreeAggregationFuncTimer(t timer.Timer) {
 	tConverted := t.(*exportTreeAggregationFuncTimer)
 	interestSetID := tConverted.InterestSetID
 	treeAggFunc, ok := m.treeAggFuncs[interestSetID]
-	m.logger.Infof("Export timer for tree aggregation func %d triggered", interestSetID)
 
 	if !ok {
 		m.logger.Warnf("Canceling export timer for tree aggregation func %d", interestSetID)
@@ -107,10 +105,10 @@ func (m *Monitor) propagateTreeIntSetMetrics(interestSetID int64, treeAggFunc *t
 		return
 	}
 
-	m.logger.Infof(
-		"tree aggregation function query result: (%+v)",
-		queryResult,
-	)
+	// m.logger.Infof(
+	// 	"tree aggregation function query result: (%+v)",
+	// 	queryResult,
+	// )
 
 	var mergedVal map[string]interface{}
 	mergedVal = queryResult
@@ -132,10 +130,10 @@ func (m *Monitor) propagateTreeIntSetMetrics(interestSetID int64, treeAggFunc *t
 			panic(err)
 		}
 	}
-	m.logger.Infof(
-		"Merged value: (%+v)",
-		mergedVal,
-	)
+	// m.logger.Infof(
+	// 	"Merged value: (%+v)",
+	// 	mergedVal,
+	// )
 
 	if treeAggFunc.local {
 		m.logger.Info("Adding merged values locally")
@@ -304,7 +302,7 @@ func (m *Monitor) handleInstallTreeAggFuncMetricsMessage(sender peer.Peer, msg m
 	}
 
 	if len(treeAggFuncsToInstall) == 0 {
-		m.logger.Info("Did not receive any new tree agg funcs in InstallTreeAggFunc message, returning")
+		// m.logger.Info("Did not receive any new tree agg funcs in InstallTreeAggFunc message, returning")
 		return
 	}
 
@@ -383,7 +381,7 @@ func (m *Monitor) cleanupTreeInterestSets() {
 
 		if is.AggSet.UpdateOnMembershipChange {
 			if time.Since(is.lastPropagationMembershipChange) > is.AggSet.MaxFrequencyUpdateOnMembershipChange {
-				m.logger.Infof("Propagating int set %d values since timeout expired and a value was removed", isID)
+				// m.logger.Infof("Propagating int set %d values since timeout expired and a value was removed", isID)
 				m.propagateTreeIntSetMetrics(isID, is, true)
 				is.lastPropagationMembershipChange = time.Now()
 			}

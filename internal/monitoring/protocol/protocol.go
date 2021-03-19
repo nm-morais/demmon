@@ -265,6 +265,26 @@ func (m *Monitor) isPeerInView(p peer.Peer) bool {
 	return peer.PeersEqual(p, m.currView.Parent)
 }
 
+func (m *Monitor) isPeerStrInView(p string) bool {
+	for _, s := range m.currView.Siblings {
+		if s.String() == p {
+			return true
+		}
+	}
+
+	for _, c := range m.currView.Children {
+		if c.String() == p {
+			return true
+		}
+	}
+	if m.currView.Parent != nil {
+		if m.currView.Parent.String() == p {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *Monitor) getPeerRelationshipType(p peer.Peer) (isSibling, isChildren, isParent bool) {
 	for _, sibling := range m.currView.Siblings {
 		if peer.PeersEqual(sibling, p) {

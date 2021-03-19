@@ -8,6 +8,7 @@ import (
 	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/request"
 	"github.com/nm-morais/go-babel/pkg/timer"
+	"github.com/sirupsen/logrus"
 )
 
 type sub struct {
@@ -162,12 +163,12 @@ func (m *Monitor) handlePropagateGlobalAggFuncMetricsMessage(sender peer.Peer, m
 		return
 	}
 
-	// m.logger.WithFields(logrus.Fields{"value": msgConverted.Value}).Infof(
-	// 	"received propagation of metric value for global agg func %d: %s from %s",
-	// 	interestSetID,
-	// 	globalAggFunc.AF.OutputBucketOpts.Name,
-	// 	sender.String(),
-	// )
+	m.logger.WithFields(logrus.Fields{"value": msgConverted.Value}).Infof(
+		"received propagation of metric value for global agg func %d: %s from %s",
+		interestSetID,
+		globalAggFunc.AF.OutputBucketOpts.Name,
+		sender.String(),
+	)
 	globalAggFunc.NeighValues[sender.String()] = msgConverted.Value.Fields
 }
 
@@ -232,15 +233,18 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 
 		valuesToMerge := make([]map[string]interface{}, 0, len(globalAggFunc.NeighValues)+1)
 		valuesToMerge = append(valuesToMerge, queryResult)
-		for _, v := range globalAggFunc.NeighValues {
+		for peerStr, v := range globalAggFunc.NeighValues {
+			if !m.isPeerStrInView(peerStr) {
+				continue
+			}
 			valuesToMerge = append(valuesToMerge, v)
 		}
 
-		// m.logger.Infof(
-		// 	"Merging value: (%+v) with (%+v)",
-		// 	queryResult,
-		// 	globalAggFunc.NeighValues,
-		// )
+		m.logger.Infof(
+			"Merging value: (%+v) with (%+v)",
+			queryResult,
+			globalAggFunc.NeighValues,
+		)
 
 		mergedVal, err = m.me.RunMergeFunc(globalAggFunc.AF.MergeFunction.Expression, globalAggFunc.AF.MergeFunction.Timeout, valuesToMerge)
 		if err != nil {
@@ -305,12 +309,12 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 		// )
 
 		toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: timeNow, Fields: differenceResult})
-		// m.logger.Infof(
-		// 	"propagating metrics for global aggregation function %d (%+v) to peer %s",
-		// 	interestSetID,
-		// 	differenceResult,
-		// 	sub.p.String(),
-		// )
+		m.logger.Infof(
+			"propagating metrics for global aggregation function %d (%+v) to peer %s",
+			interestSetID,
+			differenceResult,
+			sub.p.String(),
+		)
 		m.SendMessage(toSendMsg, sub.p)
 	}
 
@@ -327,26 +331,6 @@ func (m *Monitor) cleanupGlobalAggFuncs() {
 	for isID, is := range m.globalAggFuncs {
 		for k, sub := range is.subscribers {
 			if peer.PeersEqual(sub.p, m.babel.SelfPeer()) {
-				continue
-			}
-
-			found := false
-
-			for _, child := range m.currView.Children {
-				if peer.PeersEqual(sub.p, child) {
-					found = true
-					break
-				}
-			}
-
-			if !found && !peer.PeersEqual(sub.p, m.currView.Parent) {
-				m.logger.Errorf(
-					"Removing peer %s from global agg func %d because peer is not parent of children",
-					sub.p.String(),
-					isID,
-				)
-				delete(is.subscribers, k)
-				delete(is.NeighValues, k)
 				continue
 			}
 

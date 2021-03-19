@@ -71,7 +71,7 @@ func benchmarkDemmonMetrics(eConf *exporter.Conf, isLandmark bool, benchmarkType
 			benchmarkTreeAggFunc(cl, expressionTimeout, exportFrequency)
 		}
 	case BenchmarkGlobalAggFunc:
-		benchmarkGlobalAggFunc(cl) // TODO copy argss from above
+		benchmarkGlobalAggFunc(cl, expressionTimeout, exportFrequency)
 	}
 }
 
@@ -158,21 +158,20 @@ func benchmarkTreeAggFunc(cl *client.DemmonClient, expressionTimeout, exportFreq
 	}
 }
 
-func benchmarkGlobalAggFunc(cl *client.DemmonClient) {
-	csvWriter := setupCSVWriter(logFolder, "/results.csv", []string{"avg_dummy_value_tree", "timestamp"})
+func benchmarkGlobalAggFunc(cl *client.DemmonClient, expressionTimeout, exportFrequency time.Duration) {
+	csvWriter := setupCSVWriter(logFolder, "/results.csv", []string{"avg_dummy_value_global", "timestamp"})
 	const (
 		connectBackoffTime = 1 * time.Second
-		expressionTimeout  = 1 * time.Second
-		exportFrequency    = 3 * time.Second
-		defaultTTL         = 2
-		defaultMetricCount = 12
+		defaultMetricCount = 3
 		maxRetries         = 3
 		connectTimeout     = 3 * time.Second
-		tickerTimeout      = 5 * time.Second
+		tickerTimeout      = 3 * time.Second
 		requestTimeout     = 1 * time.Second
 		queryBackoff       = 3 * time.Second
 	)
 
+	cl.Lock()
+	bucketName := "dummy_value_global"
 	_, err := cl.InstallGlobalAggregationFunction(
 		&body_types.GlobalAggregationFunction{
 			MaxRetries: 3,
@@ -182,7 +181,7 @@ func benchmarkGlobalAggFunc(cl *client.DemmonClient) {
 							result = {"count":1, "value":point.Value().value}`,
 			},
 			OutputBucketOpts: body_types.BucketOptions{
-				Name: "avg_dummy_value_tree",
+				Name: bucketName,
 				Granularity: body_types.Granularity{
 					Granularity: exportFrequency,
 					Count:       defaultMetricCount,
@@ -199,22 +198,33 @@ func benchmarkGlobalAggFunc(cl *client.DemmonClient) {
 							result = aux
 							`,
 			},
+			DifferenceFunction: body_types.RunnableExpression{
+				Timeout: expressionTimeout,
+				Expression: `
+							toSubtractFrom = args[0]
+							for (i = 1; i < args.length; i++) {
+								toSubtractFrom.count -= args[i].count
+								toSubtractFrom.value -= args[i].value					
+							}
+							result = toSubtractFrom
+							`,
+			},
 		})
-
+	cl.Unlock()
 	if err != nil {
 		panic(err)
 	}
 
 	for range time.NewTicker(tickerTimeout).C {
 		res, err := cl.Query(
-			"Select('avg_dummy_value_tree','*')",
+			fmt.Sprintf("Select('%s','*')", bucketName),
 			queryBackoff,
 		)
 		if err != nil {
 			panic(err)
 		}
 
-		fmt.Println("Select('avg_dummy_value_tree','*') Query results :")
+		fmt.Println("Select('avg_dummy_value_global','*') Query results :")
 
 		for idx, ts := range res {
 			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
