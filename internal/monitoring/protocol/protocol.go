@@ -35,6 +35,7 @@ const (
 	// global agg funcs
 	RebroadcastGlobalAggFuncTimerDuration = 3 * time.Second
 	ExpireGlobalAggFuncTimeout            = 3 * RebroadcastGlobalAggFuncTimerDuration
+	ExpireGlobalAggFuncValues             = 5 * time.Second
 )
 
 type Monitor struct {
@@ -137,23 +138,23 @@ func (m *Monitor) Init() { // REPLY HANDLERS
 	)
 	m.babel.RegisterMessageHandler(
 		m.ID(),
-		NewDeleteChildValMessage(),
-		m.handleDeleteChildValuesMessage,
-	)
-	m.babel.RegisterMessageHandler(
-		m.ID(),
 		NewRequestTreeAggFuncMessage(nil),
 		m.handleRequestTreeAggFuncMsg,
 	)
 	m.babel.RegisterMessageHandler(
 		m.ID(),
-		NewPropagateTreeAggFuncMetricsMessage(0, nil, false),
+		NewPropagateTreeAggFuncMetricsMessage(0, 0, nil, false),
 		m.handlePropagateTreeAggFuncMetricsMessage,
 	)
 	m.babel.RegisterTimerHandler(
 		m.ID(),
 		ExportTreeAggregationFuncTimerID,
 		m.handleExportTreeAggregationFuncTimer,
+	)
+	m.babel.RegisterTimerHandler(
+		m.ID(),
+		ExportTreeAggregationIntermediateValuesFuncTimerID,
+		m.handleExportTreeAggregationFuncIntermediateValuesTimer,
 	)
 
 	// GLOBAL AGG FUNCS
@@ -166,6 +167,17 @@ func (m *Monitor) Init() { // REPLY HANDLERS
 		m.ID(),
 		ExportGlobalAggregationFuncTimerID,
 		m.handleExportGlobalAggFuncFuncTimer,
+	)
+	m.babel.RegisterTimerHandler(
+		m.ID(),
+		ExportGlobalAggregationIntermediateValuesFuncTimerID,
+		m.handleExportGlobalAggFuncIntermediateValuesTimer,
+	)
+
+	m.babel.RegisterMessageHandler(
+		m.ID(),
+		NewDeleteGlobalAggFuncValMessage(),
+		m.handleDeleteGlobalAggFuncValuesMessage,
 	)
 
 	m.babel.RegisterMessageHandler(
@@ -243,8 +255,8 @@ func (m *Monitor) handleNodeDown(n notification.Notification) {
 	m.logger.Infof("Curr View: %+v", m.currView)
 
 	m.handleNodeDownNeighInterestSet(nodeDown)
-	m.handleNodeDownTreeAggFunc(nodeDown)
-	m.handleNodeDownGlobalAggFunc(nodeDown)
+	m.handleNodeDownTreeAggFunc(nodeDown, nodeDownNotification.Crash)
+	m.handleNodeDownGlobalAggFunc(nodeDown, nodeDownNotification.Crash)
 }
 
 // UTILS

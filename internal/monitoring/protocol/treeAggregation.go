@@ -11,7 +11,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type childValue struct {
+type neighValue struct {
+	sender    peer.Peer
 	values    map[string]interface{}
 	timestamp time.Time
 }
@@ -19,12 +20,13 @@ type childValue struct {
 type treeAggSet struct {
 	nrRetries                       int
 	AggSet                          *body_types.TreeAggregationSet
-	childValues                     map[string]childValue
+	childValues                     map[string]neighValue
 	local                           bool
-	sender                          peer.Peer
+	sender                          *peer.IPeer
 	lastRefresh                     time.Time
 	lastPropagationMembershipChange time.Time
 	timerID                         int
+	intermediateValuesTimerID       int
 }
 
 // REQUEST CREATORS
@@ -36,7 +38,9 @@ func (m *Monitor) AddTreeAggregationFuncReq(key int64, interestSet *body_types.T
 // BROADCAST TIMER
 
 func (m *Monitor) handleRebroadcastTreeInterestSetsTimer(t timer.Timer) {
-	m.requestInterestSets()
+	if m.currView.Parent != nil {
+		m.requestInterestSets()
+	}
 }
 
 func (m *Monitor) requestInterestSets() {
@@ -83,7 +87,40 @@ func (m *Monitor) handleExportTreeAggregationFuncTimer(t timer.Timer) {
 	m.propagateTreeIntSetMetrics(interestSetID, treeAggFunc, false)
 }
 
-func (m *Monitor) propagateTreeIntSetMetrics(interestSetID int64, treeAggFunc *treeAggSet, membershipChange bool) {
+func (m *Monitor) handleExportTreeAggregationFuncIntermediateValuesTimer(t timer.Timer) {
+	tConverted := t.(*exportTreeAggregationFuncIntermediateValuesTimer)
+	interestSetID := tConverted.InterestSetID
+	treeAggFunc, ok := m.treeAggFuncs[interestSetID]
+
+	if !ok {
+		m.logger.Warnf("Canceling export timer for tree aggregation func %d", interestSetID)
+		m.babel.CancelTimer(treeAggFunc.intermediateValuesTimerID)
+		return
+	}
+
+	if !treeAggFunc.local {
+		m.logger.Panicf("Exporting intermediate values for non-local tree aggregation set %d", interestSetID)
+	}
+
+	m.logger.Infof("Storing intermediate values for tree agg func %d", interestSetID)
+	for _, v := range treeAggFunc.childValues {
+		if !m.isPeerInView(v.sender) {
+			continue
+		}
+		err := m.tsdb.AddMetric(
+			treeAggFunc.AggSet.IntermediateBucketOpts.Name,
+			map[string]string{"host": v.sender.IP().String()},
+			v.values,
+			time.Now(),
+		)
+		if err != nil {
+			m.logger.Panic(err)
+		}
+	}
+
+}
+
+func (m *Monitor) propagateTreeIntSetMetrics(treeAggFuncID int64, treeAggFunc *treeAggSet, membershipChange bool) {
 
 	query := treeAggFunc.AggSet.Query
 	queryResult, err := m.me.MakeQuerySingleReturn(query.Expression, query.Timeout)
@@ -98,7 +135,7 @@ func (m *Monitor) propagateTreeIntSetMetrics(interestSetID int64, treeAggFunc *t
 		)
 
 		if treeAggFunc.nrRetries >= treeAggFunc.AggSet.MaxRetries {
-			m.logger.Errorf("Aborting export timer for tree aggregation func %d", interestSetID)
+			m.logger.Panicf("Aborting export timer for tree aggregation func %d", treeAggFuncID)
 			m.babel.CancelTimer(treeAggFunc.timerID) // abort timer
 			return
 		}
@@ -146,21 +183,22 @@ func (m *Monitor) propagateTreeIntSetMetrics(interestSetID int64, treeAggFunc *t
 		if err != nil {
 			m.logger.Panic(err)
 		}
-		return
 	}
 
-	if peer.PeersEqual(treeAggFunc.sender, m.babel.SelfPeer()) {
-		return
-	}
+	if treeAggFunc.sender != nil {
+		if peer.PeersEqual(treeAggFunc.sender, m.babel.SelfPeer()) {
+			return
+		}
 
-	toSendMsg := NewPropagateTreeAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: time.Now(), Fields: mergedVal}, membershipChange)
-	m.logger.Infof(
-		"propagating metrics for tree aggregation function %d (%+v) to: %s",
-		interestSetID,
-		mergedVal,
-		treeAggFunc.sender.String(),
-	)
-	m.SendMessage(toSendMsg, treeAggFunc.sender)
+		toSendMsg := NewPropagateTreeAggFuncMetricsMessage(treeAggFuncID, int64(treeAggFunc.AggSet.Levels), &body_types.ObservableDTO{TS: time.Now(), Fields: mergedVal}, membershipChange)
+		m.logger.Infof(
+			"propagating metrics for tree aggregation function %d (%+v) to: %s",
+			treeAggFuncID,
+			mergedVal,
+			treeAggFunc.sender.String(),
+		)
+		m.SendMessage(toSendMsg, treeAggFunc.sender)
+	}
 }
 
 // MESSAGES
@@ -169,6 +207,7 @@ func (m *Monitor) handlePropagateTreeAggFuncMetricsMessage(sender peer.Peer, msg
 
 	msgConverted := msg.(PropagateTreeAggFuncMetricsMsg)
 	treeAggSetID := msgConverted.InterestSetID
+
 	treeAggSet, ok := m.treeAggFuncs[treeAggSetID]
 
 	if !ok {
@@ -194,7 +233,8 @@ func (m *Monitor) handlePropagateTreeAggFuncMetricsMessage(sender peer.Peer, msg
 	)
 
 	_, ok = treeAggSet.childValues[sender.String()]
-	treeAggSet.childValues[sender.String()] = childValue{
+	treeAggSet.childValues[sender.String()] = neighValue{
+		sender:    sender,
 		values:    msgConverted.Value.Fields,
 		timestamp: time.Now(),
 	}
@@ -208,6 +248,7 @@ func (m *Monitor) handlePropagateTreeAggFuncMetricsMessage(sender peer.Peer, msg
 			}
 		}
 	}
+
 }
 
 func (m *Monitor) handleRequestTreeAggFuncMsg(sender peer.Peer, msg message.Message) {
@@ -226,41 +267,36 @@ func (m *Monitor) handleRequestTreeAggFuncMsg(sender peer.Peer, msg message.Mess
 			continue
 		}
 
-		if owned.AggSet.Levels <= 0 {
+		if owned.AggSet.Levels == 0 {
+			continue
+		}
+
+		if owned.AggSet.Levels == -1 {
+			treeAggFuncsToInstall[ID] = &body_types.TreeAggregationSet{
+				MaxRetries:                           owned.AggSet.MaxRetries,
+				Query:                                owned.AggSet.Query,
+				OutputBucketOpts:                     owned.AggSet.OutputBucketOpts,
+				MergeFunction:                        owned.AggSet.MergeFunction,
+				Levels:                               owned.AggSet.Levels,
+				UpdateOnMembershipChange:             owned.AggSet.UpdateOnMembershipChange,
+				MaxFrequencyUpdateOnMembershipChange: owned.AggSet.MaxFrequencyUpdateOnMembershipChange,
+			}
 			continue
 		}
 
 		treeAggFuncsToInstall[ID] = &body_types.TreeAggregationSet{
-			MaxRetries:       owned.AggSet.MaxRetries,
-			Query:            owned.AggSet.Query,
-			OutputBucketOpts: owned.AggSet.OutputBucketOpts,
-			MergeFunction:    owned.AggSet.MergeFunction,
-			Levels:           owned.AggSet.Levels - 1,
+			MaxRetries:                           owned.AggSet.MaxRetries,
+			Query:                                owned.AggSet.Query,
+			OutputBucketOpts:                     owned.AggSet.OutputBucketOpts,
+			MergeFunction:                        owned.AggSet.MergeFunction,
+			UpdateOnMembershipChange:             owned.AggSet.UpdateOnMembershipChange,
+			MaxFrequencyUpdateOnMembershipChange: owned.AggSet.MaxFrequencyUpdateOnMembershipChange,
+			Levels:                               owned.AggSet.Levels - 1,
 		}
 	}
 
 	replyMsg := NewInstallTreeAggFuncMessage(treeAggFuncsToInstall, treeAggFuncsToConfirm)
 	m.SendMessage(replyMsg, sender)
-}
-
-func (m *Monitor) handleDeleteChildValuesMessage(sender peer.Peer, msg message.Message) {
-	m.logger.Infof("Got deleteChildValuesMessage from: %s", sender.String())
-
-	for isID, is := range m.treeAggFuncs {
-
-		if _, ok := is.childValues[sender.String()]; !ok {
-			continue
-		}
-
-		delete(is.childValues, sender.String())
-		if is.AggSet.UpdateOnMembershipChange {
-			if time.Since(is.lastPropagationMembershipChange) > is.AggSet.MaxFrequencyUpdateOnMembershipChange {
-				m.logger.Infof("Propagating int set %d values since last node sent deleteChildValuesMsg", isID)
-				m.propagateTreeIntSetMetrics(isID, is, true)
-				is.lastPropagationMembershipChange = time.Now()
-			}
-		}
-	}
 }
 
 func (m *Monitor) handleInstallTreeAggFuncMetricsMessage(sender peer.Peer, msg message.Message) {
@@ -283,10 +319,8 @@ func (m *Monitor) handleInstallTreeAggFuncMetricsMessage(sender peer.Peer, msg m
 		alreadyExisting, ok := m.treeAggFuncs[treeAggFuncID]
 		if ok {
 			if !peer.PeersEqual(alreadyExisting.sender, sender) {
-				oldSender := alreadyExisting.sender
-				alreadyExisting.sender = sender
+				alreadyExisting.sender = sender.(*peer.IPeer)
 				m.propagateTreeIntSetMetrics(treeAggFuncID, alreadyExisting, true)
-				m.SendMessageUDPStream(NewDeleteChildValMessage(), oldSender)
 			}
 			alreadyExisting.lastRefresh = time.Now()
 			m.treeAggFuncs[treeAggFuncID] = alreadyExisting
@@ -295,10 +329,12 @@ func (m *Monitor) handleInstallTreeAggFuncMetricsMessage(sender peer.Peer, msg m
 	}
 
 	for treeAggFuncID, treeAggFunc := range installTreeAggFuncMsg.InterestSetsToInstall {
-		created := m.addOrUpdateTreeAggFunc(treeAggFuncID, treeAggFunc, sender)
-		if created {
-			treeAggFuncsToInstall[treeAggFuncID] = treeAggFunc
+		m.addOrUpdateTreeAggFunc(treeAggFuncID, treeAggFunc, sender)
+		if treeAggFunc.Levels == 0 {
+			continue
 		}
+		treeAggFuncsToInstall[treeAggFuncID] = treeAggFunc
+
 	}
 
 	if len(treeAggFuncsToInstall) == 0 {
@@ -313,18 +349,16 @@ func (m *Monitor) handleInstallTreeAggFuncMetricsMessage(sender peer.Peer, msg m
 
 }
 
-func (m *Monitor) addOrUpdateTreeAggFunc(treeAggFuncID int64, treeAggFunc *body_types.TreeAggregationSet, sender peer.Peer) bool {
+func (m *Monitor) addOrUpdateTreeAggFunc(treeAggFuncID int64, treeAggFunc *body_types.TreeAggregationSet, sender peer.Peer) {
 	alreadyExisting, ok := m.treeAggFuncs[treeAggFuncID]
 	if ok {
 		if !peer.PeersEqual(alreadyExisting.sender, sender) {
-			oldSender := alreadyExisting.sender
-			alreadyExisting.sender = sender
+			alreadyExisting.sender = sender.(*peer.IPeer)
 			m.propagateTreeIntSetMetrics(treeAggFuncID, alreadyExisting, true)
-			m.SendMessageUDPStream(NewDeleteChildValMessage(), oldSender)
 		}
 		alreadyExisting.lastRefresh = time.Now()
 		m.treeAggFuncs[treeAggFuncID] = alreadyExisting
-		return false
+		return
 	}
 
 	m.logger.Infof("installing tree aggregation function %d: %+v", treeAggFuncID, treeAggFunc)
@@ -336,17 +370,17 @@ func (m *Monitor) addOrUpdateTreeAggFunc(treeAggFuncID int64, treeAggFunc *body_
 		),
 		true,
 	)
+
 	m.treeAggFuncs[treeAggFuncID] = &treeAggSet{
 		nrRetries:                       0,
 		AggSet:                          treeAggFunc,
-		childValues:                     map[string]childValue{},
+		childValues:                     map[string]neighValue{},
 		local:                           false,
-		sender:                          sender,
+		sender:                          sender.(*peer.IPeer),
 		lastRefresh:                     time.Now(),
+		lastPropagationMembershipChange: time.Time{},
 		timerID:                         timerID,
-		lastPropagationMembershipChange: time.Now(),
 	}
-	return true
 }
 
 // CLEANUP
@@ -356,6 +390,7 @@ func (m *Monitor) cleanupTreeInterestSets() {
 		if is.local {
 			continue
 		}
+
 		if time.Since(is.lastRefresh) > ExpireTreeAggFuncTimeout {
 			m.logger.Warnf(
 				"Removing tree agg func %d from peer %s because entry expired",
@@ -363,6 +398,9 @@ func (m *Monitor) cleanupTreeInterestSets() {
 				is.sender,
 			)
 			delete(m.treeAggFuncs, isID)
+			if is.AggSet.StoreIntermediateValues {
+				m.babel.CancelTimer(is.timerID)
+			}
 			m.babel.CancelTimer(is.timerID)
 			continue
 		}
@@ -399,39 +437,49 @@ func (m *Monitor) handleAddTreeAggregationFuncRequest(req request.Request) reque
 	existing, ok := m.treeAggFuncs[interestSetID]
 	if ok {
 		existing.local = true
+		intermediateValuesTimerID := m.babel.RegisterPeriodicTimer(m.ID(), NewExportTreeAggregationFuncTimer(interestSet.IntermediateBucketOpts.Granularity.Granularity, interestSetID), false)
+		existing.intermediateValuesTimerID = intermediateValuesTimerID
+		m.treeAggFuncs[interestSetID] = existing
 		return nil
 	}
 	frequency := interestSet.OutputBucketOpts.Granularity.Granularity
 	timerID := m.babel.RegisterPeriodicTimer(m.ID(), NewExportTreeAggregationFuncTimer(frequency, interestSetID), true)
-	m.treeAggFuncs[addTreeAggFuncSetReq.Id] = &treeAggSet{
+	var intermediateValuesTimerID int
+	if interestSet.StoreIntermediateValues {
+		t := NewExportTreeAggregationIntermediateValuesFuncTimer(interestSet.IntermediateBucketOpts.Granularity.Granularity, interestSetID)
+		intermediateValuesTimerID = m.babel.RegisterPeriodicTimer(m.ID(), t, false)
+	}
+	m.treeAggFuncs[interestSetID] = &treeAggSet{
 		nrRetries:                       0,
 		AggSet:                          addTreeAggFuncSetReq.InterestSet,
-		childValues:                     map[string]childValue{},
+		childValues:                     map[string]neighValue{},
 		local:                           true,
-		sender:                          m.babel.SelfPeer(),
+		sender:                          nil,
 		lastRefresh:                     time.Now(),
-		timerID:                         timerID,
 		lastPropagationMembershipChange: time.Time{},
+		timerID:                         timerID,
+		intermediateValuesTimerID:       intermediateValuesTimerID,
 	}
 	m.logger.Infof("Installing local tree aggregation function %d: %+v", interestSetID, interestSet)
 	return nil
 }
 
 // HANDLE NODE DOWN
-func (m *Monitor) handleNodeDownTreeAggFunc(nodeDown peer.Peer) {
+func (m *Monitor) handleNodeDownTreeAggFunc(nodeDown peer.Peer, crash bool) {
+
 	// remove all child values from tree agg func
-	// for treeAggFuncID, treeAggFunc := range m.treeAggFuncs {
-	// 	if _, ok := treeAggFunc.childValues[nodeDown.String()]; ok {
-	// 		delete(treeAggFunc.childValues, nodeDown.String())
-	// 		if treeAggFunc.AggSet.UpdateOnMembershipChange {
-	// 			if time.Since(treeAggFunc.lastPropagationMembershipChange) > treeAggFunc.AggSet.MaxFrequencyUpdateOnMembershipChange {
-	// 				m.logger.Infof("Propagating int set %d values since node went down", treeAggFuncID)
-	// 				m.propagateTreeIntSetMetrics(treeAggFuncID, treeAggFunc, true)
-	// 				treeAggFunc.lastPropagationMembershipChange = time.Now()
-	// 			}
-	// 		}
-	// 	}
-	// }
+	for treeAggFuncID, treeAggFunc := range m.treeAggFuncs {
+		if _, ok := treeAggFunc.childValues[nodeDown.String()]; ok {
+			delete(treeAggFunc.childValues, nodeDown.String())
+			if treeAggFunc.AggSet.UpdateOnMembershipChange {
+				if time.Since(treeAggFunc.lastPropagationMembershipChange) > treeAggFunc.AggSet.MaxFrequencyUpdateOnMembershipChange {
+					m.logger.Infof("Propagating int set %d values since node went down", treeAggFuncID)
+					m.propagateTreeIntSetMetrics(treeAggFuncID, treeAggFunc, true)
+					treeAggFunc.lastPropagationMembershipChange = time.Now()
+				}
+			}
+		}
+	}
 }
 
 // HANDLE NODE UP

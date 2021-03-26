@@ -884,7 +884,7 @@ func (d *DemmonTree) handleDisconnectAsChildMsg(sender peer.Peer, m message.Mess
 	dacMsg := m.(DisconnectAsChildMessage)
 	d.logger.Infof("got DisconnectAsChildMsg %+v from %s", dacMsg, sender.String())
 	if _, ok := d.myChildren[sender.String()]; ok {
-		d.removeChild(sender)
+		d.removeChild(sender, false)
 	}
 }
 
@@ -1006,7 +1006,7 @@ func (d *DemmonTree) handleJoinAsChildMessage(sender peer.Peer, m message.Messag
 	var outConnActive, inConnActive bool
 	if isSibling {
 		delete(d.mySiblings, sender.String())
-		d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView()))
+		d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView(), false))
 		outConnActive = sibling.outConnActive
 		inConnActive = sibling.inConnActive
 	}
@@ -1055,7 +1055,7 @@ func (d *DemmonTree) handleJoinAsChildMessageReply(sender peer.Peer, m message.M
 	}
 
 	// not accepted
-	d.handlePeerDown(japrMsg.Parent)
+	d.handlePeerDown(japrMsg.Parent, false)
 }
 
 func getStringOrNil(p *PeerWithIDChain) string {
@@ -1246,20 +1246,20 @@ func (d *DemmonTree) DialSuccess(sourceProto protocol.ID, p peer.Peer) bool {
 
 func (d *DemmonTree) DialFailed(p peer.Peer) {
 	d.logger.Errorf("Failed to dial %s", p.String())
-	d.handlePeerDown(p)
+	d.handlePeerDown(p, true)
 }
 
 func (d *DemmonTree) OutConnDown(p peer.Peer) {
-	d.handlePeerDown(p)
+	d.handlePeerDown(p, true)
 }
 
 func (d *DemmonTree) handlePeerDownNotification(n notification.Notification) {
 	p := n.(SuspectNotification).peerDown
 	d.logger.Errorf("peer down %s (PHI >= %f)", p.String(), d.config.PhiLevelForNodeDown)
-	d.handlePeerDown(p.Peer)
+	d.handlePeerDown(p.Peer, true)
 }
 
-func (d *DemmonTree) handlePeerDown(p peer.Peer) {
+func (d *DemmonTree) handlePeerDown(p peer.Peer, crash bool) {
 
 	// special case for parent in recovery
 	d.nodeWatcher.Unwatch(p, d.ID())
@@ -1309,7 +1309,7 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer) {
 		d.logger.Warnf("Parent down %s", p.String())
 		aux := d.myParent
 		d.myParent = nil
-		d.babel.SendNotification(NewNodeDownNotification(aux, d.getInView()))
+		d.babel.SendNotification(NewNodeDownNotification(aux, d.getInView(), crash))
 		d.nodeWatcher.Unwatch(p, d.ID())
 		if d.myGrandParent != nil {
 			d.logger.Warnf("Falling back to grandparent %s", d.myGrandParent.String())
@@ -1325,13 +1325,13 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer) {
 
 	if child, isChildren := d.myChildren[p.String()]; isChildren {
 		d.logger.Warnf("Child down %s", p.String())
-		d.removeChild(child)
+		d.removeChild(child, crash)
 		return
 	}
 
 	if sibling, isSibling := d.mySiblings[p.String()]; isSibling {
 		d.logger.Warnf("Sibling down %s", p.String())
-		d.removeSibling(sibling)
+		d.removeSibling(sibling, crash)
 		if l, ok := d.isLandmark(p); d.landmark && ok {
 			d.logger.Warnf("registering redial for sibling %s", p.String())
 			d.babel.RegisterTimer(d.ID(), NewLandmarkRedialTimer(d.config.LandmarkRedialTimer, l))
@@ -1355,7 +1355,7 @@ func (d *DemmonTree) MessageDeliveryErr(msg message.Message, p peer.Peer, err er
 			d.handlePeerDownInJoin(p)
 		}
 	case JoinAsChildMessage:
-		d.handlePeerDown(p)
+		d.handlePeerDown(p, true)
 	case RandomWalkMessage:
 		d.sendMessageTmpUDPChan(msg, p)
 	case WalkReplyMessage:

@@ -90,7 +90,29 @@ func (t *exportTreeAggregationFuncTimer) Duration() time.Duration {
 	return t.duration
 }
 
-const RebroadcastTreeAggregationFuncsTimerID = 6004
+const ExportTreeAggregationIntermediateValuesFuncTimerID = 6004
+
+type exportTreeAggregationFuncIntermediateValuesTimer struct {
+	duration      time.Duration
+	InterestSetID int64
+}
+
+func NewExportTreeAggregationIntermediateValuesFuncTimer(duration time.Duration, interestSetID int64) timer.Timer {
+	return &exportTreeAggregationFuncIntermediateValuesTimer{
+		duration:      duration,
+		InterestSetID: interestSetID,
+	}
+}
+
+func (t *exportTreeAggregationFuncIntermediateValuesTimer) ID() timer.ID {
+	return ExportTreeAggregationIntermediateValuesFuncTimerID
+}
+
+func (t *exportTreeAggregationFuncIntermediateValuesTimer) Duration() time.Duration {
+	return t.duration
+}
+
+const RebroadcastTreeAggregationFuncsTimerID = 6005
 
 type BroadcastTreeAggregationFuncsTimer struct {
 	duration time.Duration
@@ -112,7 +134,7 @@ func (t *BroadcastTreeAggregationFuncsTimer) Duration() time.Duration {
 
 // NewBroadcastGlobalAggregationFuncsTimer
 
-const ExportGlobalAggregationFuncTimerID = 6005
+const ExportGlobalAggregationFuncTimerID = 6006
 
 type ExportGlobalAggregationFuncTimer struct {
 	duration      time.Duration
@@ -134,7 +156,7 @@ func (t *ExportGlobalAggregationFuncTimer) Duration() time.Duration {
 	return t.duration
 }
 
-const RebroadcastGlobalAggregationFuncsTimerID = 6006
+const RebroadcastGlobalAggregationFuncsTimerID = 6007
 
 type BroadcastGlobalAggregationFuncsTimer struct {
 	duration time.Duration
@@ -151,5 +173,27 @@ func (t *BroadcastGlobalAggregationFuncsTimer) ID() timer.ID {
 }
 
 func (t *BroadcastGlobalAggregationFuncsTimer) Duration() time.Duration {
+	return t.duration
+}
+
+const ExportGlobalAggregationIntermediateValuesFuncTimerID = 6008
+
+type exportGlobalAggregationFuncIntermediateValuesTimer struct {
+	duration      time.Duration
+	InterestSetID int64
+}
+
+func NewExportGlobalAggregationIntermediateValuesFuncTimer(duration time.Duration, interestSetID int64) timer.Timer {
+	return &exportGlobalAggregationFuncIntermediateValuesTimer{
+		duration:      duration,
+		InterestSetID: interestSetID,
+	}
+}
+
+func (t *exportGlobalAggregationFuncIntermediateValuesTimer) ID() timer.ID {
+	return ExportGlobalAggregationIntermediateValuesFuncTimerID
+}
+
+func (t *exportGlobalAggregationFuncIntermediateValuesTimer) Duration() time.Duration {
 	return t.duration
 }

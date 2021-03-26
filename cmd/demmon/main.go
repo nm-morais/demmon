@@ -99,6 +99,7 @@ func main() {
 	landmarks, ok := GetLandmarksEnv()
 	benchmarkDemmonMetrics := GetBenchmarkDemmonEnvVar()
 	benchmarkMembership := GetBenchmarkMembershipEnvVar()
+
 	if !ok {
 		landmarks = []*membershipProtocol.PeerWithIDChain{
 			membershipProtocol.NewPeerWithIDChain(
@@ -302,7 +303,7 @@ func start(
 	go monitor.Listen()
 	if isBenchmarkDemmonMetrics {
 		fmt.Println("Benchmarking demmon metrics protocol")
-		benchmarkDemmonMetrics(eConf, isLandmark, BenchmarkGlobalAggFunc)
+		benchmarkDemmonMetrics(eConf, isLandmark, BenchmarkTreeAggFunc) // TODO CHANGE HERE BENCHMARK TYPE
 	}
 	select {}
 

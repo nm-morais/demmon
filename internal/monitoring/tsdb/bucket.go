@@ -74,7 +74,7 @@ func (b *Bucket) GetAllTimeseries() []ReadOnlyTimeSeries {
 			ts := value.(TimeSeries)
 			allPts := ts.All()
 			if len(allPts) == 0 {
-				b.logger.Errorf("Timeseries with tags %+v has no points", ts.Tags())
+				b.logger.Warnf("Timeseries with tags %+v has no points", ts.Tags())
 				return true
 			}
 			toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), allPts...))
@@ -289,7 +289,7 @@ func (b *Bucket) cleanup() {
 	b.timeseries.Range(func(key, value interface{}) bool {
 		ts := value.(TimeSeries)
 		if ts.Last() == nil {
-			b.logger.Info("Clearing ts with tags: %+v", ts.Tags())
+			b.logger.Infof("Clearing ts with tags: %+v", ts.Tags())
 			b.DeleteTimeseries(ts.Tags())
 		}
 		return true

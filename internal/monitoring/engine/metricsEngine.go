@@ -346,7 +346,7 @@ func (e *MetricsEngine) selectTs(vm *otto.Otto, call *otto.FunctionCall) otto.Va
 
 func extractSelectArgs(vm *otto.Otto, call *otto.FunctionCall) (name string, tagFilters map[string]string, isTagFilterAll bool) {
 
-	if len(call.ArgumentList) != 2 {
+	if len(call.ArgumentList) < 2 {
 		throw(vm, "not enough args for select function")
 	}
 
@@ -416,34 +416,26 @@ func (e *MetricsEngine) selectLast(vm *otto.Otto, call *otto.FunctionCall) otto.
 
 func (e *MetricsEngine) selectRange(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
 	name, tagFilters, isTagFilterAll := extractSelectArgs(vm, call)
-	startTimeGeneric, err := call.Argument(2).Export()
+	startTimeGeneric, err := call.Argument(2).ToInteger()
 	if err != nil {
-		throw(vm, fmt.Sprintf("err: %s ", err.Error()))
+		throw(vm, fmt.Sprintf("err converting start date to integer: %s", err.Error()))
 		return otto.Value{}
 	}
-	startTime, ok := startTimeGeneric.(time.Time)
-	if !ok {
-		throw(vm, "start time is not a date type")
-		return otto.Value{}
-	}
+	startTime := time.Unix(0, 0).Add(time.Duration(startTimeGeneric) * time.Millisecond)
 
-	endTimeGeneric, err := call.Argument(3).Export()
+	endTimeGeneric, err := call.Argument(3).ToInteger()
 	if err != nil {
-		throw(vm, fmt.Sprintf("err: %s ", err.Error()))
+		throw(vm, fmt.Sprintf("err converting end date to integer: %s", err.Error()))
 		return otto.Value{}
 	}
-	endTime, ok := endTimeGeneric.(time.Time)
-	if !ok {
-		throw(vm, "start time is not a date type")
-		return otto.Value{}
-	}
+	endTime := time.Unix(0, 0).Add(time.Duration(endTimeGeneric) * time.Millisecond)
 
 	var queryResult []tsdb.ReadOnlyTimeSeries
 	defer e.logger.Infof("SelectRange query result: : %+v", queryResult)
 	if isTagFilterAll {
 
 		var b *tsdb.Bucket
-		b, ok = e.db.GetBucket(name)
+		b, ok := e.db.GetBucket(name)
 		if !ok {
 			throw(vm, fmt.Sprintf("No measurement found with name %s", name))
 			return otto.Value{}

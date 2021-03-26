@@ -143,7 +143,7 @@ func (ts *timeSeries) String() string {
 // Advances Timeseries in time
 func (ts *timeSeries) Advance(observation Observable) {
 	ts.mu.Lock()
-
+	ts.advance(observation.TS())
 	ts.mu.Unlock()
 }
 
@@ -290,12 +290,12 @@ func (ts *timeSeries) init(name string,
 	numBuckets int,
 	clock Clock,
 	logger *logrus.Entry) {
+
 	ts.mu = sync.Mutex{}
 	ts.name = name
 	ts.tags = tags
 	ts.numBuckets = numBuckets
 	ts.clock = clock
-	ts.level = &tsLevel{}
 	newLevel := new(tsLevel)
 	newLevel.InitLevel(resolution, ts.numBuckets)
 	ts.level = newLevel

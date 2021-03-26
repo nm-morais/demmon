@@ -181,18 +181,21 @@ var propagateTreeAggFuncMsgSerializerVar = propagateTreeAggFuncMsgSerializer{}
 
 type PropagateTreeAggFuncMetricsMsg struct {
 	InterestSetID    int64
+	Level            int64
 	Value            *body_types.ObservableDTO
 	MembershipChange bool
 }
 
 func NewPropagateTreeAggFuncMetricsMessage(
 	interestSetID int64,
+	level int64,
 	value *body_types.ObservableDTO,
 	membershipChange bool,
 ) PropagateTreeAggFuncMetricsMsg {
 
 	toReturn := PropagateTreeAggFuncMetricsMsg{
 		InterestSetID:    interestSetID,
+		Level:            level,
 		Value:            value,
 		MembershipChange: membershipChange,
 	}
@@ -288,45 +291,13 @@ func (installTreeAggFuncMsgSerializer) Deserialize(msgBytes []byte) message.Mess
 	return toDeserialize
 }
 
-const DeleteChildValMsgID = 6005
-
-var deleteChildValMsgSerializerVar = deleteChildValMsgSerializer{}
-
-type DeleteChildValMsg struct {
-}
-
-func NewDeleteChildValMessage() DeleteChildValMsg {
-	return DeleteChildValMsg{}
-}
-
-func (DeleteChildValMsg) Type() message.ID {
-	return DeleteChildValMsgID
-}
-
-func (DeleteChildValMsg) Serializer() message.Serializer {
-	return deleteChildValMsgSerializerVar
-}
-
-func (DeleteChildValMsg) Deserializer() message.Deserializer {
-	return deleteChildValMsgSerializerVar
-}
-
-type deleteChildValMsgSerializer struct{}
-
-func (deleteChildValMsgSerializer) Serialize(m message.Message) []byte {
-	return []byte{}
-}
-
-func (deleteChildValMsgSerializer) Deserialize(msgBytes []byte) message.Message {
-	return NewDeleteChildValMessage()
-}
-
 const RequestTreeAggFuncMsgID = 6006
 
 var requestTreeAggFuncMsgSerializerVar = requestTreeAggFuncMsgSerializer{}
 
 type RequestTreeAggFuncMsg struct {
 	OwnedIntSets []int64
+	IntSetLevels []int64
 }
 
 func NewRequestTreeAggFuncMessage(interestSets []int64) RequestTreeAggFuncMsg {
@@ -480,4 +451,37 @@ func (installGlobalAggFuncMsgSerializer) Deserialize(msgBytes []byte) message.Me
 	}
 
 	return toDeserialize
+}
+
+const DeleteGlobalAggFuncValMsgID = 6009
+
+var deleteGlobalAggFuncValMsgSerializerVar = deleteGlobalAggFuncValMsgSerializer{}
+
+type DeleteGlobalAggFuncValMsg struct {
+}
+
+func NewDeleteGlobalAggFuncValMessage() DeleteGlobalAggFuncValMsg {
+	return DeleteGlobalAggFuncValMsg{}
+}
+
+func (DeleteGlobalAggFuncValMsg) Type() message.ID {
+	return DeleteGlobalAggFuncValMsgID
+}
+
+func (DeleteGlobalAggFuncValMsg) Serializer() message.Serializer {
+	return deleteGlobalAggFuncValMsgSerializerVar
+}
+
+func (DeleteGlobalAggFuncValMsg) Deserializer() message.Deserializer {
+	return deleteGlobalAggFuncValMsgSerializerVar
+}
+
+type deleteGlobalAggFuncValMsgSerializer struct{}
+
+func (deleteGlobalAggFuncValMsgSerializer) Serialize(m message.Message) []byte {
+	return []byte{}
+}
+
+func (deleteGlobalAggFuncValMsgSerializer) Deserialize(msgBytes []byte) message.Message {
+	return NewDeleteGlobalAggFuncValMessage()
 }

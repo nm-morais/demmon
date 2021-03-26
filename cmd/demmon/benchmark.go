@@ -64,12 +64,10 @@ func benchmarkDemmonMetrics(eConf *exporter.Conf, isLandmark bool, benchmarkType
 	}
 
 	go setupBenchmarkExporter(eConf, logFolder, exportFrequency)
-
+	time.Sleep(5 * time.Second)
 	switch benchmarkType {
 	case BenchmarkTreeAggFunc:
-		if isLandmark {
-			benchmarkTreeAggFunc(cl, expressionTimeout, exportFrequency)
-		}
+		benchmarkTreeAggFunc(cl, expressionTimeout, exportFrequency)
 	case BenchmarkGlobalAggFunc:
 		benchmarkGlobalAggFunc(cl, expressionTimeout, exportFrequency)
 	}
@@ -113,23 +111,32 @@ func writeOrPanic(csvWriter *csv.Writer, records []string) {
 func benchmarkTreeAggFunc(cl *client.DemmonClient, expressionTimeout, exportFrequency time.Duration) {
 	csvWriter := setupCSVWriter(logFolder, "/results.csv", []string{"avg_dummy_value_tree", "timestamp"})
 
+	const (
+		defaultMetricCount = 2
+		maxRetries         = 3
+	)
+
 	_, err := cl.InstallTreeAggregationFunction(
 		&body_types.TreeAggregationSet{
-			MaxRetries: 3,
-			Query: body_types.RunnableExpression{Timeout: expressionTimeout, Expression: `point = SelectLast("dummy_value","*")[0].Last()
-											result = {"count":1, "value":point.Value().value}`},
-			OutputBucketOpts: body_types.BucketOptions{Name: "avg_dummy_value_tree", Granularity: body_types.Granularity{Granularity: exportFrequency, Count: 3}},
+			MaxRetries: maxRetries,
+			Query: body_types.RunnableExpression{Timeout: expressionTimeout, Expression: `
+															point = SelectLast("dummy_value","*")[0].Last()
+															result = {"count":1, "value":point.Value().value}
+															`},
+			OutputBucketOpts: body_types.BucketOptions{Name: "avg_dummy_value_tree", Granularity: body_types.Granularity{Granularity: exportFrequency, Count: defaultMetricCount}},
 			MergeFunction: body_types.RunnableExpression{Timeout: expressionTimeout, Expression: `
-											aux = {"count":0, "value":0}
-											for (i = 0; i < args.length; i++) {
-												aux.count += args[i].count
-												aux.value += args[i].value					
-											}
-											result = aux
-											`},
-			Levels:                               10,
+															aux = {"count":0, "value":0}
+															for (i = 0; i < args.length; i++) {
+																aux.count += args[i].count
+																aux.value += args[i].value					
+															}
+															result = aux
+															`},
+			Levels:                               -1,
 			UpdateOnMembershipChange:             true,
-			MaxFrequencyUpdateOnMembershipChange: 300 * time.Millisecond,
+			MaxFrequencyUpdateOnMembershipChange: 0 * time.Millisecond,
+			StoreIntermediateValues:              true,
+			IntermediateBucketOpts:               body_types.BucketOptions{Name: "avg_dummy_value_tree_child_values", Granularity: body_types.Granularity{Granularity: exportFrequency, Count: defaultMetricCount}},
 		})
 
 	if err != nil {
@@ -138,7 +145,7 @@ func benchmarkTreeAggFunc(cl *client.DemmonClient, expressionTimeout, exportFreq
 
 	for range time.NewTicker(exportFrequency).C {
 		res, err := cl.Query(
-			"Select('avg_dummy_value_tree','*')",
+			`SelectRange('avg_dummy_value_tree','*', new Date(Date.now() - 3000).getTime() , new Date().getTime())`,
 			exportFrequency,
 		)
 		if err != nil {
@@ -146,6 +153,20 @@ func benchmarkTreeAggFunc(cl *client.DemmonClient, expressionTimeout, exportFreq
 		}
 
 		fmt.Println("Select('avg_dummy_value_tree','*') Query results :")
+
+		for idx, ts := range res {
+			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
+		}
+
+		res, err = cl.Query(
+			"Select('avg_dummy_value_tree_child_values','*')",
+			exportFrequency,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println("Select('avg_dummy_value_tree_child_values','*') Query results :")
 
 		for idx, ts := range res {
 			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
@@ -162,7 +183,7 @@ func benchmarkGlobalAggFunc(cl *client.DemmonClient, expressionTimeout, exportFr
 	csvWriter := setupCSVWriter(logFolder, "/results.csv", []string{"avg_dummy_value_global", "timestamp"})
 	const (
 		connectBackoffTime = 1 * time.Second
-		defaultMetricCount = 3
+		defaultMetricCount = 1
 		maxRetries         = 3
 		connectTimeout     = 3 * time.Second
 		tickerTimeout      = 3 * time.Second

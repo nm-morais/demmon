@@ -533,6 +533,24 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			reqBody.OutputBucketOpts.Granularity.Count,
 		)
 
+		if reqBody.StoreIntermediateValues {
+			_, err := d.db.CreateBucket(
+				reqBody.IntermediateBucketOpts.Name,
+				reqBody.IntermediateBucketOpts.Granularity.Granularity,
+				reqBody.IntermediateBucketOpts.Granularity.Count,
+			)
+
+			if err != nil {
+				d.logger.Errorf("Got error installing tree aggregation function: %s", err.Error())
+				if errors.Is(err, tsdb.ErrAlreadyExists) {
+					resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
+					break
+				}
+				resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
+				break
+			}
+		}
+
 		if err != nil {
 			d.logger.Errorf("Got error installing tree aggregation function: %s", err.Error())
 			if errors.Is(err, tsdb.ErrAlreadyExists) {
@@ -542,9 +560,30 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
 			break
 		}
+		var treeSetID int64
+		if reqBody.Levels == -1 {
+			type treeAggFuncNoLevel struct {
+				MaxRetries                           int
+				Query                                body_types.RunnableExpression
+				OutputBucketOpts                     body_types.BucketOptions
+				MergeFunction                        body_types.RunnableExpression
+				UpdateOnMembershipChange             bool
+				MaxFrequencyUpdateOnMembershipChange time.Duration
+			}
 
-		treeSetID := utils.GetRandInt(math.MaxInt64)
-		d.monitorProto.AddTreeAggregationFuncReq(treeSetID, &reqBody)
+			treeSetID = int64(Hash(treeAggFuncNoLevel{
+				MaxRetries:                           reqBody.MaxRetries,
+				Query:                                reqBody.Query,
+				OutputBucketOpts:                     reqBody.OutputBucketOpts,
+				MergeFunction:                        reqBody.MergeFunction,
+				UpdateOnMembershipChange:             reqBody.UpdateOnMembershipChange,
+				MaxFrequencyUpdateOnMembershipChange: reqBody.MaxFrequencyUpdateOnMembershipChange,
+			}))
+		} else {
+			treeSetID = utils.GetRandInt(math.MaxInt64)
+		}
+
+		d.monitorProto.AddTreeAggregationFuncReq(int64(treeSetID), &reqBody)
 		d.logger.Infof("Added new tree aggregation function: %+v", reqBody)
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, treeSetID)
 	case routes.InstallGlobalAggregationFunction:
@@ -553,7 +592,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			break
 		}
 
-		d.logger.Infof("Creating neigh interest set func output bucket: %s", reqBody.OutputBucketOpts.Name)
+		d.logger.Infof("Creating global interest set func output bucket: %s", reqBody.OutputBucketOpts.Name)
 
 		_, err := d.db.CreateBucket(
 			reqBody.OutputBucketOpts.Name,
@@ -561,8 +600,26 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			reqBody.OutputBucketOpts.Granularity.Count,
 		)
 
+		if reqBody.StoreIntermediateValues {
+			_, err := d.db.CreateBucket(
+				reqBody.IntermediateBucketOpts.Name,
+				reqBody.IntermediateBucketOpts.Granularity.Granularity,
+				reqBody.IntermediateBucketOpts.Granularity.Count,
+			)
+
+			if err != nil {
+				d.logger.Errorf("Got error installing global aggregation function: %s", err.Error())
+				if errors.Is(err, tsdb.ErrAlreadyExists) {
+					resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
+					break
+				}
+				resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
+				break
+			}
+		}
+
 		if err != nil {
-			d.logger.Errorf("Got error installing neighborhood interest set: %s", err.Error())
+			d.logger.Errorf("Got error installing global interest set: %s", err.Error())
 			if errors.Is(err, tsdb.ErrAlreadyExists) {
 				resp = body_types.NewResponse(r.ID, false, err, 409, r.Type, nil)
 				break
@@ -573,7 +630,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 
 		neighSetID := Hash(reqBody)
 		d.monitorProto.AddGlobalAggregationFuncReq(int64(neighSetID), reqBody)
-		d.logger.Infof("Added new neighborhood interest set: %+v", reqBody)
+		d.logger.Infof("Added new global interest set: %+v", reqBody)
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, neighSetID)
 	case routes.BroadcastMessage:
 		reqBody := body_types.Message{}
@@ -982,12 +1039,12 @@ func (d *Demmon) handleContinuousQueryTrigger(taskID int) {
 		job.triedNr++
 		job.err = err
 		if job.triedNr == job.IS.NrRetries {
-			d.logger.Errorf("Removing continous query: %s", taskID)
+			d.logger.Errorf("Removing continous query: %d", taskID)
 			d.schedulerMu.Lock()
 			defer d.schedulerMu.Unlock()
 			err := d.scheduler.DeleteJob(taskID)
 			if err != nil {
-				d.logger.Errorf("Failed to delete continuous query %s: %s", taskID, err.Error())
+				d.logger.Errorf("Failed to delete continuous query %d: %s", taskID, err.Error())
 			}
 			return
 		}

@@ -107,7 +107,7 @@ func (d *DemmonTree) addParent(
 	if d.myParent != nil && !peer.PeersEqual(d.myParent, newParent) {
 		toSend := NewDisconnectAsChildMessage()
 		d.myParent = nil
-		d.babel.SendNotification(NewNodeDownNotification(oldParent, d.getInView()))
+		d.babel.SendNotification(NewNodeDownNotification(oldParent, d.getInView(), false))
 		d.sendMessageAndDisconnect(toSend, oldParent)
 		d.nodeWatcher.Unwatch(oldParent, d.ID())
 	}
@@ -221,7 +221,7 @@ func (d *DemmonTree) updateSelfVersion() {
 	)
 }
 
-func (d *DemmonTree) removeChild(toRemove peer.Peer) {
+func (d *DemmonTree) removeChild(toRemove peer.Peer, crash bool) {
 	d.logger.Infof("removing child: %s", toRemove.String())
 
 	child, ok := d.myChildren[toRemove.String()]
@@ -232,7 +232,7 @@ func (d *DemmonTree) removeChild(toRemove peer.Peer) {
 	delete(d.myChildrenLatencies, toRemove.String())
 	delete(d.myChildren, toRemove.String())
 	d.updateSelfVersion()
-	d.babel.SendNotification(NewNodeDownNotification(child, d.getInView()))
+	d.babel.SendNotification(NewNodeDownNotification(child, d.getInView(), crash))
 	d.babel.Disconnect(d.ID(), toRemove)
 	d.nodeWatcher.Unwatch(toRemove, d.ID())
 	d.logger.Infof("Removed child: %s", toRemove.String())
@@ -253,7 +253,7 @@ func (d *DemmonTree) addSibling(newSibling *PeerWithIDChain) {
 	d.logger.Infof("Added sibling: %s", newSibling.String())
 }
 
-func (d *DemmonTree) removeSibling(toRemove peer.Peer) {
+func (d *DemmonTree) removeSibling(toRemove peer.Peer, crash bool) {
 	d.logger.Infof("Removing sibling: %s", toRemove.String())
 	sibling, ok := d.mySiblings[toRemove.String()]
 	if !ok {
@@ -261,7 +261,7 @@ func (d *DemmonTree) removeSibling(toRemove peer.Peer) {
 		return
 	}
 	delete(d.mySiblings, toRemove.String())
-	d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView()))
+	d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView(), crash))
 	d.nodeWatcher.Unwatch(sibling, d.ID())
 	d.babel.Disconnect(d.ID(), toRemove)
 	d.logger.Infof("Removed sibling: %s", toRemove.String())
@@ -477,7 +477,7 @@ func (d *DemmonTree) mergeSiblingsWith(newSiblings []*PeerWithIDChain) {
 				continue
 			}
 
-			d.removeSibling(mySibling)
+			d.removeSibling(mySibling, false)
 		}
 	}
 }
