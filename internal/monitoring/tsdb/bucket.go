@@ -61,7 +61,6 @@ func (b *Bucket) GetTimeseries(tags map[string]string) (TimeSeries, bool) {
 	if !ok {
 		return nil, ok
 	}
-
 	return ts.(TimeSeries), ok
 }
 
@@ -112,11 +111,32 @@ func (b *Bucket) GetAllTimeseriesRange(start, end time.Time) []ReadOnlyTimeSerie
 			if err != nil {
 				panic(err)
 			}
+			if len(points) == 0 {
+				// b.logger.Warnf("Timeseries with tags %+v has no points", ts.Tags())
+				return true
+			}
 			toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), points...))
 			return true
 		},
 	)
 
+	return toReturn
+}
+
+func (b *Bucket) GetTimeseriesRangeRegex(tagsToMatch map[string]string, start, end time.Time) []ReadOnlyTimeSeries {
+	toReturn := make([]ReadOnlyTimeSeries, 0)
+	tmp := b.getTimeseriesRegex(tagsToMatch)
+
+	for _, ts := range tmp {
+		points, err := ts.Range(start, end)
+		if err != nil {
+			panic(err)
+		}
+		if len(points) == 0 {
+			continue
+		}
+		toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), points...))
+	}
 	return toReturn
 }
 
@@ -176,7 +196,6 @@ func (b *Bucket) GetTimeseriesRegexRange(tagsToMatch map[string]string, start, e
 		if err != nil {
 			panic(err)
 		}
-
 		toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), points...))
 	}
 

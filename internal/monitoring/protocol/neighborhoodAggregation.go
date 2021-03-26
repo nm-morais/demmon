@@ -172,7 +172,7 @@ func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 			)
 			continue
 		}
-		m.SendMessage(toSendMsg, sub.p)
+		m.SendMessage(toSendMsg, sub.p, false)
 	}
 
 	m.babel.RegisterTimer(
@@ -313,7 +313,7 @@ func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer
 		// 	sub.p.String(),
 		// )
 		msgConverted.TTL++
-		m.SendMessage(msgConverted, sub.p)
+		m.SendMessage(msgConverted, sub.p, false)
 	}
 }
 
@@ -351,7 +351,7 @@ func (m *Monitor) broadcastNeighInterestSetsToSiblings() {
 
 		if len(neighIntSetstoSend) > 0 {
 			toSend := NewInstallNeighInterestSetMessage(neighIntSetstoSend)
-			m.SendMessage(toSend, sibling)
+			m.SendMessage(toSend, sibling, false)
 		}
 	}
 }
@@ -386,7 +386,7 @@ func (m *Monitor) broadcastNeighInterestSetsToChildren() {
 		}
 		if len(neighIntSetstoSend) > 0 {
 			toSend := NewInstallNeighInterestSetMessage(neighIntSetstoSend)
-			m.SendMessage(toSend, children)
+			m.SendMessage(toSend, children, false)
 		}
 	}
 }
@@ -427,7 +427,7 @@ func (m *Monitor) broadcastNeighInterestSetsToParent() {
 
 	if len(neighIntSetstoSend) > 0 {
 		toSend := NewInstallNeighInterestSetMessage(neighIntSetstoSend)
-		m.SendMessage(toSend, m.currView.Parent)
+		m.SendMessage(toSend, m.currView.Parent, false)
 	}
 }
 

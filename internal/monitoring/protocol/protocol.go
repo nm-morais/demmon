@@ -87,9 +87,9 @@ func (m *Monitor) Logger() *logrus.Logger {
 	return m.logger
 }
 
-func (m *Monitor) SendMessage(msg message.Message, p peer.Peer) {
+func (m *Monitor) SendMessage(msg message.Message, p peer.Peer, batch bool) {
 	// m.logger.Infof("Sending message of type %s to %s", reflect.TypeOf(msg), p.String())
-	m.babel.SendMessage(msg, p, m.ID(), m.ID(), true)
+	m.babel.SendMessage(msg, p, m.ID(), m.ID(), batch)
 }
 
 func (m *Monitor) SendMessageUDPStream(msg message.Message, p peer.Peer) {
@@ -172,12 +172,6 @@ func (m *Monitor) Init() { // REPLY HANDLERS
 		m.ID(),
 		ExportGlobalAggregationIntermediateValuesFuncTimerID,
 		m.handleExportGlobalAggFuncIntermediateValuesTimer,
-	)
-
-	m.babel.RegisterMessageHandler(
-		m.ID(),
-		NewDeleteGlobalAggFuncValMessage(),
-		m.handleDeleteGlobalAggFuncValuesMessage,
 	)
 
 	m.babel.RegisterMessageHandler(

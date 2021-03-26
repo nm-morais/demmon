@@ -452,36 +452,3 @@ func (installGlobalAggFuncMsgSerializer) Deserialize(msgBytes []byte) message.Me
 
 	return toDeserialize
 }
-
-const DeleteGlobalAggFuncValMsgID = 6009
-
-var deleteGlobalAggFuncValMsgSerializerVar = deleteGlobalAggFuncValMsgSerializer{}
-
-type DeleteGlobalAggFuncValMsg struct {
-}
-
-func NewDeleteGlobalAggFuncValMessage() DeleteGlobalAggFuncValMsg {
-	return DeleteGlobalAggFuncValMsg{}
-}
-
-func (DeleteGlobalAggFuncValMsg) Type() message.ID {
-	return DeleteGlobalAggFuncValMsgID
-}
-
-func (DeleteGlobalAggFuncValMsg) Serializer() message.Serializer {
-	return deleteGlobalAggFuncValMsgSerializerVar
-}
-
-func (DeleteGlobalAggFuncValMsg) Deserializer() message.Deserializer {
-	return deleteGlobalAggFuncValMsgSerializerVar
-}
-
-type deleteGlobalAggFuncValMsgSerializer struct{}
-
-func (deleteGlobalAggFuncValMsgSerializer) Serialize(m message.Message) []byte {
-	return []byte{}
-}
-
-func (deleteGlobalAggFuncValMsgSerializer) Deserialize(msgBytes []byte) message.Message {
-	return NewDeleteGlobalAggFuncValMessage()
-}

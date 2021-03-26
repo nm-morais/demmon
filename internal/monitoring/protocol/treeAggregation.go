@@ -39,11 +39,11 @@ func (m *Monitor) AddTreeAggregationFuncReq(key int64, interestSet *body_types.T
 
 func (m *Monitor) handleRebroadcastTreeInterestSetsTimer(t timer.Timer) {
 	if m.currView.Parent != nil {
-		m.requestInterestSets()
+		m.requestInterestSets(true)
 	}
 }
 
-func (m *Monitor) requestInterestSets() {
+func (m *Monitor) requestInterestSets(batch bool) {
 
 	if m.currView.Parent == nil {
 		m.logger.Warn("Attempt to send requestInterestSetMessage to nil parent")
@@ -56,7 +56,7 @@ func (m *Monitor) requestInterestSets() {
 	}
 
 	toSend := NewRequestTreeAggFuncMessage(treeAggFuncstoSend)
-	m.SendMessage(toSend, m.currView.Parent)
+	m.SendMessage(toSend, m.currView.Parent, batch)
 }
 
 // EXPORT TIMER
@@ -197,7 +197,8 @@ func (m *Monitor) propagateTreeIntSetMetrics(treeAggFuncID int64, treeAggFunc *t
 			mergedVal,
 			treeAggFunc.sender.String(),
 		)
-		m.SendMessage(toSendMsg, treeAggFunc.sender)
+
+		m.SendMessage(toSendMsg, treeAggFunc.sender, !membershipChange)
 	}
 }
 
@@ -243,7 +244,7 @@ func (m *Monitor) handlePropagateTreeAggFuncMetricsMessage(sender peer.Peer, msg
 		if treeAggSet.AggSet.UpdateOnMembershipChange {
 			if time.Since(treeAggSet.lastPropagationMembershipChange) > treeAggSet.AggSet.MaxFrequencyUpdateOnMembershipChange {
 				m.logger.Infof("Propagating int set %d values since there was a membership change", treeAggSetID)
-				m.propagateTreeIntSetMetrics(treeAggSetID, treeAggSet, true)
+				m.propagateTreeIntSetMetrics(treeAggSetID, treeAggSet, msgConverted.MembershipChange)
 				treeAggSet.lastPropagationMembershipChange = time.Now()
 			}
 		}
@@ -296,7 +297,7 @@ func (m *Monitor) handleRequestTreeAggFuncMsg(sender peer.Peer, msg message.Mess
 	}
 
 	replyMsg := NewInstallTreeAggFuncMessage(treeAggFuncsToInstall, treeAggFuncsToConfirm)
-	m.SendMessage(replyMsg, sender)
+	m.SendMessage(replyMsg, sender, false)
 }
 
 func (m *Monitor) handleInstallTreeAggFuncMetricsMessage(sender peer.Peer, msg message.Message) {
@@ -344,7 +345,7 @@ func (m *Monitor) handleInstallTreeAggFuncMetricsMessage(sender peer.Peer, msg m
 
 	toSend := NewInstallTreeAggFuncMessage(treeAggFuncsToInstall, []int64{})
 	for _, c := range m.currView.Children {
-		m.SendMessage(toSend, c)
+		m.SendMessage(toSend, c, false)
 	}
 
 }
@@ -487,6 +488,6 @@ func (m *Monitor) handleNodeUpTreeAggFunc(nodeUp peer.Peer) {
 	// remove all child values from tree agg func
 	_, _, isParent := m.getPeerRelationshipType(nodeUp)
 	if isParent {
-		m.requestInterestSets()
+		m.requestInterestSets(false)
 	}
 }

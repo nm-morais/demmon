@@ -14,8 +14,8 @@ import (
 type BenchmarkType = string
 
 const (
-	BenchmarkTreeAggFunc   = BenchmarkType("BenchmarkTreeAggFunc")
-	BenchmarkGlobalAggFunc = BenchmarkType("BenchmarkGlobalAggFunc")
+	BenchmarkTreeAggFunc   = BenchmarkType("tree")
+	BenchmarkGlobalAggFunc = BenchmarkType("global")
 )
 
 func benchmarkDemmonMetrics(eConf *exporter.Conf, isLandmark bool, benchmarkType BenchmarkType) {
@@ -70,7 +70,10 @@ func benchmarkDemmonMetrics(eConf *exporter.Conf, isLandmark bool, benchmarkType
 		benchmarkTreeAggFunc(cl, expressionTimeout, exportFrequency)
 	case BenchmarkGlobalAggFunc:
 		benchmarkGlobalAggFunc(cl, expressionTimeout, exportFrequency)
+	default:
+		panic(fmt.Sprintf("unknown type of benchmark : <%s> specified for demmon", benchmarkType))
 	}
+
 }
 
 func setupBenchmarkExporter(eConf *exporter.Conf, logFolder string, queryFrequency time.Duration) {
@@ -112,7 +115,7 @@ func benchmarkTreeAggFunc(cl *client.DemmonClient, expressionTimeout, exportFreq
 	csvWriter := setupCSVWriter(logFolder, "/results.csv", []string{"avg_dummy_value_tree", "timestamp"})
 
 	const (
-		defaultMetricCount = 2
+		defaultMetricCount = 10
 		maxRetries         = 3
 	)
 
@@ -145,9 +148,10 @@ func benchmarkTreeAggFunc(cl *client.DemmonClient, expressionTimeout, exportFreq
 
 	for range time.NewTicker(exportFrequency).C {
 		res, err := cl.Query(
-			`SelectRange('avg_dummy_value_tree','*', new Date(Date.now() - 3000).getTime() , new Date().getTime())`,
+			`SelectLast('avg_dummy_value_tree','*')`,
 			exportFrequency,
 		)
+
 		if err != nil {
 			panic(err)
 		}
@@ -158,24 +162,24 @@ func benchmarkTreeAggFunc(cl *client.DemmonClient, expressionTimeout, exportFreq
 			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
 		}
 
-		res, err = cl.Query(
-			"Select('avg_dummy_value_tree_child_values','*')",
-			exportFrequency,
-		)
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println("Select('avg_dummy_value_tree_child_values','*') Query results :")
-
-		for idx, ts := range res {
-			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
-		}
-
 		if len(res) > 0 {
 			valInt := res[0].Values[0].Fields["value"].(float64)
 			writeOrPanic(csvWriter, []string{fmt.Sprintf("%d", int(valInt)), fmt.Sprintf("%d", time.Now().UnixNano())})
 		}
+
+		// res, err = cl.Query(
+		// 	"Select('avg_dummy_value_tree_child_values','*')",
+		// 	exportFrequency,
+		// )
+		// if err != nil {
+		// 	panic(err)
+		// }
+
+		// fmt.Println("Select('avg_dummy_value_tree_child_values','*') Query results :")
+
+		// for idx, ts := range res {
+		// 	fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
+		// }
 	}
 }
 
@@ -183,7 +187,7 @@ func benchmarkGlobalAggFunc(cl *client.DemmonClient, expressionTimeout, exportFr
 	csvWriter := setupCSVWriter(logFolder, "/results.csv", []string{"avg_dummy_value_global", "timestamp"})
 	const (
 		connectBackoffTime = 1 * time.Second
-		defaultMetricCount = 1
+		defaultMetricCount = 10
 		maxRetries         = 3
 		connectTimeout     = 3 * time.Second
 		tickerTimeout      = 3 * time.Second
@@ -195,41 +199,28 @@ func benchmarkGlobalAggFunc(cl *client.DemmonClient, expressionTimeout, exportFr
 	bucketName := "dummy_value_global"
 	_, err := cl.InstallGlobalAggregationFunction(
 		&body_types.GlobalAggregationFunction{
-			MaxRetries: 3,
-			Query: body_types.RunnableExpression{
-				Timeout: expressionTimeout,
-				Expression: `point = SelectLast("dummy_value","*")[0].Last()
-							result = {"count":1, "value":point.Value().value}`,
-			},
-			OutputBucketOpts: body_types.BucketOptions{
-				Name: bucketName,
-				Granularity: body_types.Granularity{
-					Granularity: exportFrequency,
-					Count:       defaultMetricCount,
-				},
-			},
-			MergeFunction: body_types.RunnableExpression{
-				Timeout: expressionTimeout,
-				Expression: `
-							aux = {"count":0, "value":0}
-							for (i = 0; i < args.length; i++) {
-								aux.count += args[i].count
-								aux.value += args[i].value					
-							}
-							result = aux
-							`,
-			},
-			DifferenceFunction: body_types.RunnableExpression{
-				Timeout: expressionTimeout,
-				Expression: `
-							toSubtractFrom = args[0]
-							for (i = 1; i < args.length; i++) {
-								toSubtractFrom.count -= args[i].count
-								toSubtractFrom.value -= args[i].value					
-							}
-							result = toSubtractFrom
-							`,
-			},
+			Query: body_types.RunnableExpression{Timeout: expressionTimeout, Expression: `point = SelectLast("dummy_value","*")[0].Last()
+											result = {"count":1, "value":point.Value().value}`},
+			MergeFunction: body_types.RunnableExpression{Timeout: expressionTimeout, Expression: `
+											aux = {"count":0, "value":0}
+											for (i = 0; i < args.length; i++) {
+												aux.count += args[i].count
+												aux.value += args[i].value					
+											}
+											result = aux
+											`},
+			DifferenceFunction: body_types.RunnableExpression{Timeout: expressionTimeout, Expression: `
+											toSubtractFrom = args[0]
+											for (i = 1; i < args.length; i++) {
+												toSubtractFrom.count -= args[i].count
+												toSubtractFrom.value -= args[i].value					
+											}
+											result = toSubtractFrom
+											`},
+			OutputBucketOpts:        body_types.BucketOptions{Name: bucketName, Granularity: body_types.Granularity{Granularity: exportFrequency, Count: defaultMetricCount}},
+			MaxRetries:              3,
+			StoreIntermediateValues: true,
+			IntermediateBucketOpts:  body_types.BucketOptions{Name: "avg_dummy_value_global_peer_values", Granularity: body_types.Granularity{Granularity: exportFrequency, Count: defaultMetricCount}},
 		})
 	cl.Unlock()
 	if err != nil {
@@ -255,5 +246,19 @@ func benchmarkGlobalAggFunc(cl *client.DemmonClient, expressionTimeout, exportFr
 			valInt := res[0].Values[0].Fields["value"].(float64)
 			writeOrPanic(csvWriter, []string{fmt.Sprintf("%d", int(valInt)), fmt.Sprintf("%d", time.Now().UnixNano())})
 		}
+
+		// res, err = cl.Query(
+		// 	"Select('avg_dummy_value_global_peer_values','*')",
+		// 	exportFrequency,
+		// )
+		// if err != nil {
+		// 	panic(err)
+		// }
+
+		// fmt.Println("Select('avg_dummy_value_global_peer_values','*') Query results :")
+
+		// for idx, ts := range res {
+		// 	fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
+		// }
 	}
 }

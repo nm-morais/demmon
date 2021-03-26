@@ -55,6 +55,10 @@ func GetBenchmarkMembershipEnvVar() bool {
 	return benchmarkEnvVarVal == "true"
 }
 
+func GetDemmonBenchmarkTypeEnvVar() (string, bool) {
+	return os.LookupEnv(BenchmarkDemmonTypeEnvName)
+}
+
 func GetBenchmarkDemmonEnvVar() bool {
 	benchmarkEnvVarVal, exists := os.LookupEnv(BenchmarkDemmonEnvName)
 	if !exists {

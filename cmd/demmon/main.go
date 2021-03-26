@@ -24,6 +24,7 @@ const (
 	AdvertiseListenAddrEnvVarName = "NODE_IP"
 	BenchmarkMembershipEnvName    = "BENCKMARK_MEMBERSHIP"
 	BenchmarkDemmonEnvName        = "BENCKMARK_METRICS"
+	BenchmarkDemmonTypeEnvName    = "BENCKMARK_METRICS_TYPE"
 
 	minProtosPort = 7000
 	maxProtosPort = 8000
@@ -303,7 +304,12 @@ func start(
 	go monitor.Listen()
 	if isBenchmarkDemmonMetrics {
 		fmt.Println("Benchmarking demmon metrics protocol")
-		benchmarkDemmonMetrics(eConf, isLandmark, BenchmarkTreeAggFunc) // TODO CHANGE HERE BENCHMARK TYPE
+		benchmarkType, ok := GetDemmonBenchmarkTypeEnvVar()
+		if !ok {
+			panic("No benchmark type specified for demmon")
+		}
+		fmt.Println(benchmarkType)
+		benchmarkDemmonMetrics(eConf, isLandmark, benchmarkType) // TODO CHANGE HERE BENCHMARK TYPE
 	}
 	select {}
 
