@@ -16,6 +16,7 @@ type BenchmarkType = string
 const (
 	BenchmarkTreeAggFunc   = BenchmarkType("tree")
 	BenchmarkGlobalAggFunc = BenchmarkType("global")
+	BenchmarkNeighAggFunc  = BenchmarkType("neigh")
 )
 
 func benchmarkDemmonMetrics(eConf *exporter.Conf, isLandmark bool, benchmarkType BenchmarkType) {
@@ -70,6 +71,8 @@ func benchmarkDemmonMetrics(eConf *exporter.Conf, isLandmark bool, benchmarkType
 		benchmarkTreeAggFunc(cl, expressionTimeout, exportFrequency)
 	case BenchmarkGlobalAggFunc:
 		benchmarkGlobalAggFunc(cl, expressionTimeout, exportFrequency)
+	case BenchmarkNeighAggFunc:
+		benchmarkNeighAggFunc(cl, expressionTimeout, exportFrequency)
 	default:
 		panic(fmt.Sprintf("unknown type of benchmark : <%s> specified for demmon", benchmarkType))
 	}
@@ -126,7 +129,7 @@ func benchmarkTreeAggFunc(cl *client.DemmonClient, expressionTimeout, exportFreq
 															point = SelectLast("dummy_value","*")[0].Last()
 															result = {"count":1, "value":point.Value().value}
 															`},
-			OutputBucketOpts: body_types.BucketOptions{Name: "avg_dummy_value_tree", Granularity: body_types.Granularity{Granularity: exportFrequency, Count: defaultMetricCount}},
+			OutputBucketOpts: body_types.BucketOptions{Name: "avg_dummy_value_tree", Granularity: body_types.Granularity{Granularity: time.Duration(float32(exportFrequency) * 0.85), Count: defaultMetricCount}},
 			MergeFunction: body_types.RunnableExpression{Timeout: expressionTimeout, Expression: `
 															aux = {"count":0, "value":0}
 															for (i = 0; i < args.length; i++) {
@@ -139,7 +142,7 @@ func benchmarkTreeAggFunc(cl *client.DemmonClient, expressionTimeout, exportFreq
 			UpdateOnMembershipChange:             true,
 			MaxFrequencyUpdateOnMembershipChange: 0 * time.Millisecond,
 			StoreIntermediateValues:              true,
-			IntermediateBucketOpts:               body_types.BucketOptions{Name: "avg_dummy_value_tree_child_values", Granularity: body_types.Granularity{Granularity: exportFrequency, Count: defaultMetricCount}},
+			IntermediateBucketOpts:               body_types.BucketOptions{Name: "avg_dummy_value_tree_child_values", Granularity: body_types.Granularity{Granularity: time.Duration(float32(exportFrequency) * 0.85), Count: defaultMetricCount}},
 		})
 
 	if err != nil {
@@ -217,10 +220,10 @@ func benchmarkGlobalAggFunc(cl *client.DemmonClient, expressionTimeout, exportFr
 											}
 											result = toSubtractFrom
 											`},
-			OutputBucketOpts:        body_types.BucketOptions{Name: bucketName, Granularity: body_types.Granularity{Granularity: exportFrequency, Count: defaultMetricCount}},
+			OutputBucketOpts:        body_types.BucketOptions{Name: bucketName, Granularity: body_types.Granularity{Granularity: time.Duration(float32(exportFrequency) * 0.85), Count: defaultMetricCount}},
 			MaxRetries:              3,
 			StoreIntermediateValues: true,
-			IntermediateBucketOpts:  body_types.BucketOptions{Name: "avg_dummy_value_global_peer_values", Granularity: body_types.Granularity{Granularity: exportFrequency, Count: defaultMetricCount}},
+			IntermediateBucketOpts:  body_types.BucketOptions{Name: "avg_dummy_value_global_peer_values", Granularity: body_types.Granularity{Granularity: time.Duration(float32(exportFrequency) * 0.85), Count: defaultMetricCount}},
 		})
 	cl.Unlock()
 	if err != nil {
@@ -256,6 +259,80 @@ func benchmarkGlobalAggFunc(cl *client.DemmonClient, expressionTimeout, exportFr
 		// }
 
 		// fmt.Println("Select('avg_dummy_value_global_peer_values','*') Query results :")
+
+		// for idx, ts := range res {
+		// 	fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
+		// }
+	}
+}
+
+func benchmarkNeighAggFunc(cl *client.DemmonClient, expressionTimeout, exportFrequency time.Duration) {
+	csvWriter := setupCSVWriter(logFolder, "/results.csv", []string{"avg_dummy_value_neigh", "timestamp"})
+	const (
+		connectBackoffTime = 1 * time.Second
+		defaultMetricCount = 10
+		maxRetries         = 3
+		connectTimeout     = 3 * time.Second
+		tickerTimeout      = 3 * time.Second
+		requestTimeout     = 1 * time.Second
+		queryBackoff       = 3 * time.Second
+	)
+
+	cl.Lock()
+	bucketName := "dummy_value_neigh"
+	_, err := cl.InstallNeighborhoodInterestSet(
+		&body_types.NeighborhoodInterestSet{
+			StoreHopCountAsTag: true,
+			TTL:                2,
+			IS: body_types.InterestSet{
+				MaxRetries: maxRetries,
+				Query: body_types.RunnableExpression{
+					Timeout:    expressionTimeout,
+					Expression: `result = SelectLast("dummy_value","*")[0]`,
+				},
+				OutputBucketOpts: body_types.BucketOptions{
+					Name: bucketName,
+					Granularity: body_types.Granularity{
+						Granularity: time.Duration(float32(exportFrequency) * 0.85),
+						Count:       defaultMetricCount,
+					},
+				},
+			},
+		})
+	cl.Unlock()
+	if err != nil {
+		panic(err)
+	}
+
+	for range time.NewTicker(tickerTimeout).C {
+		res, err := cl.Query(
+			fmt.Sprintf("Select('%s','*')", bucketName),
+			queryBackoff,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println("Select('avg_dummy_value_neigh','*') Query results :")
+
+		for idx, ts := range res {
+			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
+		}
+
+		if len(res) > 0 {
+			valInt := res[0].Values[0].Fields["value"].(float64)
+			writeOrPanic(csvWriter, []string{fmt.Sprintf("%d", int(valInt)), fmt.Sprintf("%d", time.Now().UnixNano())})
+		}
+
+		// res, err = cl.Query(
+		// 	"Select('avg_dummy_value_neigh_peer_values','*')",
+		// 	exportFrequency,
+		// )
+		// if err != nil {
+		// 	panic(err)
+		// }
+
+		// fmt.Println("Select('avg_dummy_value_neigh_peer_values','*') Query results :")
 
 		// for idx, ts := range res {
 		// 	fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
