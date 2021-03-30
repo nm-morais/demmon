@@ -338,6 +338,9 @@ func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer
 			continue
 		}
 
+		if !m.shouldBroadcastTo(sender, sub.p) {
+			continue
+		}
 		// m.logger.WithFields(logrus.Fields{"metric_values": msgConverted.Metrics, "msg_ttl": msgConverted.TTL, "sub_ttl": sub.ttl}).Infof(
 		// 	"relaying metric values for interest set %d: %s from %s to %s",
 		// 	interestSetID,
@@ -347,6 +350,22 @@ func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer
 		// )
 		m.SendMessage(NewPropagateNeighInterestSetMetricsMessage(interestSetID, msgConverted.Metrics, msgConverted.TTL+1), sub.p, true)
 	}
+}
+
+func (m *Monitor) shouldBroadcastTo(from, to peer.Peer) bool {
+	fromSibling, fromChildren, fromParent := m.getPeerRelationshipType(from)
+	toSibling, toChildren, toParent := m.getPeerRelationshipType(to)
+
+	if fromSibling {
+		return toChildren
+	}
+	if fromParent {
+		return toChildren
+	}
+	if fromChildren {
+		return toParent || toSibling
+	}
+	return false
 }
 
 // AUX FUNCTIONS
