@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
+	"strings"
 	"time"
 
 	client "github.com/nm-morais/demmon-client/pkg"
@@ -267,15 +268,16 @@ func benchmarkGlobalAggFunc(cl *client.DemmonClient, expressionTimeout, exportFr
 }
 
 func benchmarkNeighAggFunc(cl *client.DemmonClient, expressionTimeout, exportFrequency time.Duration) {
-	csvWriter := setupCSVWriter(logFolder, "/results.csv", []string{"avg_dummy_value_neigh", "timestamp"})
+	csvWriter := setupCSVWriter(logFolder, "/results.csv", []string{"dummy_value_neigh", "timestamp"})
 	const (
 		connectBackoffTime = 1 * time.Second
-		defaultMetricCount = 10
+		defaultMetricCount = 3
 		maxRetries         = 3
 		connectTimeout     = 3 * time.Second
 		tickerTimeout      = 3 * time.Second
 		requestTimeout     = 1 * time.Second
 		queryBackoff       = 3 * time.Second
+		TTL                = 2
 	)
 
 	cl.Lock()
@@ -283,7 +285,7 @@ func benchmarkNeighAggFunc(cl *client.DemmonClient, expressionTimeout, exportFre
 	_, err := cl.InstallNeighborhoodInterestSet(
 		&body_types.NeighborhoodInterestSet{
 			StoreHopCountAsTag: true,
-			TTL:                2,
+			TTL:                TTL,
 			IS: body_types.InterestSet{
 				MaxRetries: maxRetries,
 				Query: body_types.RunnableExpression{
@@ -305,25 +307,33 @@ func benchmarkNeighAggFunc(cl *client.DemmonClient, expressionTimeout, exportFre
 	}
 
 	for range time.NewTicker(tickerTimeout).C {
-		res, err := cl.Query(
-			fmt.Sprintf("Select('%s','*')", bucketName),
-			queryBackoff,
-		)
-		if err != nil {
-			panic(err)
+		for i := 1; i <= TTL; i++ {
+
+			// startTime := time.Now().Add(-time.Duration(5 * time.Second))
+			// endTime := time.Now()
+
+			res, err := cl.Query(
+				fmt.Sprintf("SelectLast('%s',{'hop_nr': %d})", bucketName, i),
+				queryBackoff,
+			)
+
+			if err != nil {
+				if strings.Contains(err.Error(), "did not return any results") {
+					continue
+				}
+				panic(err)
+			}
+
+			fmt.Println()
+			fmt.Println("Query results :")
+
+			for idx, ts := range res {
+				// valInt := ts.Values[0].Fields["value"].(float64)
+				fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
+			}
+
+			writeOrPanic(csvWriter, []string{fmt.Sprintf("%d", len(res)), fmt.Sprintf("%d", time.Now().UnixNano())})
 		}
-
-		fmt.Println("Select('avg_dummy_value_neigh','*') Query results :")
-
-		for idx, ts := range res {
-			fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
-		}
-
-		if len(res) > 0 {
-			valInt := res[0].Values[0].Fields["value"].(float64)
-			writeOrPanic(csvWriter, []string{fmt.Sprintf("%d", int(valInt)), fmt.Sprintf("%d", time.Now().UnixNano())})
-		}
-
 		// res, err = cl.Query(
 		// 	"Select('avg_dummy_value_neigh_peer_values','*')",
 		// 	exportFrequency,

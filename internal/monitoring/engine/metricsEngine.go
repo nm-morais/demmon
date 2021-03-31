@@ -421,17 +421,16 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call *otto.FunctionCall) otto
 		throw(vm, fmt.Sprintf("err converting start date to integer: %s", err.Error()))
 		return otto.Value{}
 	}
-	startTime := time.Unix(0, 0).Add(time.Duration(startTimeGeneric) * time.Millisecond)
+	startTime := time.Unix(startTimeGeneric, 0)
 
 	endTimeGeneric, err := call.Argument(3).ToInteger()
 	if err != nil {
 		throw(vm, fmt.Sprintf("err converting end date to integer: %s", err.Error()))
 		return otto.Value{}
 	}
-	endTime := time.Unix(0, 0).Add(time.Duration(endTimeGeneric) * time.Millisecond)
+	endTime := time.Unix(endTimeGeneric, 0)
 
 	var queryResult []tsdb.ReadOnlyTimeSeries
-	defer e.logger.Infof("SelectRange query result: : %+v", queryResult)
 	if isTagFilterAll {
 
 		var b *tsdb.Bucket
@@ -441,7 +440,7 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call *otto.FunctionCall) otto
 			return otto.Value{}
 		}
 		queryResult = b.GetAllTimeseriesRange(startTime, endTime)
-
+		e.logger.Infof("SelectRange query result: : %+v", queryResult)
 		var res otto.Value
 		res, err = vm.ToValue(queryResult)
 		if err != nil {
@@ -456,7 +455,8 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call *otto.FunctionCall) otto
 		throw(vm, fmt.Sprintf("No measurement found with name %s", name))
 		return otto.Value{}
 	}
-	queryResult = b.GetTimeseriesRegexRange(tagFilters, startTime, endTime)
+	queryResult = b.GetTimeseriesRangeRegex(tagFilters, startTime, endTime)
+	e.logger.Infof("SelectRange query result: : %+v", queryResult)
 	if len(queryResult) == 0 {
 		throw(vm, "Select query did not return any results")
 		return otto.Value{}

@@ -109,7 +109,7 @@ type DemmonTree struct {
 }
 
 const (
-	DebugTimerDuration = 5 * time.Second
+	DebugTimerDuration = 3 * time.Second
 )
 
 func New(config *DemmonTreeConfig, babel protocolManager.ProtocolManager, nw nodeWatcher.NodeWatcher) protocol.Protocol {
@@ -1360,7 +1360,6 @@ func (d *DemmonTree) MessageDeliveryErr(msg message.Message, p peer.Peer, err er
 		d.sendMessageTmpUDPChan(msg, p)
 	case WalkReplyMessage:
 		d.sendMessageTmpUDPChan(msg, p)
-
 	case DisconnectAsChildMessage:
 		d.babel.Disconnect(d.ID(), p)
 	}

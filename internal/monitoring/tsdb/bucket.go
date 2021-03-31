@@ -188,20 +188,6 @@ func (b *Bucket) GetTimeseriesRegex(tagsToMatch map[string]string) []ReadOnlyTim
 	return toReturn
 }
 
-func (b *Bucket) GetTimeseriesRegexRange(tagsToMatch map[string]string, start, end time.Time) []ReadOnlyTimeSeries {
-	matchingTimeseries := b.getTimeseriesRegex(tagsToMatch)
-	toReturn := []ReadOnlyTimeSeries{}
-	for _, ts := range matchingTimeseries {
-		points, err := ts.Range(start, end)
-		if err != nil {
-			panic(err)
-		}
-		toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), points...))
-	}
-
-	return toReturn
-}
-
 func (b *Bucket) GetTimeseriesRegexLastVal(tagsToMatch map[string]string) []ReadOnlyTimeSeries {
 	matchingTimeseries := b.getTimeseriesRegex(tagsToMatch)
 	toReturn := []ReadOnlyTimeSeries{}

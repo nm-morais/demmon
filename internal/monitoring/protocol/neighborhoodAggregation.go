@@ -21,6 +21,7 @@ type subWithTTL struct {
 }
 
 type neighInterestSet struct {
+	exportTimerID int
 	storeHopCount bool
 	nrRetries     int
 	subscribers   map[string]subWithTTL
@@ -52,16 +53,17 @@ func (m *Monitor) handleAddNeighInterestSetRequest(req request.Request) request.
 		return nil
 	}
 
+	frequency := interestSet.IS.OutputBucketOpts.Granularity.Granularity
+	tID := m.babel.RegisterPeriodicTimer(m.ID(), NewExportNeighInterestSetMetricsTimer(frequency, interestSetID), true)
 	m.neighInterestSets[addNeighInterestSetReq.Id] = &neighInterestSet{
+		exportTimerID: tID,
 		storeHopCount: addNeighInterestSetReq.InterestSet.StoreHopCountAsTag,
 		nrRetries:     addNeighInterestSetReq.InterestSet.IS.MaxRetries,
 		subscribers:   map[string]subWithTTL{m.babel.SelfPeer().String(): {ttl: addNeighInterestSetReq.InterestSet.TTL, p: m.babel.SelfPeer()}},
 		TTL:           0,
 		IS:            addNeighInterestSetReq.InterestSet.IS,
 	}
-	frequency := interestSet.IS.OutputBucketOpts.Granularity.Granularity
 	m.logger.Infof("Installing local insterest set %d: %+v", interestSetID, interestSet)
-	m.babel.RegisterTimer(m.ID(), NewExportNeighInterestSetMetricsTimer(frequency, interestSetID))
 	return nil
 }
 
@@ -74,6 +76,7 @@ func (m *Monitor) handleRemoveNeighInterestSetRequest(req request.Request) reque
 	if is, ok := m.neighInterestSets[toRemoveID]; ok {
 		delete(is.subscribers, m.babel.SelfPeer().String())
 		if len(is.subscribers) == 0 {
+			m.babel.CancelTimer(is.exportTimerID)
 			delete(m.neighInterestSets, toRemoveID)
 		}
 	}
@@ -113,16 +116,9 @@ func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 
 		if interestSet.nrRetries >= interestSet.IS.MaxRetries {
 			m.logger.Errorf("Aborting export timer for remote interest set %d", interestSetID)
+			m.babel.CancelTimer(interestSet.exportTimerID)
 			return // abort timer
 		}
-
-		m.babel.RegisterTimer(
-			m.ID(),
-			NewExportNeighInterestSetMetricsTimer(
-				interestSet.IS.OutputBucketOpts.Granularity.Granularity,
-				interestSetID,
-			),
-		)
 		return
 	}
 
@@ -185,16 +181,8 @@ func (m *Monitor) handleExportNeighInterestSetMetricsTimer(t timer.Timer) {
 			)
 			continue
 		}
-		defer m.SendMessage(toSendMsg, sub.p, true)
+		defer m.SendMessage(toSendMsg, sub.p, false)
 	}
-
-	m.babel.RegisterTimer(
-		m.ID(),
-		NewExportNeighInterestSetMetricsTimer(
-			interestSet.IS.OutputBucketOpts.Granularity.Granularity,
-			interestSetID,
-		),
-	)
 }
 
 // BROADCAST TIMER
@@ -237,7 +225,9 @@ func (m *Monitor) handleInstallNeighInterestSetMessage(sender peer.Peer, msg mes
 		}
 
 		m.logger.Infof("installing neigh interest set from remote peer %d: %+v", interestSetID, interestSet)
+		tID := m.babel.RegisterPeriodicTimer(m.ID(), NewExportNeighInterestSetMetricsTimer(interestSet.IS.OutputBucketOpts.Granularity.Granularity, interestSetID), true)
 		m.neighInterestSets[interestSetID] = &neighInterestSet{
+			exportTimerID: tID,
 			storeHopCount: false,
 			nrRetries:     interestSet.nrRetries,
 			subscribers:   map[string]subWithTTL{sender.String(): {ttl: interestSet.TTL, p: sender}},
@@ -245,13 +235,6 @@ func (m *Monitor) handleInstallNeighInterestSetMessage(sender peer.Peer, msg mes
 			IS:            interestSet.IS,
 		}
 
-		m.babel.RegisterTimer(
-			m.ID(),
-			NewExportNeighInterestSetMetricsTimer(
-				interestSet.IS.OutputBucketOpts.Granularity.Granularity,
-				interestSetID,
-			),
-		)
 	}
 }
 
@@ -307,6 +290,12 @@ func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer
 		}
 
 		if peer.PeersEqual(m.babel.SelfPeer(), sub.p) {
+			m.logger.Infof(
+				"Inserting metric values locally for interest set %d: %s from %s",
+				interestSetID,
+				interestSet.IS.OutputBucketOpts.Name,
+				sender.String(),
+			)
 			for _, ts := range msgConverted.Metrics {
 				tmpTags := map[string]string{}
 
@@ -317,7 +306,7 @@ func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer
 				if _, ok := tmpTags["hop_nr"]; !ok {
 					tmpTags["hop_nr"] = fmt.Sprintf("%d", msgConverted.TTL)
 				}
-				m.logger.WithFields(logrus.Fields{"metric_values": msgConverted.Metrics, "msg_ttl": msgConverted.TTL, "sub_ttl": sub.ttl}).Info("Adding metrics locally")
+				// m.logger.WithFields(logrus.Fields{"metric_values": msgConverted.Metrics, "msg_ttl": msgConverted.TTL, "sub_ttl": sub.ttl}).Info("Adding metrics locally")
 				for _, pt := range ts.Values {
 					err := m.tsdb.AddMetric(
 						interestSet.IS.OutputBucketOpts.Name,
@@ -348,7 +337,7 @@ func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer
 		// 	sender.String(),
 		// 	sub.p.String(),
 		// )
-		m.SendMessage(NewPropagateNeighInterestSetMetricsMessage(interestSetID, msgConverted.Metrics, msgConverted.TTL+1), sub.p, true)
+		m.SendMessage(NewPropagateNeighInterestSetMetricsMessage(interestSetID, msgConverted.Metrics, msgConverted.TTL+1), sub.p, false)
 	}
 }
 
@@ -512,6 +501,7 @@ func (m *Monitor) cleanupNeighInterestSets() {
 		}
 
 		if len(is.subscribers) == 0 {
+			m.babel.CancelTimer(is.exportTimerID)
 			delete(m.neighInterestSets, isID)
 		}
 	}
@@ -526,6 +516,7 @@ func (m *Monitor) handleNodeDownNeighInterestSet(nodeDown peer.Peer) {
 			// m.tsdb.DeleteBucket(intSet.interestSet.OutputBucketOpts.Name, map[string]string{"host": m.babel.SelfPeer().IP().String()})
 			delete(intSet.subscribers, nodeDown.String())
 			if len(intSet.subscribers) == 0 {
+				m.babel.CancelTimer(intSet.exportTimerID)
 				delete(m.neighInterestSets, intSetID)
 				m.logger.Infof("Deleting neigh int set: %d", intSetID)
 			}

@@ -24,7 +24,7 @@ const (
 
 	CleanupInterestSetTimerDuration = 5 * time.Second
 	// neigh sets
-	RebroadcastNeighInterestSetsTimerDuration = 5 * time.Second
+	RebroadcastNeighInterestSetsTimerDuration = 3 * time.Second
 	ExpireNeighInterestSetTimeout             = 3 * RebroadcastNeighInterestSetsTimerDuration
 
 	// tree agg funcs
@@ -238,7 +238,6 @@ func (m *Monitor) handleNodeUp(n notification.Notification) {
 	m.logger.Infof("Node up: %s", nodeUpNotification.PeerUp.String())
 	m.logger.Infof("Curr View: %+v", m.currView)
 	m.handleNodeUpTreeAggFunc(nodeUpNotification.PeerUp)
-
 }
 
 func (m *Monitor) handleNodeDown(n notification.Notification) {
