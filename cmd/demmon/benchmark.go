@@ -270,7 +270,7 @@ func benchmarkNeighAggFunc(cl *client.DemmonClient, expressionTimeout, exportFre
 	csvWriter := setupCSVWriter(logFolder, "/results.csv", []string{"dummy_value_neigh", "hop", "timestamp"})
 	const (
 		connectBackoffTime = 1 * time.Second
-		defaultMetricCount = 4
+		defaultMetricCount = 10
 		maxRetries         = 3
 		connectTimeout     = 3 * time.Second
 		tickerTimeout      = 3 * time.Second
@@ -308,11 +308,11 @@ func benchmarkNeighAggFunc(cl *client.DemmonClient, expressionTimeout, exportFre
 	for range time.NewTicker(tickerTimeout).C {
 		for i := 1; i <= TTL; i++ {
 
-			// startTime := time.Now().Add(-time.Duration(5 * time.Second))
-			// endTime := time.Now()
+			startTime := time.Now().Add(-time.Duration(float32(exportFrequency) * 1.5))
+			endTime := time.Now()
 
 			res, err := cl.Query(
-				fmt.Sprintf("SelectLast('%s',{'hop_nr': %d})", bucketName, i),
+				fmt.Sprintf("SelectRange('%s',{'hop_nr': %d}, %d, %d )", bucketName, i, startTime.Unix(), endTime.Unix()),
 				queryBackoff,
 			)
 
