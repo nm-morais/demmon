@@ -26,7 +26,6 @@ func benchmarkDemmonMetrics(eConf *exporter.Conf, isLandmark bool, benchmarkType
 		expressionTimeout  = 1 * time.Second
 		exportFrequency    = 3 * time.Second
 		defaultTTL         = 2
-		defaultMetricCount = 5
 		maxRetries         = 3
 		connectTimeout     = 3 * time.Second
 		tickerTimeout      = 5 * time.Second
@@ -268,10 +267,10 @@ func benchmarkGlobalAggFunc(cl *client.DemmonClient, expressionTimeout, exportFr
 }
 
 func benchmarkNeighAggFunc(cl *client.DemmonClient, expressionTimeout, exportFrequency time.Duration) {
-	csvWriter := setupCSVWriter(logFolder, "/results.csv", []string{"dummy_value_neigh", "timestamp"})
+	csvWriter := setupCSVWriter(logFolder, "/results.csv", []string{"dummy_value_neigh", "hop", "timestamp"})
 	const (
 		connectBackoffTime = 1 * time.Second
-		defaultMetricCount = 3
+		defaultMetricCount = 4
 		maxRetries         = 3
 		connectTimeout     = 3 * time.Second
 		tickerTimeout      = 3 * time.Second
@@ -332,7 +331,7 @@ func benchmarkNeighAggFunc(cl *client.DemmonClient, expressionTimeout, exportFre
 				fmt.Printf("%d) %s:%+v:%+v\n", idx, ts.MeasurementName, ts.TSTags, ts.Values)
 			}
 
-			writeOrPanic(csvWriter, []string{fmt.Sprintf("%d", len(res)), fmt.Sprintf("%d", time.Now().UnixNano())})
+			writeOrPanic(csvWriter, []string{fmt.Sprintf("%d", len(res)), fmt.Sprintf("%d", i), fmt.Sprintf("%d", time.Now().UnixNano())})
 		}
 		// res, err = cl.Query(
 		// 	"Select('avg_dummy_value_neigh_peer_values','*')",
