@@ -241,7 +241,7 @@ func benchmarkGlobalAggFunc(cl *client.DemmonClient, expressionTimeout, exportFr
 	for range time.NewTicker(tickerTimeout).C {
 		cl.Lock()
 		res, err := cl.Query(
-			fmt.Sprintf("Select('%s','*')", bucketName),
+			fmt.Sprintf("SelectLast('%s','*')", bucketName),
 			queryBackoff,
 		)
 		cl.Unlock()
