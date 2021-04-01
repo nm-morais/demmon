@@ -50,7 +50,7 @@ func (defaultClock) Time() time.Time { return time.Now() }
 // interval equal to the resolution of the level. New observations are added
 // to the last bucket.
 type timeSeries struct {
-	mu           sync.Mutex
+	mu           *sync.Mutex
 	numBuckets   int        // number of buckets in each level
 	level        *tsLevel   // levels of bucketed Observable
 	lastAdd      time.Time  // time of last Observable tracked
@@ -172,9 +172,9 @@ func (ts *timeSeries) SetTag(key, val string) {
 // ComputeRange computes a specified number of values into a slice using
 // the observations recorded over the specified time period.
 func (ts *timeSeries) Range(start, finish time.Time) ([]Observable, error) {
+
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-
 	if start.After(finish) {
 		ts.logger.Infof("timeseries: start > finish, %v>%v", start, finish)
 		return nil, ErrStartAfterFinish
@@ -291,7 +291,7 @@ func (ts *timeSeries) init(name string,
 	clock Clock,
 	logger *logrus.Entry) {
 
-	ts.mu = sync.Mutex{}
+	ts.mu = &sync.Mutex{}
 	ts.name = name
 	ts.tags = tags
 	ts.numBuckets = numBuckets

@@ -26,7 +26,6 @@ type Conf struct {
 	LogFolder string
 	LogFile   string
 }
-
 type MetricsEngine struct {
 	logger *logrus.Logger
 	db     *tsdb.TSDB
@@ -146,6 +145,8 @@ func (e *MetricsEngine) RunMergeFunc(expression string, timeoutDuration time.Dur
 	e.vmLock.Lock()
 	err := e.vm.Set("args", argsCopy)
 	if err != nil {
+		_ = e.vm.Set("args", otto.UndefinedValue())
+		e.vmLock.Unlock()
 		return nil, err
 	}
 	ottoVal, err := e.runWithTimeout(e.vm, expression, timeoutDuration)

@@ -32,7 +32,7 @@ func (d *Demmon) readPump(c *client) {
 			}
 			return
 		}
-		d.handleRequest(req, c)
+		go d.handleRequest(req, c)
 	}
 }
 

@@ -317,7 +317,7 @@ func testGlobalAggFunc(cl *client.DemmonClient) {
 func testNodeUpdates(cl *client.DemmonClient) {
 
 	cl.Lock()
-	res, err, _, updateChan := cl.SubscribeNodeUpdates()
+	res, updateChan, _, err := cl.SubscribeNodeUpdates()
 	cl.Unlock()
 
 	if err != nil {

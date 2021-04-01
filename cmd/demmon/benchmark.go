@@ -18,6 +18,7 @@ const (
 	BenchmarkTreeAggFunc   = BenchmarkType("tree")
 	BenchmarkGlobalAggFunc = BenchmarkType("global")
 	BenchmarkNeighAggFunc  = BenchmarkType("neigh")
+	BenchmarkAll           = BenchmarkType("all")
 )
 
 func benchmarkDemmonMetrics(eConf *exporter.Conf, isLandmark bool, benchmarkType BenchmarkType) {
@@ -73,6 +74,10 @@ func benchmarkDemmonMetrics(eConf *exporter.Conf, isLandmark bool, benchmarkType
 		benchmarkGlobalAggFunc(cl, expressionTimeout, exportFrequency)
 	case BenchmarkNeighAggFunc:
 		benchmarkNeighAggFunc(cl, expressionTimeout, exportFrequency)
+	case BenchmarkAll:
+		go benchmarkTreeAggFunc(cl, expressionTimeout, exportFrequency)
+		go benchmarkGlobalAggFunc(cl, expressionTimeout, exportFrequency)
+		benchmarkNeighAggFunc(cl, expressionTimeout, exportFrequency)
 	default:
 		panic(fmt.Sprintf("unknown type of benchmark : <%s> specified for demmon", benchmarkType))
 	}
@@ -115,13 +120,14 @@ func writeOrPanic(csvWriter *csv.Writer, records []string) {
 }
 
 func benchmarkTreeAggFunc(cl *client.DemmonClient, expressionTimeout, exportFrequency time.Duration) {
-	csvWriter := setupCSVWriter(logFolder, "/results.csv", []string{"avg_dummy_value_tree", "timestamp"})
+	csvWriter := setupCSVWriter(logFolder, "/results_tree.csv", []string{"avg_dummy_value_tree", "timestamp"})
 
 	const (
 		defaultMetricCount = 10
 		maxRetries         = 3
 	)
 
+	cl.Lock()
 	_, err := cl.InstallTreeAggregationFunction(
 		&body_types.TreeAggregationSet{
 			MaxRetries: maxRetries,
@@ -148,12 +154,14 @@ func benchmarkTreeAggFunc(cl *client.DemmonClient, expressionTimeout, exportFreq
 	if err != nil {
 		panic(err)
 	}
-
+	cl.Unlock()
 	for range time.NewTicker(exportFrequency).C {
+		cl.Lock()
 		res, err := cl.Query(
 			`SelectLast('avg_dummy_value_tree','*')`,
 			exportFrequency,
 		)
+		cl.Unlock()
 
 		if err != nil {
 			panic(err)
@@ -187,7 +195,7 @@ func benchmarkTreeAggFunc(cl *client.DemmonClient, expressionTimeout, exportFreq
 }
 
 func benchmarkGlobalAggFunc(cl *client.DemmonClient, expressionTimeout, exportFrequency time.Duration) {
-	csvWriter := setupCSVWriter(logFolder, "/results.csv", []string{"avg_dummy_value_global", "timestamp"})
+	csvWriter := setupCSVWriter(logFolder, "/results_global.csv", []string{"avg_dummy_value_global", "timestamp"})
 	const (
 		connectBackoffTime = 1 * time.Second
 		defaultMetricCount = 10
@@ -231,10 +239,12 @@ func benchmarkGlobalAggFunc(cl *client.DemmonClient, expressionTimeout, exportFr
 	}
 
 	for range time.NewTicker(tickerTimeout).C {
+		cl.Lock()
 		res, err := cl.Query(
 			fmt.Sprintf("Select('%s','*')", bucketName),
 			queryBackoff,
 		)
+		cl.Unlock()
 		if err != nil {
 			panic(err)
 		}
@@ -267,7 +277,7 @@ func benchmarkGlobalAggFunc(cl *client.DemmonClient, expressionTimeout, exportFr
 }
 
 func benchmarkNeighAggFunc(cl *client.DemmonClient, expressionTimeout, exportFrequency time.Duration) {
-	csvWriter := setupCSVWriter(logFolder, "/results.csv", []string{"dummy_value_neigh", "hop", "timestamp"})
+	csvWriter := setupCSVWriter(logFolder, "/results_neigh.csv", []string{"dummy_value_neigh", "hop", "timestamp"})
 	const (
 		connectBackoffTime = 1 * time.Second
 		defaultMetricCount = 10
@@ -310,11 +320,12 @@ func benchmarkNeighAggFunc(cl *client.DemmonClient, expressionTimeout, exportFre
 
 			startTime := time.Now().Add(-time.Duration(float32(exportFrequency) * 1.5))
 			endTime := time.Now()
-
+			cl.Lock()
 			res, err := cl.Query(
 				fmt.Sprintf("SelectRange('%s',{'hop_nr': %d}, %d, %d )", bucketName, i, startTime.Unix(), endTime.Unix()),
 				queryBackoff,
 			)
+			cl.Unlock()
 
 			if err != nil {
 				if strings.Contains(err.Error(), "did not return any results") {

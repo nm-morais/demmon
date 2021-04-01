@@ -448,6 +448,10 @@ func (d *DemmonTree) mergeSiblingsWith(newSiblings []*PeerWithIDChain) {
 			continue
 		}
 
+		if _, isChildren := d.myChildren[msgSibling.String()]; isChildren {
+			continue
+		}
+
 		sibling, ok := d.mySiblings[msgSibling.String()]
 		if !ok {
 			d.addSibling(msgSibling)
@@ -474,6 +478,7 @@ func (d *DemmonTree) mergeSiblingsWith(newSiblings []*PeerWithIDChain) {
 			}
 
 			if _, isChildren := d.myChildren[mySibling.String()]; isChildren {
+				delete(d.mySiblings, mySibling.String())
 				continue
 			}
 
