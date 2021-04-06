@@ -44,19 +44,21 @@ type Monitor struct {
 	treeAggFuncs      map[int64]*treeAggSet
 	globalAggFuncs    map[int64]*globalAggFunc
 
-	currView membershipProtocol.InView
-	logger   *logrus.Logger
-	babel    protocolManager.ProtocolManager
-	me       *engine.MetricsEngine
-	tsdb     *tsdb.TSDB
+	isLandmark bool
+	currView   membershipProtocol.InView
+	logger     *logrus.Logger
+	babel      protocolManager.ProtocolManager
+	me         *engine.MetricsEngine
+	tsdb       *tsdb.TSDB
 }
 
-func New(babel protocolManager.ProtocolManager, db *tsdb.TSDB, me *engine.MetricsEngine) *Monitor {
+func New(babel protocolManager.ProtocolManager, db *tsdb.TSDB, me *engine.MetricsEngine, isLandmark bool) *Monitor {
 	return &Monitor{
 		currID:            make(membershipProtocol.PeerIDChain, 0),
 		neighInterestSets: make(map[int64]*neighInterestSet),
 		treeAggFuncs:      make(map[int64]*treeAggSet),
 		globalAggFuncs:    make(map[int64]*globalAggFunc),
+		isLandmark:        isLandmark,
 		currView:          membershipProtocol.InView{},
 		logger:            logs.NewLogger(name),
 		babel:             babel,

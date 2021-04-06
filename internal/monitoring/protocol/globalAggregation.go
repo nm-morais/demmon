@@ -118,6 +118,9 @@ func (m *Monitor) handleRebroadcastGlobalInterestSetsTimer(t timer.Timer) {
 	// m.logger.Infof("Broadcasting global interest sets...")
 	m.broadcastGlobalAggFuncsToChildren()
 	m.broadcastGlobalAggFuncsToParent()
+	if m.isLandmark {
+		m.broadcastGlobalAggFuncsToSiblings()
+	}
 }
 
 func (m *Monitor) broadcastGlobalAggFuncsToChildren() {
@@ -144,6 +147,33 @@ func (m *Monitor) broadcastGlobalAggFuncsToChildren() {
 		if len(globalIntSetstoSend) > 0 {
 			toSend := NewInstallGlobalAggFuncMessage(globalIntSetstoSend)
 			m.SendMessage(toSend, child, false)
+		}
+	}
+}
+
+func (m *Monitor) broadcastGlobalAggFuncsToSiblings() {
+	for _, sibling := range m.currView.Siblings {
+		globalIntSetstoSend := make(map[int64]body_types.GlobalAggregationFunction)
+		for aggFuncID, is := range m.globalAggFuncs {
+
+			_, selfIsSubscriber := is.subscribers[m.babel.SelfPeer().String()]
+			if selfIsSubscriber {
+				globalIntSetstoSend[aggFuncID] = is.AF
+				continue
+			}
+
+			if _, ok := is.subscribers[sibling.String()]; ok {
+				// m.logger.Warnf("Not Broadcasting global interest set %d to %s because node is a subscriber",
+				// 	aggFuncID,
+				// 	child.String())
+				continue
+			}
+			globalIntSetstoSend[aggFuncID] = is.AF
+		}
+
+		if len(globalIntSetstoSend) > 0 {
+			toSend := NewInstallGlobalAggFuncMessage(globalIntSetstoSend)
+			m.SendMessage(toSend, sibling, false)
 		}
 	}
 }
@@ -211,8 +241,10 @@ func (m *Monitor) handlePropagateGlobalAggFuncMetricsMessage(sender peer.Peer, m
 	}
 
 	if !found && !peer.PeersEqual(sender, m.currView.Parent) {
-		m.logger.Errorf("received interest set propagation message but target (%s) is not parent or children", sender)
-		return
+		if !m.isLandmark {
+			m.logger.Errorf("received interest set propagation message but target (%s) is not parent or children", sender)
+			return
+		}
 	}
 
 	// m.logger.WithFields(logrus.Fields{"value": msgConverted.Value}).Infof(
@@ -332,47 +364,7 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 		if peer.PeersEqual(sub.p, m.babel.SelfPeer()) {
 			continue
 		}
-
-		subVal := sub.values
-		if subVal == nil {
-			// m.logger.Warnf(
-			// 	"Propagating values (%+v) from global agg func without performing difference from incomming value",
-			// 	mergedVal,
-			// )
-			toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: timeNow, Fields: mergedVal})
-			m.SendMessage(toSendMsg, sub.p, false)
-			continue
-		}
-
-		// m.logger.Infof(
-		// 	"Performing difference between: (%+v) and: (%+v)",
-		// 	mergedVal,
-		// 	subVal,
-		// )
-
-		differenceResult, err := m.me.RunMergeFunc(
-			globalAggFunc.AF.DifferenceFunction.Expression,
-			globalAggFunc.AF.DifferenceFunction.Timeout,
-			[]map[string]interface{}{mergedVal, subVal},
-		)
-
-		if err != nil {
-			panic(err)
-		}
-
-		// m.logger.Infof(
-		// 	"Difference result: (%+v)",
-		// 	differenceResult,
-		// )
-
-		toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: timeNow, Fields: differenceResult})
-		// m.logger.Infof(
-		// 	"propagating metrics for global aggregation function %d (%+v) to peer %s",
-		// 	interestSetID,
-		// 	differenceResult,
-		// 	sub.p.String(),
-		// )
-		m.SendMessage(toSendMsg, sub.p, false)
+		m.propagateGlobalAggFuncValuesToSub(timeNow, interestSetID, globalAggFunc, sub, mergedVal)
 	}
 
 	m.babel.RegisterTimer(
@@ -382,6 +374,41 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 			interestSetID,
 		),
 	)
+}
+
+func (m *Monitor) propagateGlobalAggFuncValuesToSub(timeNow time.Time,
+	interestSetID int64,
+	globalAggFunc *globalAggFunc,
+	sub *sub,
+	mergedVal map[string]interface{}) {
+	toSubtract := []map[string]interface{}{}
+	isSubSibling, _, _ := m.getPeerRelationshipType(sub.p)
+	if m.isLandmark && isSubSibling {
+		for _, sub2 := range globalAggFunc.subscribers {
+			isSibling, _, _ := m.getPeerRelationshipType(sub2.p)
+			if isSibling && sub2.values != nil {
+				toSubtract = append(toSubtract, sub2.values)
+			}
+		}
+	}
+	if !isSubSibling && sub.values != nil {
+		toSubtract = append(toSubtract, sub.values)
+	}
+	if len(toSubtract) > 0 {
+		differenceResult, err := m.me.RunMergeFunc(
+			globalAggFunc.AF.DifferenceFunction.Expression,
+			globalAggFunc.AF.DifferenceFunction.Timeout,
+			append([]map[string]interface{}{mergedVal}, toSubtract...),
+		)
+		if err != nil {
+			panic(err)
+		}
+		toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: timeNow, Fields: differenceResult})
+		m.SendMessage(toSendMsg, sub.p, false)
+	} else {
+		toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: timeNow, Fields: mergedVal})
+		m.SendMessage(toSendMsg, sub.p, false)
+	}
 }
 
 func (m *Monitor) cleanupGlobalAggFuncs() {

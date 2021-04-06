@@ -494,10 +494,15 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 	measuredPeersArr := make(MeasuredPeersByLat, 0, len(d.measuredPeers))
 
 	for _, p := range d.measuredPeers {
-		if d.self.IsDescendentOf(p.Chain()) {
+		if p.IsDescendentOf(d.self.chain) {
 			delete(d.measuredPeers, p.String())
 			continue
 		}
+
+		// if d.self.IsDescendentOf(p.chain) {
+		// delete(d.measuredPeers, p.String())
+		// continue
+		// }
 
 		measuredPeersArr = append(measuredPeersArr, p)
 	}
@@ -654,9 +659,9 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 	}
 	childrenAsMeasuredPeers := d.getPeerMapAsPeerMeasuredArr(d.myChildren)
 	peersToKickPerAbsorber := make([]*struct {
-		totalLatency int
-		absorber     *MeasuredPeer
-		peersToKick  MeasuredPeersByLat
+		TotalLatency int
+		Absorber     *MeasuredPeer
+		PeersToKick  MeasuredPeersByLat
 	}, 0)
 
 	for _, child := range childrenAsMeasuredPeers {
@@ -664,23 +669,23 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 			break
 		}
 		peersToKickPerAbsorber = append(peersToKickPerAbsorber, &struct {
-			totalLatency int
-			absorber     *MeasuredPeer
-			peersToKick  MeasuredPeersByLat
+			TotalLatency int
+			Absorber     *MeasuredPeer
+			PeersToKick  MeasuredPeersByLat
 		}{
-			totalLatency: 0,
-			absorber:     child,
-			peersToKick:  []*MeasuredPeer{},
+			TotalLatency: 0,
+			Absorber:     child,
+			PeersToKick:  []*MeasuredPeer{},
 		})
 	}
 
 	alreadyKicked := func(toFind string) bool {
 		for _, v := range peersToKickPerAbsorber {
-			if v.absorber.String() == toFind {
+			if v.Absorber.String() == toFind {
 				return true
 			}
 
-			for _, v2 := range v.peersToKick {
+			for _, v2 := range v.PeersToKick {
 				if v2.String() == toFind {
 					return true
 				}
@@ -693,17 +698,17 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 		bestLat := time.Duration(math.MaxInt64)
 		var bestPeerToKick *MeasuredPeer
 		var bestPeerAbsorber *struct {
-			totalLatency int
-			absorber     *MeasuredPeer
-			peersToKick  MeasuredPeersByLat
+			TotalLatency int
+			Absorber     *MeasuredPeer
+			PeersToKick  MeasuredPeersByLat
 		}
 
 		for _, peerAbsorberStats := range peersToKickPerAbsorber {
-			if len(peerAbsorberStats.peersToKick) == d.config.NrPeersToBecomeChildrenPerParentInAbsorb {
+			if len(peerAbsorberStats.PeersToKick) == d.config.NrPeersToBecomeChildrenPerParentInAbsorb {
 				continue
 			}
 
-			peerAbsorber := peerAbsorberStats.absorber
+			peerAbsorber := peerAbsorberStats.Absorber
 			peerAbsorberSiblingLatencies := d.myChildrenLatencies[peerAbsorber.String()]
 			sort.Sort(peerAbsorberSiblingLatencies)
 			// d.logger.Infof("peer %s sibling latencies: %s", peerAbsorber.StringWithFields(), peerAbsorberSiblingLatencies.String())
@@ -739,20 +744,22 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 		if bestPeerAbsorber == nil {
 			break
 		}
-		bestPeerAbsorber.peersToKick = append(bestPeerAbsorber.peersToKick, bestPeerToKick)
-		bestPeerAbsorber.totalLatency += int(bestPeerToKick.MeasuredLatency)
+		bestPeerAbsorber.PeersToKick = append(bestPeerAbsorber.PeersToKick, bestPeerToKick)
+		bestPeerAbsorber.TotalLatency += int(bestPeerToKick.MeasuredLatency)
 	}
 
 	for _, absorberStats := range peersToKickPerAbsorber {
-		if len(absorberStats.peersToKick) < int(d.config.NrPeersToBecomeChildrenPerParentInAbsorb) {
-			// d.logger.Infof("peer %s does not have enough siblings (%d/%d) to become parent in absorb", absorberStats.absorber.StringWithFields(), len(absorberStats.peersToKick), int(d.config.NrPeersToBecomeChildrenPerParentInAbsorb))
+		if len(absorberStats.PeersToKick) < int(d.config.NrPeersToBecomeChildrenPerParentInAbsorb) {
+			d.logger.Infof("peer %s does not have enough siblings (%d/%d) to become parent in absorb", absorberStats.Absorber.StringWithFields(), len(absorberStats.PeersToKick), int(d.config.NrPeersToBecomeChildrenPerParentInAbsorb))
 			return
 		}
 	}
 
+	d.logger.Infof("handleCheckChildrenSizeTimer results: %+v", peersToKickPerAbsorber)
+
 	for _, absorberStats := range peersToKickPerAbsorber {
-		absorber := absorberStats.absorber
-		for _, toKickPeer := range absorberStats.peersToKick {
+		absorber := absorberStats.Absorber
+		for _, toKickPeer := range absorberStats.PeersToKick {
 			d.logger.Infof(
 				"Sending absorb message with peerToAbsorb: %s, peerAbsorber: %s",
 				toKickPeer.StringWithFields(),

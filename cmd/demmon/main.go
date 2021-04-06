@@ -69,8 +69,8 @@ var (
 		ChildrenRefreshTickDuration:   5 * time.Second,
 		RejoinTimerDuration:           10 * time.Second,
 
-		AttemptImprovePositionProbability:    0.2,
-		EvalMeasuredPeersRefreshTickDuration: 5 * time.Second,
+		AttemptImprovePositionProbability:    0.5,
+		EvalMeasuredPeersRefreshTickDuration: 12 * time.Second,
 
 		// EnableSwitch: false,
 
@@ -294,7 +294,7 @@ func start(
 
 	db := tsdb.GetDB(dbConf)
 	me := engine.NewMetricsEngine(db, *meConf, true)
-	monitorProto := monitoringProto.New(babel, db, me)
+	monitorProto := monitoringProto.New(babel, db, me, isLandmark)
 	monitor := internal.New(*dConf, monitorProto, me, db, fm, babel)
 	babel.RegisterProtocol(monitorProto)
 	if !waitForStart {

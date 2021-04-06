@@ -97,13 +97,19 @@ func setupBenchmarkExporter(eConf *exporter.Conf, logFolder string, queryFrequen
 	setTicker := time.NewTicker(exportFrequency / 2)
 	writeLocalTicker := time.NewTicker(queryFrequency)
 
+	getVal := func() float64 {
+		// t := time.Now()
+		// sin := math.Sin(float64(t.Unix()) / 9)
+		return 1.0
+	}
+
 	go func() {
 		for {
 			select {
 			case <-setTicker.C:
-				g.Set(float64(1))
+				g.Set(getVal())
 			case <-writeLocalTicker.C:
-				writeOrPanic(localValuesCsvWriter, []string{fmt.Sprintf("%d", int(1)), fmt.Sprintf("%d", time.Now().UnixNano())})
+				writeOrPanic(localValuesCsvWriter, []string{fmt.Sprintf("%f", getVal()), fmt.Sprintf("%d", time.Now().UnixNano())})
 			case err := <-errChan:
 				panic(err)
 			}
