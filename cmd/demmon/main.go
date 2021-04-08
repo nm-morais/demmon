@@ -189,7 +189,7 @@ func main() {
 		},
 		Silent:           silent,
 		LogFolder:        logFolder,
-		HandshakeTimeout: 20 * time.Second,
+		HandshakeTimeout: 10 * time.Second,
 		Peer:             peer.NewPeer(GetLocalIP(), uint16(protosPortVar), uint16(analyticsPortVar)),
 	}
 
@@ -202,7 +202,7 @@ func main() {
 		DialAttempts:    3,
 		DialBackoffTime: 1 * time.Second,
 		DialTimeout:     5 * time.Second,
-		RequestTimeout:  3 * time.Second,
+		RequestTimeout:  5 * time.Second,
 	}
 
 	advertiseListenAddr, ok := GetAdvertiseListenAddrVar()

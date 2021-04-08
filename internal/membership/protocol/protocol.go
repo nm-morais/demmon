@@ -1460,7 +1460,6 @@ func (d *DemmonTree) attemptProgress() {
 	d.logger.Infof("Joining under peer %s because nodes in next level do not have enough children", d.bestPeerlastLevel.peer.StringWithFields())
 	d.myPendingParentInJoin = d.bestPeerlastLevel
 	d.sendJoinAsChildMsg(d.bestPeerlastLevel.peer.PeerWithIDChain, d.bestPeerlastLevel.peer.MeasuredLatency, false, false)
-	return
 
 	// for _, v := range nextLevelPeers {
 	// 	d.unwatchPeers(v.peer)

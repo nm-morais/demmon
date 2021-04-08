@@ -1,12 +1,12 @@
 package engine
 
 import (
+	"context"
 	"io"
 	"math"
 	"reflect"
 	"regexp"
 	"runtime/debug"
-	"sync"
 
 	// _ "github.com/robertkrimen/otto/underscore"
 
@@ -16,6 +16,7 @@ import (
 	"sort"
 	"time"
 
+	pool "github.com/jolestar/go-commons-pool/v2"
 	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
 	"github.com/robertkrimen/otto"
 	"github.com/sirupsen/logrus"
@@ -29,23 +30,27 @@ type Conf struct {
 type MetricsEngine struct {
 	logger *logrus.Logger
 	db     *tsdb.TSDB
-	vm     *otto.Otto
-	vmLock *sync.Mutex
+	pool   *pool.ObjectPool
 }
 
 func NewMetricsEngine(db *tsdb.TSDB, conf Conf, logToFile bool) *MetricsEngine {
 	logger := logrus.New()
-
-	if logToFile {
-		setupLogger(logger, conf.LogFolder, conf.LogFile, conf.Silent)
-	}
 	me := &MetricsEngine{
 		logger: logger,
 		db:     db,
-		vm:     otto.New(),
-		vmLock: &sync.Mutex{},
 	}
-	me.setVMFunctions(me.vm)
+	if logToFile {
+		setupLogger(logger, conf.LogFolder, conf.LogFile, conf.Silent)
+	}
+	ctx := context.Background()
+	p := pool.NewObjectPoolWithDefaultConfig(ctx, pool.NewPooledObjectFactorySimple(
+		func(context.Context) (interface{}, error) {
+			vm := otto.New()
+			me.setVMFunctions(vm)
+			return vm, nil
+		}))
+	p.Config.MaxTotal = 10
+	me.pool = p
 	return me
 }
 
@@ -55,10 +60,24 @@ var (
 	errEmptyResult          = errors.New("query did not return any values")
 )
 
+func (e *MetricsEngine) borrowVM() *otto.Otto {
+	obj1, err := e.pool.BorrowObject(context.TODO())
+	if err != nil {
+		panic(err)
+	}
+
+	return obj1.(*otto.Otto)
+}
+func (e *MetricsEngine) returnVM(obj *otto.Otto) {
+	if err := e.pool.ReturnObject(context.TODO(), obj); err != nil {
+		panic(err)
+	}
+}
+
 func (e *MetricsEngine) MakeBoolQuery(expression string, timeoutDuration time.Duration) (bool, error) {
-	e.vmLock.Lock()
-	ottoVal, err := e.runWithTimeout(e.vm, expression, timeoutDuration)
-	e.vmLock.Unlock()
+	vm := e.borrowVM()
+	defer e.returnVM(vm)
+	ottoVal, err := e.runWithTimeout(vm, expression, timeoutDuration)
 	if err != nil {
 		return false, err
 	}
@@ -74,15 +93,15 @@ func (e *MetricsEngine) MakeBoolQuery(expression string, timeoutDuration time.Du
 	case bool:
 		return vConverted, nil
 	default:
-		e.logger.Panicf("Unsupported return type: %s, (%+v)", reflect.TypeOf(vConverted), vConverted)
+		e.logger.Errorf("Unsupported return type: %s, (%+v)", reflect.TypeOf(vConverted), vConverted)
 		return false, errUnsuportedReturnType
 	}
 }
 
 func (e *MetricsEngine) MakeQuerySingleReturn(expression string, timeoutDuration time.Duration) (map[string]interface{}, error) {
-	e.vmLock.Lock()
-	ottoVal, err := e.runWithTimeout(e.vm, expression, timeoutDuration)
-	e.vmLock.Unlock()
+	vm := e.borrowVM()
+	defer e.returnVM(vm)
+	ottoVal, err := e.runWithTimeout(vm, expression, timeoutDuration)
 
 	if err != nil {
 		return nil, err
@@ -97,15 +116,16 @@ func (e *MetricsEngine) MakeQuerySingleReturn(expression string, timeoutDuration
 	case map[string]interface{}:
 		return vConverted, nil
 	default:
-		e.logger.Panicf("Unsupported return type: %s, (%+v)", reflect.TypeOf(vConverted), vConverted)
+		e.logger.Errorf("Unsupported return type: %s, (%+v)", reflect.TypeOf(vConverted), vConverted)
 		return nil, errUnsuportedReturnType
 	}
 }
 
 func (e *MetricsEngine) MakeQuery(expression string, timeoutDuration time.Duration) ([]tsdb.ReadOnlyTimeSeries, error) {
-	e.vmLock.Lock()
-	ottoVal, err := e.runWithTimeout(e.vm, expression, timeoutDuration)
-	e.vmLock.Unlock()
+	vm := e.borrowVM()
+	defer e.returnVM(vm)
+
+	ottoVal, err := e.runWithTimeout(vm, expression, timeoutDuration)
 
 	if err != nil {
 		return nil, err
@@ -124,7 +144,7 @@ func (e *MetricsEngine) MakeQuery(expression string, timeoutDuration time.Durati
 	case tsdb.ReadOnlyTimeSeries:
 		return []tsdb.ReadOnlyTimeSeries{vConverted}, nil
 	default:
-		e.logger.Panicf("Unsupported return type: %s, (%+v)", reflect.TypeOf(vConverted), vConverted)
+		e.logger.Errorf("Unsupported return type: %s, (%+v)", reflect.TypeOf(vConverted), vConverted)
 		return nil, errUnsuportedReturnType
 	}
 }
@@ -141,17 +161,15 @@ func (e *MetricsEngine) RunMergeFunc(expression string, timeoutDuration time.Dur
 
 		argsCopy = append(argsCopy, argCopy)
 	}
-
-	e.vmLock.Lock()
-	err := e.vm.Set("args", argsCopy)
+	vm := e.borrowVM()
+	defer e.returnVM(vm)
+	err := vm.Set("args", argsCopy)
 	if err != nil {
-		_ = e.vm.Set("args", otto.UndefinedValue())
-		e.vmLock.Unlock()
+		_ = vm.Set("args", otto.UndefinedValue())
 		return nil, err
 	}
-	ottoVal, err := e.runWithTimeout(e.vm, expression, timeoutDuration)
-	_ = e.vm.Set("args", otto.UndefinedValue())
-	e.vmLock.Unlock()
+	ottoVal, err := e.runWithTimeout(vm, expression, timeoutDuration)
+	_ = vm.Set("args", otto.UndefinedValue())
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +185,7 @@ func (e *MetricsEngine) RunMergeFunc(expression string, timeoutDuration time.Dur
 	case map[string]interface{}:
 		return vConverted, nil
 	default:
-		e.logger.Panicf("Unsupported return type: %s, (%+v)", reflect.TypeOf(vConverted), vConverted)
+		e.logger.Errorf("Unsupported return type: %s, (%+v)", reflect.TypeOf(vConverted), vConverted)
 		return nil, errUnsuportedReturnType
 	}
 }
@@ -233,7 +251,7 @@ func (e *MetricsEngine) runWithTimeout(vm *otto.Otto, expression string, timeout
 			}
 		}
 
-		_ = e.vm.Set("result", otto.UndefinedValue())
+		_ = vm.Set("result", otto.UndefinedValue())
 
 		returnChan <- returnType{
 			ans: &val,

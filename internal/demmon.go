@@ -460,7 +460,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			clients:   make(map[string]*demmon_client.DemmonClient),
 		}
 
-		d.logger.Infof("Creating custom interest set %d func output bucket: %s", setID, reqBody.IS.OutputBucketOpts.Name)
+		d.logger.Infof("Creating custom interest set %s func output bucket: %s", setID, reqBody.IS.OutputBucketOpts.Name)
 		d.customInterestSets.Store(setID, customIntSet)
 		go d.handleCustomInterestSet(setID, r, c)
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, body_types.InstallInterestSetReply{SetID: setID})
@@ -776,7 +776,7 @@ func (d *Demmon) handleBroadcastMessages() {
 			for _, bcastMsg := range updates {
 				subsGeneric, ok := d.broadcastMessageSubscribers.Load(bcastMsg.ID)
 				if !ok {
-					d.logger.Warnf("Could not deliver broadcasted messages because there are no listeners for msg type %d", bcastMsg.ID)
+					d.logger.Warnf("Could not deliver broadcasted messages because there are no listeners for msg type %s", bcastMsg.ID)
 					continue
 				}
 				subs := subsGeneric.(*broadcastMessageSubscribers)

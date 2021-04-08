@@ -30,7 +30,7 @@ func benchmarkDemmonMetrics(eConf *exporter.Conf, isLandmark bool, benchmarkType
 		maxRetries         = 3
 		connectTimeout     = 3 * time.Second
 		tickerTimeout      = 5 * time.Second
-		requestTimeout     = 3 * time.Second
+		requestTimeout     = 5 * time.Second
 	)
 
 	clientConf := client.DemmonClientConf{
