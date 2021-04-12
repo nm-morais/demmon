@@ -73,7 +73,7 @@ func (d *DemmonTree) printInViewStats() {
 	}
 
 	for _, child := range d.myChildren {
-		tmp.Children = append(tmp.Children, convert(child))
+		tmp.Children = append(tmp.Children, convert(child.PeerWithIDChain))
 	}
 
 	for _, sibling := range d.mySiblings {
@@ -124,10 +124,18 @@ outer:
 	}
 }
 
-func peerMapToArr(peers map[string]*PeerWithIDChain) []*PeerWithIDChain {
+func PeerWithIDChainMapToArr(peers map[string]*PeerWithIDChain) []*PeerWithIDChain {
 	toReturn := make([]*PeerWithIDChain, 0)
 	for _, p := range peers {
 		toReturn = append(toReturn, p)
+	}
+	return toReturn
+}
+
+func PeerWithIDChainAndBWMapToArr(peers map[string]*PeerWithIDChainAndBW) []*PeerWithIDChain {
+	toReturn := make([]*PeerWithIDChain, 0)
+	for _, p := range peers {
+		toReturn = append(toReturn, p.PeerWithIDChain)
 	}
 	return toReturn
 }
@@ -193,7 +201,37 @@ func getExcludingDescendantsOf(toFilter []*PeerWithIDChain, ascendantChain PeerI
 	return toReturn
 }
 
-func (d *DemmonTree) getPeerMapAsPeerMeasuredArr(peerMap map[string]*PeerWithIDChain, exclusions ...*PeerWithIDChain) MeasuredPeersByLat {
+func (d *DemmonTree) getPeerWithIDChainAndBWMapAsPeerMeasuredArr(peerMap map[string]*PeerWithIDChainAndBW, exclusions ...*PeerWithIDChain) MeasuredPeersByLat {
+	measuredPeers := make(MeasuredPeersByLat, 0)
+
+	for _, p := range peerMap {
+
+		found := false
+		for _, exclusion := range exclusions {
+			if peer.PeersEqual(exclusion, p) {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		nodeStats, err := d.nodeWatcher.GetNodeInfo(p.Peer)
+		var currLat time.Duration
+		if err != nil {
+			d.logger.Warnf("Do not have latency measurement for %s", p.String())
+			currLat = math.MaxInt64
+		} else {
+			currLat = nodeStats.LatencyCalc().CurrValue()
+		}
+		measuredPeers = append(measuredPeers, NewMeasuredPeer(p.PeerWithIDChain, currLat))
+	}
+	sort.Sort(measuredPeers)
+
+	return measuredPeers
+}
+
+func (d *DemmonTree) getPeerWithIDChainMapAsPeerMeasuredArr(peerMap map[string]*PeerWithIDChain, exclusions ...*PeerWithIDChain) MeasuredPeersByLat {
 	measuredPeers := make(MeasuredPeersByLat, 0)
 
 	for _, p := range peerMap {

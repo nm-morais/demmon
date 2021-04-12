@@ -25,6 +25,8 @@ const (
 	BenchmarkMembershipEnvName    = "BENCKMARK_MEMBERSHIP"
 	BenchmarkDemmonEnvName        = "BENCKMARK_METRICS"
 	BenchmarkDemmonTypeEnvName    = "BENCKMARK_METRICS_TYPE"
+	UseBandwidthEnvName           = "USE_BW"
+	BandwidthScoreEnvName         = "BW_SCORE"
 
 	minProtosPort = 7000
 	maxProtosPort = 8000
@@ -233,6 +235,11 @@ func main() {
 		CleanupFrequency: 5 * time.Second,
 	}
 
+	demmonTreeConf.UseBwScore = GetUseBWEnvVar()
+	if demmonTreeConf.UseBwScore {
+		demmonTreeConf.BandwidthScore = GetBWScore()
+	}
+
 	if randProtosPort {
 		protosPortVar = int(getRandInt(int64(maxProtosPort-minProtosPort))) + minProtosPort
 	}
@@ -240,6 +247,9 @@ func main() {
 	if randAnalyticsPort {
 		analyticsPortVar = int(getRandInt(int64(maxAnalyticsPort-minAnalyticsPort))) + minAnalyticsPort
 	}
+
+	demmonTreeConf.UseBwScore = GetUseBWEnvVar()
+	demmonTreeConf.BandwidthScore = GetBWScore()
 
 	fmt.Println("Self peer: ", babelConf.Peer.String())
 	isLandmark := false

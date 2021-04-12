@@ -8,7 +8,6 @@ import (
 	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/request"
 	"github.com/nm-morais/go-babel/pkg/timer"
-	"github.com/sirupsen/logrus"
 )
 
 type neighValue struct {
@@ -79,11 +78,11 @@ func (m *Monitor) handleExportTreeAggregationFuncTimer(t timer.Timer) {
 		return
 	}
 
-	m.logger.Infof(
-		"Exporting metric values for tree aggregation func %d: %s",
-		interestSetID,
-		treeAggFunc.AggSet.OutputBucketOpts.Name,
-	)
+	// m.logger.Infof(
+	// 	"Exporting metric values for tree aggregation func %d: %s",
+	// 	interestSetID,
+	// 	treeAggFunc.AggSet.OutputBucketOpts.Name,
+	// )
 	m.propagateTreeIntSetMetrics(interestSetID, treeAggFunc, false)
 }
 
@@ -102,7 +101,7 @@ func (m *Monitor) handleExportTreeAggregationFuncIntermediateValuesTimer(t timer
 		m.logger.Panicf("Exporting intermediate values for non-local tree aggregation set %d", interestSetID)
 	}
 
-	m.logger.Infof("Storing intermediate values for tree agg func %d", interestSetID)
+	// m.logger.Infof("Storing intermediate values for tree agg func %d", interestSetID)
 	for _, v := range treeAggFunc.childValues {
 		if !m.isPeerInView(v.sender) {
 			continue
@@ -157,10 +156,10 @@ func (m *Monitor) propagateTreeIntSetMetrics(treeAggFuncID int64, treeAggFunc *t
 
 		valuesToMerge = append(valuesToMerge, queryResult)
 
-		m.logger.Infof(
-			"Merging values: (%+v)",
-			valuesToMerge,
-		)
+		// m.logger.Infof(
+		// 	"Merging values: (%+v)",
+		// 	valuesToMerge,
+		// )
 
 		mergedVal, err = m.me.RunMergeFunc(treeAggFunc.AggSet.MergeFunction.Expression, treeAggFunc.AggSet.MergeFunction.Timeout, valuesToMerge)
 		if err != nil {
@@ -191,12 +190,12 @@ func (m *Monitor) propagateTreeIntSetMetrics(treeAggFuncID int64, treeAggFunc *t
 		}
 
 		toSendMsg := NewPropagateTreeAggFuncMetricsMessage(treeAggFuncID, int64(treeAggFunc.AggSet.Levels), &body_types.ObservableDTO{TS: time.Now(), Fields: mergedVal}, membershipChange)
-		m.logger.Infof(
-			"propagating metrics for tree aggregation function %d (%+v) to: %s",
-			treeAggFuncID,
-			mergedVal,
-			treeAggFunc.sender.String(),
-		)
+		// m.logger.Infof(
+		// 	"propagating metrics for tree aggregation function %d (%+v) to: %s",
+		// 	treeAggFuncID,
+		// 	mergedVal,
+		// 	treeAggFunc.sender.String(),
+		// )
 
 		m.SendMessage(toSendMsg, treeAggFunc.sender, !membershipChange)
 	}
@@ -226,12 +225,12 @@ func (m *Monitor) handlePropagateTreeAggFuncMetricsMessage(sender peer.Peer, msg
 		return
 	}
 
-	m.logger.WithFields(logrus.Fields{"value": msgConverted.Value}).Infof(
-		"received propagation of metric values for tree agg func %d: %s from %s",
-		treeAggSetID,
-		treeAggSet.AggSet.OutputBucketOpts.Name,
-		sender.String(),
-	)
+	// m.logger.WithFields(logrus.Fields{"value": msgConverted.Value}).Infof(
+	// 	"received propagation of metric values for tree agg func %d: %s from %s",
+	// 	treeAggSetID,
+	// 	treeAggSet.AggSet.OutputBucketOpts.Name,
+	// 	sender.String(),
+	// )
 
 	_, ok = treeAggSet.childValues[sender.String()]
 	treeAggSet.childValues[sender.String()] = neighValue{
@@ -243,7 +242,7 @@ func (m *Monitor) handlePropagateTreeAggFuncMetricsMessage(sender peer.Peer, msg
 	if msgConverted.MembershipChange || !ok {
 		if treeAggSet.AggSet.UpdateOnMembershipChange {
 			if time.Since(treeAggSet.lastPropagationMembershipChange) > treeAggSet.AggSet.MaxFrequencyUpdateOnMembershipChange {
-				m.logger.Infof("Propagating int set %d values since there was a membership change", treeAggSetID)
+				// m.logger.Infof("Propagating int set %d values since there was a membership change", treeAggSetID)
 				m.propagateTreeIntSetMetrics(treeAggSetID, treeAggSet, msgConverted.MembershipChange)
 				treeAggSet.lastPropagationMembershipChange = time.Now()
 			}
@@ -308,11 +307,11 @@ func (m *Monitor) handleInstallTreeAggFuncMetricsMessage(sender peer.Peer, msg m
 		return
 	}
 
-	m.logger.Infof(
-		"received message to install tree aggregation function from %s (%+v)",
-		sender.String(),
-		installTreeAggFuncMsg,
-	)
+	// m.logger.Infof(
+	// 	"received message to install tree aggregation function from %s (%+v)",
+	// 	sender.String(),
+	// 	installTreeAggFuncMsg,
+	// )
 
 	treeAggFuncsToInstall := make(map[int64]*body_types.TreeAggregationSet)
 

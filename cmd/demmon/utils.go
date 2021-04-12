@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 
 	membershipProtocol "github.com/nm-morais/demmon/internal/membership/protocol"
@@ -37,6 +38,26 @@ func GetAdvertiseListenAddrVar() (string, bool) {
 		return "", false
 	}
 	return hostIP, true
+}
+
+func GetUseBWEnvVar() bool {
+	useBw, ok := os.LookupEnv(UseBandwidthEnvName)
+	if !ok {
+		return false
+	}
+	return useBw == "true"
+}
+
+func GetBWScore() int {
+	bwStr, ok := os.LookupEnv(BandwidthScoreEnvName)
+	if !ok {
+		return 0
+	}
+	bw, err := strconv.ParseInt(bwStr, 10, 32)
+	if err != nil {
+		panic(err)
+	}
+	return int(bw)
 }
 
 func GetWaitForStartEnvVar() bool {

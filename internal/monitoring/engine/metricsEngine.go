@@ -179,8 +179,7 @@ func (e *MetricsEngine) RunMergeFunc(expression string, timeoutDuration time.Dur
 		return nil, err
 	}
 
-	e.logger.Infof("Merge function %s got result %+v", expression, vGeneric)
-
+	// e.logger.Infof("Merge function %s got result %+v", expression, vGeneric)
 	switch vConverted := vGeneric.(type) {
 	case map[string]interface{}:
 		return vConverted, nil

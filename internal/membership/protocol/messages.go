@@ -235,7 +235,6 @@ func (updateChildMessageSerializer) Serialize(msg message.Message) []byte {
 	ucMsg := msg.(UpdateChildMessage)
 
 	var msgBytes []byte
-
 	msgBytes = append(msgBytes, SerializeMeasuredPeerArray(ucMsg.Siblings)...)
 	msgBytes = append(msgBytes, ucMsg.Child.MarshalWithFields()...)
 
@@ -331,6 +330,7 @@ func (JoinAsParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 const joinAsChildMessageID = 2005
 
 type JoinAsChildMessage struct {
+	BWScore         int
 	Improvement     bool
 	Urgent          bool
 	ExpectedID      PeerIDChain
@@ -339,6 +339,7 @@ type JoinAsChildMessage struct {
 }
 
 func NewJoinAsChildMessage(
+	bwScore int,
 	sender *PeerWithIDChain,
 	measuredLatency time.Duration,
 	expectedID PeerIDChain,
@@ -346,6 +347,7 @@ func NewJoinAsChildMessage(
 	improvement bool,
 ) JoinAsChildMessage {
 	return JoinAsChildMessage{
+		BWScore:         bwScore,
 		Improvement:     improvement,
 		Urgent:          urgent,
 		ExpectedID:      expectedID,
@@ -376,6 +378,10 @@ func (JoinAsChildMsgSerializer) Serialize(msg message.Message) []byte {
 	msgBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(msgBytes, uint64(jacMsg.MeasuredLatency))
 
+	scoreBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(scoreBytes, uint32(jacMsg.BWScore))
+	msgBytes = append(msgBytes, scoreBytes...)
+
 	msgBytes = append(msgBytes, jacMsg.Sender.MarshalWithFields()...)
 	msgBytes = append(msgBytes, SerializePeerIDChain(jacMsg.ExpectedID)...)
 
@@ -398,6 +404,8 @@ func (JoinAsChildMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	bufPos := 0
 	measuredLatency := time.Duration(binary.BigEndian.Uint64(msgBytes[bufPos:]))
 	bufPos += 8
+	bwScore := time.Duration(binary.BigEndian.Uint32(msgBytes[bufPos:]))
+	bufPos += 4
 	n, sender := UnmarshalPeerWithIDChain(msgBytes[bufPos:])
 	bufPos += n
 	n, peerIDChain := DeserializePeerIDChain(msgBytes[bufPos:])
@@ -406,7 +414,14 @@ func (JoinAsChildMsgSerializer) Deserialize(msgBytes []byte) message.Message {
 	bufPos += 1
 	improvement := msgBytes[bufPos] == 1
 
-	return JoinAsChildMessage{MeasuredLatency: measuredLatency, ExpectedID: peerIDChain, Urgent: urgent, Sender: sender, Improvement: improvement}
+	return JoinAsChildMessage{
+		BWScore:         int(bwScore),
+		Improvement:     improvement,
+		Urgent:          urgent,
+		ExpectedID:      peerIDChain,
+		MeasuredLatency: measuredLatency,
+		Sender:          sender,
+	}
 }
 
 const joinAsChildMessageReplyID = 2006

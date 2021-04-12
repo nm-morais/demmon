@@ -11,7 +11,6 @@ import (
 	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/request"
 	"github.com/nm-morais/go-babel/pkg/timer"
-	"github.com/sirupsen/logrus"
 )
 
 type subWithTTL struct {
@@ -262,13 +261,13 @@ func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer
 		return
 	}
 
-	m.logger.WithFields(logrus.Fields{"metric_values": msgConverted.Metrics}).Infof(
-		"received propagation of metric values with TTL=%d for interest set %d: %s from %s",
-		msgConverted.TTL,
-		interestSetID,
-		interestSet.IS.OutputBucketOpts.Name,
-		sender.String(),
-	)
+	// m.logger.WithFields(logrus.Fields{"metric_values": msgConverted.Metrics}).Infof(
+	// 	"received propagation of metric values with TTL=%d for interest set %d: %s from %s",
+	// 	msgConverted.TTL,
+	// 	interestSetID,
+	// 	interestSet.IS.OutputBucketOpts.Name,
+	// 	sender.String(),
+	// )
 
 	for _, sub := range interestSet.subscribers {
 
@@ -290,12 +289,12 @@ func (m *Monitor) handlePropagateNeighInterestSetMetricsMessage(sender peer.Peer
 		}
 
 		if peer.PeersEqual(m.babel.SelfPeer(), sub.p) {
-			m.logger.Infof(
-				"Inserting metric values locally for interest set %d: %s from %s",
-				interestSetID,
-				interestSet.IS.OutputBucketOpts.Name,
-				sender.String(),
-			)
+			// m.logger.Infof(
+			// 	"Inserting metric values locally for interest set %d: %s from %s",
+			// 	interestSetID,
+			// 	interestSet.IS.OutputBucketOpts.Name,
+			// 	sender.String(),
+			// )
 			for _, ts := range msgConverted.Metrics {
 				tmpTags := map[string]string{}
 

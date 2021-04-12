@@ -89,7 +89,7 @@ func (m *Monitor) handleExportGlobalAggFuncIntermediateValuesTimer(t timer.Timer
 		m.logger.Panicf("Exporting intermediate values for non-local global aggregation set %d", interestSetID)
 	}
 
-	m.logger.Infof("Storing intermediate values for global agg func %d", interestSetID)
+	// m.logger.Infof("Storing intermediate values for global agg func %d", interestSetID)
 	for _, v := range globalAggFunc.subscribers {
 		if !m.isPeerInView(v.p) {
 			continue
@@ -329,11 +329,11 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 			valuesToMerge = append(valuesToMerge, v.values)
 		}
 
-		m.logger.Infof(
-			"Merging value: (%+v) with (%+v)",
-			queryResult,
-			globalAggFunc.subscribers,
-		)
+		// m.logger.Infof(
+		// 	"Merging value: (%+v) with (%+v)",
+		// 	queryResult,
+		// 	globalAggFunc.subscribers,
+		// )
 
 		mergedVal, err = m.me.RunMergeFunc(globalAggFunc.AF.MergeFunction.Expression, globalAggFunc.AF.MergeFunction.Timeout, valuesToMerge)
 		if err != nil {

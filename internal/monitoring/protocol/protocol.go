@@ -70,7 +70,7 @@ func New(babel protocolManager.ProtocolManager, db *tsdb.TSDB, me *engine.Metric
 // BOILERPLATE
 
 func (m *Monitor) MessageDelivered(msg message.Message, p peer.Peer) {
-	m.logger.Infof("Message of type %s delivered to: %s", reflect.TypeOf(msg), p)
+	// m.logger.Infof("Message of type %s delivered to: %s", reflect.TypeOf(msg), p)
 }
 
 func (m *Monitor) MessageDeliveryErr(msg message.Message, p peer.Peer, err errors.Error) {

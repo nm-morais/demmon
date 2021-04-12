@@ -1,6 +1,7 @@
 #!/bin/bash
 
-set -e
+nContainers=$1
+shift 1
 
 if [ -z $SWARM_NET ]; then
   echo "Pls specify env var SWARM_NET"
@@ -38,19 +39,23 @@ if [[ $n_nodes -eq 0 ]]; then
   exit
 fi
 
-maxcpu=$(nproc)
-nContainers=$(wc -l $IPS_FILE)
 i=0
+
+echo "$nContainers : $nContainers"
 echo "Lauching containers..."
-while read -r ip name
+while read -r ip name bw
 do
+  if [[ $i -eq $nContainers ]]; then
+    break
+  fi
   echo "ip: $ip"
   echo "name: $name"
+  echo "bw: $bw"
   idx=$(($i % n_nodes))
   idx=$((idx+1))
   node=${!idx}
 
-  cmd="docker run -v $SWARM_VOL_DIR:/tmp/logs -d -t --cap-add=NET_ADMIN \
+  cmd="docker run -v $SWARM_VOL_DIR:/tmp/logs -v /lib/modules:/lib/modules -d -t --privileged --cap-add=ALL \
    --net $SWARM_NET \
    --ip $ip \
    --name $name \
@@ -59,9 +64,11 @@ do
    -e BENCKMARK_MEMBERSHIP='$BENCKMARK_MEMBERSHIP' \
    -e BENCKMARK_METRICS='$BENCKMARK_METRICS' \
    -e BENCKMARK_METRICS_TYPE='$BENCKMARK_METRICS_TYPE' \
-    $DOCKER_IMAGE $i $nContainers"
+   -e USE_BW='$USE_BW' \
+   -e BW_SCORE='$bw' \
+    $DOCKER_IMAGE $i $nContainers $bw"
   
-  # echo "running command: '$cmd'"
+  echo "running command: '$cmd'"
 
   echo "Starting ${i}. Container $name with ip $ip and name $name on: $node"
   ssh -n $node "$cmd"
