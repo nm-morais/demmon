@@ -446,8 +446,11 @@ func (d *DemmonTree) mergeSampleWithEview(
 	return sampleToSend, neighboursWithoutSenderDescendants
 }
 
-func (d *DemmonTree) mergeSiblingsWith(newSiblings []*PeerWithIDChain) {
+func (d *DemmonTree) mergeSiblingsWith(newSiblings []*PeerWithIDChain, parent peer.Peer) {
 	// d.logger.Info("Merging siblings...")
+
+	delete(d.mySiblings, d.myParent.String())
+
 	for _, msgSibling := range newSiblings {
 		if peer.PeersEqual(d.babel.SelfPeer(), msgSibling) {
 			continue

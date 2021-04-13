@@ -1,7 +1,6 @@
 package protocol
 
 import (
-	"fmt"
 	"math"
 	"math/rand"
 	"reflect"
@@ -74,10 +73,6 @@ type PeerWithParentAndChildren struct {
 type PeerWithIDChainAndBW struct {
 	*PeerWithIDChain
 	BWScore int
-}
-
-func (p *PeerWithIDChainAndBW) String() string {
-	return fmt.Sprintf("{peer: %s, bw:%d}", p.PeerWithIDChain.String(), p.BWScore)
 }
 
 func (p *PeerWithParentAndChildren) String() string {
@@ -1170,7 +1165,7 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 		d.self = NewPeerWithIDChain(myNewChain, d.self.Peer, d.self.nChildren, d.self.Version()+1, d.self.Coordinates)
 	}
 
-	d.mergeSiblingsWith(upMsg.Siblings)
+	d.mergeSiblingsWith(upMsg.Siblings, d.myParent)
 }
 
 func (d *DemmonTree) handleUpdateChildMessage(sender peer.Peer, m message.Message) {
