@@ -24,6 +24,8 @@ const ProtoID = 1000
 const ProtoName = "DemonTree"
 
 type DemmonTreeConfig = struct {
+	// useCoordsOnly bool
+
 	BandwidthScore int
 	UseBwScore     bool
 
@@ -484,12 +486,8 @@ func (d *DemmonTree) handleExternalNeighboringTimer(joinTimer timer.Timer) {
 
 func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.Timer) {
 
-	if len(d.self.Chain()) == 0 ||
-		d.myParent == nil ||
-		d.myPendingParentInImprovement != nil ||
-		d.myPendingParentInAbsorb != nil ||
-		d.myPendingParentInJoin != nil {
-		d.logger.Info("EvalMeasuredPeersTimer returning because already have pending parent")
+	if d.isChangingParent() {
+		d.logger.Warn("EvalMeasuredPeersTimer returning due to already being changing parent..")
 		return
 	}
 
@@ -660,6 +658,11 @@ func (d *DemmonTree) measurePeerExternalProcedure(p *PeerWithIDChain) bool {
 func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer) {
 
 	// nrPeersToKick := d.config.NrPeersToBecomeParentInAbsorb * int(d.config.NrPeersToBecomeChildrenPerParentInAbsorb)
+
+	if d.isChangingParent() {
+		d.logger.Warn("handleCheckChildrenSize timer trigger returning due to being changing parent")
+		return
+	}
 
 	if len(d.myChildren) < d.config.NrPeersToBecomeChildrenPerParentInAbsorb*d.config.NrPeersToBecomeParentInAbsorb {
 		d.logger.Info("handleCheckChildrenSize timer trigger returning due to goup size being too small")
@@ -896,8 +899,8 @@ func (d *DemmonTree) handleAbsorbMessage(sender peer.Peer, m message.Message) {
 		return
 	}
 
-	if d.myPendingParentInAbsorb != nil {
-		d.logger.Warn("Got absorbMessage but returning due to already having pending parent in absorb")
+	if d.isChangingParent() {
+		d.logger.Warn("Got absorbMessage but returning due to already having pending")
 		return
 	}
 
@@ -933,6 +936,14 @@ func (d *DemmonTree) handleDisconnectAsChildMsg(sender peer.Peer, m message.Mess
 func (d *DemmonTree) handleJoinMessage(sender peer.Peer, msg message.Message) {
 	toSend := NewJoinReplyMessage(getMapAsPeerWithIDChainArray(d.myChildren), d.self, d.myParent)
 	d.sendMessageTmpTCPChan(toSend, sender)
+}
+
+func (d *DemmonTree) isChangingParent() bool {
+	return d.myPendingParentInJoin != nil ||
+		d.myPendingParentInRecovery != nil ||
+		d.myPendingParentInAbsorb != nil ||
+		d.myPendingParentInClimb != nil ||
+		d.myPendingParentInImprovement != nil
 }
 
 func (d *DemmonTree) handleJoinMessageResponseTimeout(t timer.Timer) {
@@ -997,6 +1008,11 @@ func (d *DemmonTree) handleJoinReplyMessage(sender peer.Peer, msg message.Messag
 }
 
 func (d *DemmonTree) canBecomeParentOf(other *PeerWithIDChain, expectedChain PeerIDChain, isRecovery, isImprovement bool) bool {
+
+	if d.isChangingParent() {
+		d.logger.Warn("Got absorbMessage but returning due to already being changing parent..")
+		return false
+	}
 
 	if len(d.self.Chain()) == 0 {
 		d.logger.Warnf("cannot become parent of %s because my chain is nil", other.StringWithFields())
