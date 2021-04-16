@@ -448,15 +448,14 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call *otto.FunctionCall) otto
 			return otto.Value{}
 		}
 		return res
-	} else {
-		var b *tsdb.Bucket
-		b, ok = e.db.GetBucket(name)
-		if !ok {
-			throw(vm, fmt.Sprintf("No measurement found with name %s", name))
-			return otto.Value{}
-		}
-		queryResult = b.GetTimeseriesRegexRange(tagFilters, startTime, endTime)
 	}
+
+	b, ok := e.db.GetBucket(name)
+	if !ok {
+		throw(vm, fmt.Sprintf("No measurement found with name %s", name))
+		return otto.Value{}
+	}
+	queryResult = b.GetTimeseriesRegexRange(tagFilters, startTime, endTime)
 
 	res, err := vm.ToValue(queryResult)
 	if err != nil {
