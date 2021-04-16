@@ -780,8 +780,12 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 				continue
 			}
 
-			if candidateToKickFromSelfPOV.hasBetterLatencyThan(candidateToKick, d.config.MinLatencyImprovementToImprovePosition) {
-				continue
+			if candidateToKickFromSelfPOV.Latency < candidateToKick.Latency {
+				latencyDowngrade := candidateToKick.Latency - candidateToKickFromSelfPOV.Latency
+				if latencyDowngrade > d.config.MinLatencyImprovementToImprovePosition {
+					continue
+				}
+
 			}
 
 			peerAbsorberStats.PeersToKick = append(peerAbsorberStats.PeersToKick, candidateToKick)
