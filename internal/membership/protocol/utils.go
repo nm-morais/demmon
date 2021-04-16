@@ -3,13 +3,12 @@ package protocol
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"math/rand"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/nm-morais/demmon/internal/utils"
+	"github.com/nm-morais/go-babel/pkg/errors"
 	"github.com/nm-morais/go-babel/pkg/nodeWatcher"
 	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/timer"
@@ -195,9 +194,7 @@ func getExcludingDescendantsOf(toFilter []*PeerWithIDChain, ascendantChain PeerI
 
 func (d *DemmonTree) getPeerWithIDChainMapAsPeerMeasuredArr(peerMap map[string]*PeerWithIDChain, exclusions ...*PeerWithIDChain) MeasuredPeersByLat {
 	measuredPeers := make(MeasuredPeersByLat, 0)
-
 	for _, p := range peerMap {
-
 		found := false
 		for _, exclusion := range exclusions {
 			if peer.PeersEqual(exclusion, p) {
@@ -208,19 +205,22 @@ func (d *DemmonTree) getPeerWithIDChainMapAsPeerMeasuredArr(peerMap map[string]*
 		if found {
 			continue
 		}
-		nodeStats, err := d.nodeWatcher.GetNodeInfo(p.Peer)
-		var currLat time.Duration
+		measuredPeer, err := d.getPeerWithChainAsMeasuredPeer(p)
 		if err != nil {
-			d.logger.Warnf("Do not have latency measurement for %s", p.String())
-			currLat = math.MaxInt64
-		} else {
-			currLat = nodeStats.LatencyCalc().CurrValue()
+			continue
 		}
-		measuredPeers = append(measuredPeers, NewMeasuredPeer(p, currLat))
+		measuredPeers = append(measuredPeers, measuredPeer)
 	}
 	sort.Sort(measuredPeers)
-
 	return measuredPeers
+}
+
+func (d *DemmonTree) getPeerWithChainAsMeasuredPeer(p *PeerWithIDChain) (*MeasuredPeer, errors.Error) {
+	info, err := d.nodeWatcher.GetNodeInfo(p)
+	if err != nil {
+		return nil, err
+	}
+	return NewMeasuredPeer(p, info.LatencyCalc().CurrValue()), nil
 }
 
 func (d *DemmonTree) isNodeDown(n nodeWatcher.NodeInfo) bool {

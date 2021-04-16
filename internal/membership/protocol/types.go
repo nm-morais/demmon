@@ -308,7 +308,7 @@ func (c PeerIDChain) Equal(chain2 PeerIDChain) bool {
 
 type MeasuredPeer struct {
 	*PeerWithIDChain
-	MeasuredLatency time.Duration
+	Latency time.Duration
 }
 
 type MeasuredPeersByLat []*MeasuredPeer
@@ -316,7 +316,7 @@ type MeasuredPeersByLat []*MeasuredPeer
 func (p MeasuredPeersByLat) String() string {
 	toPrint := ""
 	for _, measuredPeer := range p {
-		toPrint = toPrint + "; " + fmt.Sprintf("%s : %s", measuredPeer.String(), measuredPeer.MeasuredLatency)
+		toPrint = toPrint + "; " + fmt.Sprintf("%s : %s", measuredPeer.String(), measuredPeer.Latency)
 	}
 	return toPrint
 }
@@ -325,7 +325,7 @@ func (p MeasuredPeersByLat) Len() int {
 	return len(p)
 }
 func (p MeasuredPeersByLat) Less(i, j int) bool {
-	return p[i].MeasuredLatency < p[j].MeasuredLatency
+	return p[i].Latency < p[j].Latency
 }
 func (p MeasuredPeersByLat) Swap(i, j int) {
 	p[i], p[j] = p[j], p[i]
@@ -334,13 +334,13 @@ func (p MeasuredPeersByLat) Swap(i, j int) {
 func NewMeasuredPeer(p *PeerWithIDChain, measuredLatency time.Duration) *MeasuredPeer {
 	return &MeasuredPeer{
 		PeerWithIDChain: p,
-		MeasuredLatency: measuredLatency,
+		Latency:         measuredLatency,
 	}
 }
 
 func (p *MeasuredPeer) MarshalWithFieldsAndLatency() []byte {
 	latencyBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(latencyBytes, uint64(p.MeasuredLatency))
+	binary.BigEndian.PutUint64(latencyBytes, uint64(p.Latency))
 	return append(latencyBytes, p.MarshalWithFields()...)
 }
 
@@ -349,7 +349,7 @@ func (p *MeasuredPeer) UnmarshalMeasuredPeer(buf []byte) (int, *MeasuredPeer) {
 	n, aux := UnmarshalPeerWithIDChain(buf[8:])
 	return n + 8, &MeasuredPeer{
 		PeerWithIDChain: aux,
-		MeasuredLatency: latency,
+		Latency:         latency,
 	}
 }
 

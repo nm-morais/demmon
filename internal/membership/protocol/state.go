@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/nm-morais/demmon/internal/utils"
-	"github.com/nm-morais/go-babel/pkg/errors"
 	"github.com/nm-morais/go-babel/pkg/peer"
 )
 
@@ -25,14 +24,6 @@ func getMapAsPeerWithIDChainArray(peers map[string]*PeerWithIDChain, exclusions 
 		}
 	}
 	return toReturn
-}
-
-func (d *DemmonTree) getPeerWithChainAsMeasuredPeer(p *PeerWithIDChain) (*MeasuredPeer, errors.Error) {
-	info, err := d.nodeWatcher.GetNodeInfo(p)
-	if err != nil {
-		return nil, err
-	}
-	return NewMeasuredPeer(p, info.LatencyCalc().CurrValue()), nil
 }
 
 func (d *DemmonTree) getPeerRelationshipType(p peer.Peer) (isSibling, isChildren, isParent bool) {
@@ -72,13 +63,13 @@ func (d *DemmonTree) addParent(
 	}
 
 	if peer.PeersEqual(newParent, d.myPendingParentInImprovement) {
-		existingLatencyMeasurement = &d.myPendingParentInImprovement.MeasuredLatency
+		existingLatencyMeasurement = &d.myPendingParentInImprovement.Latency
 		d.myPendingParentInImprovement = nil
 		haveCause = true
 	}
 
 	if d.myPendingParentInJoin != nil && peer.PeersEqual(newParent, d.myPendingParentInJoin.peer) {
-		existingLatencyMeasurement = &d.myPendingParentInJoin.peer.MeasuredLatency
+		existingLatencyMeasurement = &d.myPendingParentInJoin.peer.Latency
 		d.joined = true
 		d.joinMap = nil // TODO cleanup join function
 		d.bestPeerlastLevel = nil
@@ -271,7 +262,6 @@ func (d *DemmonTree) removeSibling(toRemove peer.Peer, crash bool) {
 	d.nodeWatcher.Unwatch(sibling, d.ID())
 	d.babel.Disconnect(d.ID(), toRemove)
 	d.logger.Infof("Removed sibling: %s", toRemove.String())
-	return
 }
 
 func (d *DemmonTree) isNeighbour(toTest peer.Peer) bool {
@@ -348,8 +338,8 @@ func (d *DemmonTree) addToMeasuredPeers(p *MeasuredPeer) {
 	var maxLatPeerStr string = ""
 	maxLat := time.Duration(0)
 	for measuredPeerID, alreadyPresentPeer := range d.measuredPeers {
-		if alreadyPresentPeer.MeasuredLatency > maxLat {
-			maxLat = alreadyPresentPeer.MeasuredLatency
+		if alreadyPresentPeer.Latency > maxLat {
+			maxLat = alreadyPresentPeer.Latency
 			maxLatPeerStr = measuredPeerID
 		}
 	}
@@ -358,7 +348,7 @@ func (d *DemmonTree) addToMeasuredPeers(p *MeasuredPeer) {
 		panic("Shouldnt happen")
 	}
 
-	if maxLat > p.MeasuredLatency {
+	if maxLat > p.Latency {
 		delete(d.measuredPeers, maxLatPeerStr)
 		d.measuredPeers[p.String()] = p
 		return
@@ -574,7 +564,7 @@ func (d *DemmonTree) updateAndMergeSampleEntriesWithEView(sample []*PeerWithIDCh
 				}
 				d.measuredPeers[currPeer.String()] = NewMeasuredPeer(
 					currPeer,
-					measuredPeer.MeasuredLatency,
+					measuredPeer.Latency,
 				)
 			}
 			continue
