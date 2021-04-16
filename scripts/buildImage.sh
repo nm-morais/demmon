@@ -24,10 +24,10 @@ echo "DOCKER_IMAGE: $DOCKER_IMAGE"
 
 NM_DIR="$HOME/go/src/github.com/nm-morais"
 
-(cd $NM_DIR/go-babel && ./scripts/buildImage.sh)
-(cd $NM_DIR/demmon-common && ./scripts/buildImage.sh)
-(cd $NM_DIR/demmon-client && ./scripts/buildImage.sh)
-(cd $NM_DIR/demmon-exporter && ./scripts/buildImage.sh)
+(cd "$NM_DIR"/go-babel && ./scripts/buildImage.sh)
+(cd "$NM_DIR"/demmon-common && ./scripts/buildImage.sh)
+(cd "$NM_DIR"/demmon-client && ./scripts/buildImage.sh)
+(cd "$NM_DIR"/demmon-exporter && ./scripts/buildImage.sh)
 
 docker build --build-arg LATENCY_MAP=$LATENCY_MAP --build-arg IPS_FILE=$IPS_FILE -f build/Dockerfile -t $DOCKER_IMAGE . 
 service="demmon"
