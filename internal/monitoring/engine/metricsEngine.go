@@ -331,10 +331,6 @@ func (e *MetricsEngine) selectTs(vm *otto.Otto, call *otto.FunctionCall) otto.Va
 		return otto.Value{}
 	}
 	queryResult = b.GetTimeseriesRegex(tagFilters)
-	if len(queryResult) == 0 {
-		throw(vm, "Select query did not return any results")
-		return otto.Value{}
-	}
 
 	res, err := vm.ToValue(queryResult)
 	if err != nil {
@@ -401,10 +397,6 @@ func (e *MetricsEngine) selectLast(vm *otto.Otto, call *otto.FunctionCall) otto.
 	}
 
 	queryResult = b.GetTimeseriesRegexLastVal(tagFilters)
-	if len(queryResult) == 0 {
-		throw(vm, "Select query did not return any results")
-		return otto.Value{}
-	}
 
 	res, err := vm.ToValue(queryResult)
 	if err != nil {
@@ -462,11 +454,6 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call *otto.FunctionCall) otto
 	b, ok := e.db.GetBucket(name)
 	if !ok {
 		throw(vm, fmt.Sprintf("No measurement found with name %s", name))
-		return otto.Value{}
-	}
-	queryResult = b.GetTimeseriesRegexRange(tagFilters, startTime, endTime)
-	if len(queryResult) == 0 {
-		throw(vm, "Select query did not return any results")
 		return otto.Value{}
 	}
 
