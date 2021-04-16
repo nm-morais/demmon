@@ -54,17 +54,17 @@ var (
 		MaxRetriesJoinMsg:   3,
 		Landmarks:           nil,
 
+		MaxDiffForBWScore: 15,
+
 		MinGrpSize: 3,
 		MaxGrpSize: 9,
 
 		NrPeersToBecomeParentInAbsorb:            2,
 		NrPeersToBecomeChildrenPerParentInAbsorb: 3,
 
-		// NrPeersToKickPerParent:                 3,
 		MinLatencyImprovementToImprovePosition: 50 * time.Millisecond,
 
 		PhiLevelForNodeDown: 3,
-		// SwitchProbability:             0.5,
 
 		CheckChildenSizeTimerDuration: 10 * time.Second,
 		ParentRefreshTickDuration:     5 * time.Second,
@@ -74,23 +74,19 @@ var (
 		AttemptImprovePositionProbability:    0.5,
 		EvalMeasuredPeersRefreshTickDuration: 12 * time.Second,
 
-		// EnableSwitch: false,
-
 		EmitWalkProbability:                0.33,
 		BiasedWalkProbability:              0.2,
 		BiasedWalkTTL:                      5,
 		RandomWalkTTL:                      6,
 		EmitWalkTimeout:                    8 * time.Second,
-		MaxPeersInEView:                    10,
+		MaxPeersInEView:                    20,
 		MeasureNewPeersRefreshTickDuration: 7 * time.Second,
-		MaxMeasuredPeers:                   5,
+		MaxMeasuredPeers:                   15,
 		NrHopsToIgnoreWalk:                 2,
 		NrPeersInWalkMessage:               15,
 		NrPeersToMeasureBiased:             2,
 		NrPeersToMeasureRandom:             1,
 		NrPeersToMergeInWalkSample:         5,
-
-		MinLatencyImprovementPerPeerForSwitch: 20 * time.Millisecond,
 
 		UnderpopulatedGroupTimerDuration: 12 * time.Second,
 		// CheckSwitchOportunityTimeout:          7500 * time.Millisecond,
@@ -110,7 +106,7 @@ func main() {
 				peer.NewPeer(net.ParseIP("10.10.1.16"), baseProtoPort, baseAnalyticsPort),
 				0,
 				0,
-				make(membershipProtocol.Coordinates, 4),
+				make(membershipProtocol.Coordinates, 4), 0, 0,
 			),
 			// membershipProtocol.NewPeerWithIDChain(
 			// 	membershipProtocol.PeerIDChain{membershipProtocol.PeerID{17}},

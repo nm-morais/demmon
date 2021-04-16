@@ -13,7 +13,7 @@ func (d *DemmonTree) handleGetInView(req request.Request) request.Reply {
 		IsSelfBootstrap: d.landmark,
 		Grandparent:     d.myGrandParent,
 		Parent:          d.myParent,
-		Children:        PeerWithIDChainAndBWMapToArr(d.myChildren),
+		Children:        PeerWithIDChainMapToArr(d.myChildren),
 		Siblings:        PeerWithIDChainMapToArr(d.mySiblings),
 	}
 	return NewGetNeighboursReqReply(getInViewReq.Key, view)

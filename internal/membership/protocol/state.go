@@ -8,7 +8,7 @@ import (
 	"github.com/nm-morais/go-babel/pkg/peer"
 )
 
-func getMapAsPeerWithIDChainArray(peers map[string]*PeerWithIDChainAndBW, exclusions ...*PeerWithIDChain) []*PeerWithIDChain {
+func getMapAsPeerWithIDChainArray(peers map[string]*PeerWithIDChain, exclusions ...*PeerWithIDChain) []*PeerWithIDChain {
 	toReturn := make([]*PeerWithIDChain, 0, len(peers))
 	for _, child := range peers {
 
@@ -21,7 +21,7 @@ func getMapAsPeerWithIDChainArray(peers map[string]*PeerWithIDChainAndBW, exclus
 			}
 		}
 		if !excluded {
-			toReturn = append(toReturn, child.PeerWithIDChain)
+			toReturn = append(toReturn, child)
 		}
 	}
 	return toReturn
@@ -128,7 +128,7 @@ func (d *DemmonTree) addParent(
 	d.logger.Infof("HasOutConn: %+v", hasOutConnection)
 	d.logger.Infof("HasInConn: %+v", hasInConnection)
 
-	d.self = NewPeerWithIDChain(myNewChain, d.self.Peer, d.self.nChildren, d.self.Version()+1, d.self.Coordinates)
+	d.self = NewPeerWithIDChain(myNewChain, d.self.Peer, d.self.nChildren, d.self.Version()+1, d.self.Coordinates, d.config.BandwidthScore, d.getAvgChildrenBW())
 
 	if existingLatencyMeasurement != nil {
 		d.nodeWatcher.WatchWithInitialLatencyValue(newParent, d.ID(), *existingLatencyMeasurement)
@@ -152,13 +152,12 @@ func (d *DemmonTree) addParent(
 			child.nChildren,
 			child.version,
 			child.Coordinates,
+			child.bandwidth,
+			child.avgChildrenBW,
 		)
 		newChildrenPtr.inConnActive = child.inConnActive
 		newChildrenPtr.outConnActive = child.outConnActive
-		d.myChildren[childStr] = &PeerWithIDChainAndBW{
-			PeerWithIDChain: newChildrenPtr,
-			BWScore:         child.BWScore,
-		}
+		d.myChildren[childStr] = newChildrenPtr
 	}
 }
 
@@ -167,7 +166,7 @@ func (d *DemmonTree) getNeighborsAsPeerWithIDChainArray() []*PeerWithIDChain {
 
 	if len(d.self.Chain()) > 0 {
 		for _, child := range d.myChildren {
-			possibilitiesToSend = append(possibilitiesToSend, child.PeerWithIDChain)
+			possibilitiesToSend = append(possibilitiesToSend, child)
 		}
 
 		for _, sibling := range d.mySiblings {
@@ -189,6 +188,8 @@ func (d *DemmonTree) addChild(newChild *PeerWithIDChain, bwScore int, childrenLa
 		newChild.nChildren,
 		newChild.Version(),
 		newChild.Coordinates,
+		newChild.bandwidth,
+		newChild.avgChildrenBW,
 	)
 
 	newChildWithID.inConnActive = inConnActive
@@ -202,17 +203,11 @@ func (d *DemmonTree) addChild(newChild *PeerWithIDChain, bwScore int, childrenLa
 		}
 		d.babel.Dial(d.ID(), newChild, newChild.ToTCPAddr())
 	} else {
-		d.myChildren[newChild.String()] = &PeerWithIDChainAndBW{
-			PeerWithIDChain: newChildWithID,
-			BWScore:         bwScore,
-		}
+		d.myChildren[newChild.String()] = newChildWithID
 		d.babel.SendNotification(NewNodeUpNotification(newChild, d.getInView()))
 	}
 
-	d.myChildren[newChild.String()] = &PeerWithIDChainAndBW{
-		PeerWithIDChain: newChildWithID,
-		BWScore:         bwScore,
-	}
+	d.myChildren[newChild.String()] = newChildWithID
 	d.updateSelfVersion()
 	d.logger.Infof("added children: %s", newChildWithID.String())
 	d.removeFromMeasuredPeers(newChild)
@@ -227,6 +222,8 @@ func (d *DemmonTree) updateSelfVersion() {
 		uint16(len(d.myChildren)),
 		d.self.Version()+1,
 		d.self.Coordinates,
+		d.config.BandwidthScore,
+		d.getAvgChildrenBW(),
 	)
 }
 
@@ -241,7 +238,7 @@ func (d *DemmonTree) removeChild(toRemove peer.Peer, crash bool) {
 	delete(d.myChildrenLatencies, toRemove.String())
 	delete(d.myChildren, toRemove.String())
 	d.updateSelfVersion()
-	d.babel.SendNotification(NewNodeDownNotification(child.PeerWithIDChain, d.getInView(), crash))
+	d.babel.SendNotification(NewNodeDownNotification(child, d.getInView(), crash))
 	d.babel.Disconnect(d.ID(), toRemove)
 	d.nodeWatcher.Unwatch(toRemove, d.ID())
 	d.logger.Infof("Removed child: %s", toRemove.String())
@@ -304,7 +301,7 @@ func (d *DemmonTree) getInView() InView {
 			continue
 		}
 
-		childArr = append(childArr, child.PeerWithIDChain)
+		childArr = append(childArr, child)
 	}
 
 	siblingArr := make([]*PeerWithIDChain, 0)
@@ -337,18 +334,34 @@ func (d *DemmonTree) removeFromMeasuredPeers(p peer.Peer) {
 	delete(d.measuredPeers, p.String())
 }
 
-func (d *DemmonTree) addToMeasuredPeers(p *MeasuredPeer) { // TODO this is shit
+func (d *DemmonTree) addToMeasuredPeers(p *MeasuredPeer) {
+	if p.IsDescendentOf(d.self.chain) {
+		return
+	}
+
 	_, alreadyMeasured := d.measuredPeers[p.String()]
 	if alreadyMeasured || len(d.measuredPeers) < d.config.MaxMeasuredPeers {
 		d.measuredPeers[p.String()] = p
 		return
 	}
-	for measuredPeerID, measuredPeer := range d.measuredPeers {
-		if measuredPeer.MeasuredLatency > p.MeasuredLatency {
-			delete(d.measuredPeers, measuredPeerID)
-			d.measuredPeers[p.String()] = p
-			return
+
+	var maxLatPeerStr string = ""
+	maxLat := time.Duration(0)
+	for measuredPeerID, alreadyPresentPeer := range d.measuredPeers {
+		if alreadyPresentPeer.MeasuredLatency > maxLat {
+			maxLat = alreadyPresentPeer.MeasuredLatency
+			maxLatPeerStr = measuredPeerID
 		}
+	}
+
+	if maxLatPeerStr == "" {
+		panic("Shouldnt happen")
+	}
+
+	if maxLat > p.MeasuredLatency {
+		delete(d.measuredPeers, maxLatPeerStr)
+		d.measuredPeers[p.String()] = p
+		return
 	}
 }
 
@@ -531,13 +544,10 @@ func (d *DemmonTree) updateAndMergeSampleEntriesWithEView(sample []*PeerWithIDCh
 		}
 
 		if children, isChildren := d.myChildren[currPeer.String()]; isChildren {
-			if currPeer.IsHigherVersionThan(children.PeerWithIDChain) {
+			if currPeer.IsHigherVersionThan(children) {
 				currPeer.inConnActive = children.inConnActive
 				currPeer.outConnActive = children.outConnActive
-				d.myChildren[currPeer.String()] = &PeerWithIDChainAndBW{
-					PeerWithIDChain: currPeer,
-					BWScore:         children.BWScore,
-				}
+				d.myChildren[currPeer.String()] = currPeer
 			}
 			continue
 		}

@@ -24,10 +24,9 @@ const ProtoID = 1000
 const ProtoName = "DemonTree"
 
 type DemmonTreeConfig = struct {
-	// useCoordsOnly bool
-
-	BandwidthScore int
-	UseBwScore     bool
+	MaxDiffForBWScore int
+	BandwidthScore    int
+	UseBwScore        bool
 
 	Landmarks                   []*PeerWithIDChain
 	LandmarkRedialTimer         time.Duration
@@ -55,7 +54,6 @@ type DemmonTreeConfig = struct {
 	EvalMeasuredPeersRefreshTickDuration   time.Duration
 	MinLatencyImprovementToImprovePosition time.Duration
 	CheckChildenSizeTimerDuration          time.Duration
-	MinLatencyImprovementPerPeerForSwitch  time.Duration
 	EmitWalkProbability                    float64
 	BiasedWalkProbability                  float64
 	AttemptImprovePositionProbability      float64
@@ -70,11 +68,6 @@ type PeerWithParentAndChildren struct {
 	peer     *MeasuredPeer
 	children []*PeerWithIDChain
 	replied  bool
-}
-
-type PeerWithIDChainAndBW struct {
-	*PeerWithIDChain
-	BWScore int
 }
 
 func (p *PeerWithParentAndChildren) String() string {
@@ -106,7 +99,7 @@ type DemmonTree struct {
 	myPendingParentInClimb       *PeerWithIDChain
 	myPendingParentInImprovement *MeasuredPeer
 
-	myChildren          map[string]*PeerWithIDChainAndBW
+	myChildren          map[string]*PeerWithIDChain
 	mySiblings          map[string]*PeerWithIDChain
 	myChildrenLatencies map[string]MeasuredPeersByLat
 
@@ -137,7 +130,7 @@ func New(config *DemmonTreeConfig, babel protocolManager.ProtocolManager, nw nod
 		myGrandParent:       nil,
 		myParent:            nil,
 		mySiblings:          make(map[string]*PeerWithIDChain),
-		myChildren:          make(map[string]*PeerWithIDChainAndBW),
+		myChildren:          make(map[string]*PeerWithIDChain),
 		myChildrenLatencies: make(map[string]MeasuredPeersByLat),
 		joinTimeoutTimerIds: make(map[string]int),
 
@@ -163,7 +156,7 @@ func (d *DemmonTree) Logger() *logrus.Logger {
 
 func (d *DemmonTree) Start() {
 
-	d.self = NewPeerWithIDChain(nil, d.babel.SelfPeer(), 0, 0, make(Coordinates, len(d.config.Landmarks)))
+	d.self = NewPeerWithIDChain(nil, d.babel.SelfPeer(), 0, 0, make(Coordinates, len(d.config.Landmarks)), d.config.BandwidthScore, 0)
 	for _, landmark := range d.config.Landmarks {
 
 		if !peer.PeersEqual(d.babel.SelfPeer(), landmark) {
@@ -176,6 +169,8 @@ func (d *DemmonTree) Start() {
 			0,
 			0,
 			make(Coordinates, len(d.config.Landmarks)),
+			d.config.BandwidthScore,
+			0,
 		)
 		d.landmark = true
 		for _, landmark := range d.config.Landmarks {
@@ -202,7 +197,7 @@ func (d *DemmonTree) Start() {
 
 		d.logger.Infof("I am landmark, my ID is: %+v", d.self.Chain())
 		d.myParent = nil
-		d.myChildren = make(map[string]*PeerWithIDChainAndBW)
+		d.myChildren = make(map[string]*PeerWithIDChain)
 
 		d.babel.RegisterPeriodicTimer(d.ID(), NewCheckChidrenSizeTimer(d.config.CheckChildenSizeTimerDuration), false)
 		d.babel.RegisterPeriodicTimer(d.ID(), NewParentRefreshTimer(d.config.ParentRefreshTickDuration), false)
@@ -360,6 +355,18 @@ func (d *DemmonTree) handleMeasuringPeerInEViewFinish(peerMeasured *PeerWithIDCh
 	// d.logger.Infof("d.measuredPeers:  %+v:", d.measuredPeers)
 }
 
+func (d *DemmonTree) getAvgChildrenBW() int {
+	if len(d.myChildren) == 0 {
+		return 0
+	}
+	tmp := 0
+	for _, c := range d.myChildren {
+		tmp += c.bandwidth
+	}
+	return tmp / len(d.myChildren)
+
+}
+
 func (d *DemmonTree) handleLandmarkMeasuredNotification(nGeneric notification.Notification) {
 	n := nGeneric.(LandmarkMeasuredNotification)
 
@@ -374,7 +381,7 @@ func (d *DemmonTree) handleLandmarkMeasuredNotification(nGeneric notification.No
 		}
 		coordsCopy := d.self.Coordinates
 		coordsCopy[idx] = uint64(landmarkStats.LatencyCalc().CurrValue().Milliseconds())
-		d.self = NewPeerWithIDChain(d.self.chain, d.self, d.self.nChildren, d.self.version+1, coordsCopy)
+		d.self = NewPeerWithIDChain(d.self.chain, d.self, d.self.nChildren, d.self.version+1, coordsCopy, d.config.BandwidthScore, d.getAvgChildrenBW())
 		d.logger.Infof("My Coordinates: %+v", d.self.Coordinates)
 		return
 	}
@@ -413,7 +420,7 @@ func (d *DemmonTree) handleRefreshParentTimer(t timer.Timer) {
 			d.myParent,
 			d.self,
 			child.Chain()[len(child.Chain())-1],
-			getMapAsPeerWithIDChainArray(d.myChildren, child.PeerWithIDChain),
+			getMapAsPeerWithIDChainArray(d.myChildren, child),
 		)
 		d.sendMessage(toSend, child.Peer)
 	}
@@ -500,7 +507,7 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 	measuredPeersArr := make(MeasuredPeersByLat, 0, len(d.measuredPeers))
 
 	for _, p := range d.measuredPeers {
-		if p.IsDescendentOf(d.self.chain) {
+		if d.self.IsDescendentOf(p.chain) {
 			delete(d.measuredPeers, p.String())
 			continue
 		}
@@ -535,20 +542,35 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 		latencyImprovement := parentLatency - measuredPeer.MeasuredLatency
 
 		if latencyImprovement < d.config.MinLatencyImprovementToImprovePosition {
-			continue
-		}
-
-		if measuredPeer.nChildren >= d.config.MaxGrpSize {
-			continue
+			break
 		}
 
 		if measuredPeer.nChildren == 0 {
+			// d.logger.Infof("Not improving towards %s because it has no children", measuredPeer.StringWithFields())
 			continue
 		}
 
+		// go down ( if my level is 3, and measured peer is 5, i am higher in tree)
 		if d.self.Chain().Level() <= measuredPeer.Chain().Level() {
+
 			if len(d.myChildren) > 0 {
+				d.logger.Infof("Not improving towards %s because i have too many children", measuredPeer.StringWithFields())
 				continue
+			}
+
+			if measuredPeer.bandwidth <= d.self.bandwidth {
+				d.logger.Infof("Not improving towards %s because the peer bandwidth and level is lower than mine", measuredPeer.StringWithFields())
+				continue
+			}
+		}
+
+		if d.self.Chain().Level() > measuredPeer.Chain().Level()+1 {
+			if d.self.bandwidth < measuredPeer.avgChildrenBW {
+				d.logger.Infof("Not improving towards %s because the peer is level is higher than mine and avg children bandwidth is higher than my bw", measuredPeer.StringWithFields())
+				diff := measuredPeer.avgChildrenBW - d.self.bandwidth
+				if diff > d.config.MaxDiffForBWScore {
+					continue
+				}
 			}
 		}
 
@@ -559,7 +581,7 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 		// 	}
 		// }
 
-		d.logger.Infof("Improving position towards: %s", measuredPeer.String())
+		d.logger.Infof("Improving position towards: %s", measuredPeer.StringWithFields())
 		d.logger.Infof("self level: %d", d.self.Chain().Level())
 		d.logger.Infof("target peer level: %d", measuredPeer.Chain().Level())
 
@@ -569,7 +591,6 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 		aux := *measuredPeer
 		d.myPendingParentInImprovement = &aux
 		d.sendJoinAsChildMsg(measuredPeer.PeerWithIDChain, measuredPeer.MeasuredLatency, false, true)
-
 		return
 	}
 }
@@ -582,9 +603,7 @@ func (d *DemmonTree) handleMeasureNewPeersTimer(measureNewPeersTimer timer.Timer
 	}
 
 	for k, p := range d.eView {
-		if d.self.IsDescendentOf(p.chain) ||
-			d.isNeighbour(p) ||
-			d.myPendingParentInImprovement != nil && peer.PeersEqual(d.myPendingParentInImprovement, p) {
+		if d.self.IsDescendentOf(p.chain) || d.isNeighbour(p) {
 			delete(d.eView, k)
 		}
 	}
@@ -637,6 +656,8 @@ func (d *DemmonTree) measurePeerExternalProcedure(p *PeerWithIDChain) bool {
 		return false
 	}
 
+	d.measuringPeers[p.String()] = true
+	delete(d.eView, p.String())
 	d.logger.Infof("measuring peer: %s", p.String())
 	d.nodeWatcher.Watch(p, d.ID())
 	c := nodeWatcher.Condition{
@@ -650,8 +671,6 @@ func (d *DemmonTree) measurePeerExternalProcedure(p *PeerWithIDChain) bool {
 	}
 	// d.logger.Infof("Doing NotifyOnCondition for node %s...", p.String())
 	d.nodeWatcher.NotifyOnCondition(c)
-	d.measuringPeers[p.String()] = true
-
 	return true
 }
 
@@ -676,14 +695,14 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 	}, 0)
 
 	if d.config.UseBwScore {
-		tmp := []*PeerWithIDChainAndBW{}
+		tmp := []*PeerWithIDChain{}
 		for _, c := range d.myChildren {
 			tmp = append(tmp, c)
 		}
 		d.logger.Infof("before sorting tmp: %+v", tmp)
 
-		sort.SliceStable(tmp, func(i, j int) bool { return tmp[i].BWScore > tmp[j].BWScore })
-		d.logger.Infof("after sorting tmp: %+v", tmp)
+		sort.SliceStable(tmp, func(i, j int) bool { return tmp[i].bandwidth > tmp[j].bandwidth })
+		// d.logger.Infof("after sorting tmp: %+v", tmp)
 		for _, child := range tmp {
 			if len(peersToKickPerAbsorber) == d.config.NrPeersToBecomeParentInAbsorb {
 				break
@@ -694,12 +713,12 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 				PeersToKick  MeasuredPeersByLat
 			}{
 				TotalLatency: 0,
-				Absorber:     child.PeerWithIDChain,
+				Absorber:     child,
 				PeersToKick:  []*MeasuredPeer{},
 			})
 		}
 	} else {
-		childrenAsMeasuredPeers := d.getPeerWithIDChainAndBWMapAsPeerMeasuredArr(d.myChildren)
+		childrenAsMeasuredPeers := d.getPeerWithIDChainMapAsPeerMeasuredArr(d.myChildren)
 		for _, child := range childrenAsMeasuredPeers {
 			if len(peersToKickPerAbsorber) == d.config.NrPeersToBecomeParentInAbsorb {
 				break
@@ -1009,21 +1028,6 @@ func (d *DemmonTree) handleJoinReplyMessage(sender peer.Peer, msg message.Messag
 
 func (d *DemmonTree) canBecomeParentOf(other *PeerWithIDChain, expectedChain PeerIDChain, isRecovery, isImprovement bool) bool {
 
-	if d.isChangingParent() {
-		d.logger.Warn("Got absorbMessage but returning due to already being changing parent..")
-		return false
-	}
-
-	if len(d.self.Chain()) == 0 {
-		d.logger.Warnf("cannot become parent of %s because my chain is nil", other.StringWithFields())
-		return false
-	}
-
-	if d.myParent == nil && !d.landmark {
-		d.logger.Warnf("cannot become parent of %s because my parent is nil", other.StringWithFields())
-		return false
-	}
-
 	if d.self.IsDescendentOf(other.Chain()) {
 		d.logger.Warnf(
 			"cannot become parent of %s because im descendent of sender, sender chain: %+v",
@@ -1040,11 +1044,24 @@ func (d *DemmonTree) canBecomeParentOf(other *PeerWithIDChain, expectedChain Pee
 			return false
 		}
 
-		if !d.self.chain.Equal(expectedChain) {
-			d.logger.Warnf("cannot become parent of %s because it is an improvement sent chain is wrong",
-				other.StringWithFields())
-			return false
+		// go down ( if other level is 3, and my level is 5, i am lower in tree)
+		if other.Chain().Level() <= d.self.Chain().Level() {
+			if other.bandwidth > d.self.bandwidth {
+				return false
+			}
 		}
+
+		// go up ( if other level is 5, and my level is 3, i am higher in tree)
+		if other.Chain().Level() > d.self.Chain().Level()+1 {
+			if other.bandwidth < d.self.avgChildrenBW {
+				d.logger.Infof("Not improving towards %s because the peer is level is higher than mine and avg children bandwidth is higher than my bw", d.self.StringWithFields())
+				diff := d.self.avgChildrenBW - other.bandwidth
+				if diff > d.config.MaxDiffForBWScore {
+					return false
+				}
+			}
+		}
+
 	}
 
 	return true
@@ -1097,7 +1114,7 @@ func (d *DemmonTree) handleJoinAsChildMessageReply(sender peer.Peer, m message.M
 	}
 
 	if d.myPendingParentInImprovement != nil && peer.PeersEqual(japrMsg.Parent, d.myPendingParentInImprovement) {
-		d.logger.Warnf("Pending Parent In Improvement join as child nessage")
+		d.logger.Warnf("Pending Parent In Improvement denied join as child nessage")
 		if mp, ok := d.measuredPeers[d.myPendingParentInImprovement.String()]; ok {
 			delete(d.measuredPeers, japrMsg.Parent.String())
 			d.addToMeasuredPeers(&MeasuredPeer{PeerWithIDChain: japrMsg.Parent, MeasuredLatency: mp.MeasuredLatency})
@@ -1178,7 +1195,7 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 			upMsg.Parent.Chain().Level()+1,
 		) // IMPORTANT FOR VISUALIZER
 
-		d.self = NewPeerWithIDChain(myNewChain, d.self.Peer, d.self.nChildren, d.self.Version()+1, d.self.Coordinates)
+		d.self = NewPeerWithIDChain(myNewChain, d.self.Peer, d.self.nChildren, d.self.Version()+1, d.self.Coordinates, d.config.BandwidthScore, d.getAvgChildrenBW())
 	}
 
 	d.mergeSiblingsWith(upMsg.Siblings, d.myParent)
@@ -1197,13 +1214,10 @@ func (d *DemmonTree) handleUpdateChildMessage(sender peer.Peer, m message.Messag
 		)
 		return
 	}
-
-	d.myChildren[sender.String()] = &PeerWithIDChainAndBW{
-		PeerWithIDChain: upMsg.Child,
-		BWScore:         child.BWScore,
-	}
-	d.myChildren[sender.String()].inConnActive = child.inConnActive
-	d.myChildren[sender.String()].outConnActive = child.outConnActive
+	tmp := upMsg.Child
+	tmp.inConnActive = child.inConnActive
+	tmp.outConnActive = child.outConnActive
+	d.myChildren[sender.String()] = tmp
 	d.myChildrenLatencies[sender.String()] = upMsg.Siblings
 }
 
@@ -1283,11 +1297,11 @@ func (d *DemmonTree) DialSuccess(sourceProto protocol.ID, p peer.Peer) bool {
 			d.myParent,
 			d.self,
 			child.Chain()[len(child.Chain())-1],
-			getMapAsPeerWithIDChainArray(d.myChildren, child.PeerWithIDChain),
+			getMapAsPeerWithIDChainArray(d.myChildren, child),
 		)
 		d.sendMessage(toSend, child)
-		d.installNotifyOnCondition(child.PeerWithIDChain)
-		d.babel.SendNotification(NewNodeUpNotification(child.PeerWithIDChain, d.getInView()))
+		d.installNotifyOnCondition(child)
+		d.babel.SendNotification(NewNodeUpNotification(child, d.getInView()))
 		d.updateSelfVersion()
 		return true
 	}
@@ -1612,7 +1626,7 @@ func (d *DemmonTree) getPeersInNextLevelByLat(lastLevelPeer *PeerWithParentAndCh
 			}
 			coordsCopy := d.self.Coordinates
 			coordsCopy[idx] = uint64(peerWithChildren.peer.MeasuredLatency.Milliseconds())
-			d.self = NewPeerWithIDChain(d.self.chain, d.self, d.self.nChildren, d.self.version+1, coordsCopy)
+			d.self = NewPeerWithIDChain(d.self.chain, d.self, d.self.nChildren, d.self.version+1, coordsCopy, d.config.BandwidthScore, d.getAvgChildrenBW())
 			d.logger.Infof("My Coordinates: %+v", d.self.Coordinates)
 			measuredPeersInLvl = append(measuredPeersInLvl, peerWithChildren)
 		}

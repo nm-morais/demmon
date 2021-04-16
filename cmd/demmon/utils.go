@@ -104,6 +104,8 @@ func GetLandmarksEnv() ([]*membershipProtocol.PeerWithIDChain, bool) {
 			0,
 			0,
 			make(membershipProtocol.Coordinates, len(landmarksSplitted)),
+			0,
+			0,
 		)
 		landmarks[i] = landmark
 	}

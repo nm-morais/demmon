@@ -125,6 +125,8 @@ type PeerWithIDChain struct {
 	nChildren     uint16
 	outConnActive bool
 	inConnActive  bool
+	bandwidth     int
+	avgChildrenBW int
 }
 
 func NewPeerWithIDChain(
@@ -133,15 +135,19 @@ func NewPeerWithIDChain(
 	nChildren uint16,
 	version PeerVersion,
 	coords Coordinates,
+	bandwidth int,
+	childBW int,
 ) *PeerWithIDChain {
 	return &PeerWithIDChain{
-		outConnActive: false,
-		inConnActive:  true,
+		Coordinates:   coords,
+		chain:         peerIDChain,
 		Peer:          self,
 		version:       version,
 		nChildren:     nChildren,
-		chain:         peerIDChain,
-		Coordinates:   coords,
+		outConnActive: false,
+		inConnActive:  false,
+		bandwidth:     bandwidth,
+		avgChildrenBW: childBW,
 	}
 }
 
@@ -155,7 +161,7 @@ func (p *PeerWithIDChain) StringWithFields() string {
 		coordinatesStr += fmt.Sprintf("%d,", c)
 	}
 	coordinatesStr = coordinatesStr[:len(coordinatesStr)-1] + ")"
-	return fmt.Sprintf("%s:%s:%s:v_%d:c(%d)", p.String(), coordinatesStr, p.chain.String(), p.version, p.nChildren)
+	return fmt.Sprintf("%s:%s:%s:v_%d:c(%d),c_bw(%d)", p.String(), coordinatesStr, p.chain.String(), p.version, p.nChildren, p.avgChildrenBW)
 }
 
 func (p *PeerWithIDChain) NrChildren() uint16 {
@@ -179,20 +185,29 @@ func (p *PeerWithIDChain) IsHigherVersionThan(otherPeer *PeerWithIDChain) bool {
 }
 
 func (p *PeerWithIDChain) MarshalWithFields() []byte {
-	nrChildrenBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(nrChildrenBytes, p.NrChildren())
-	nrChildrenBytes = append(nrChildrenBytes, p.Marshal()...)
+	resultingBytes := make([]byte, 2)
+	binary.BigEndian.PutUint16(resultingBytes, p.NrChildren())
+	resultingBytes = append(resultingBytes, p.Marshal()...)
 
 	chainBytes := SerializePeerIDChain(p.chain)
-	nrChildrenBytes = append(nrChildrenBytes, chainBytes...)
+	resultingBytes = append(resultingBytes, chainBytes...)
 
 	coordBytes := p.Coordinates.SerializeToBinary()
-	nrChildrenBytes = append(nrChildrenBytes, coordBytes...)
+	resultingBytes = append(resultingBytes, coordBytes...)
 
 	versionBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(versionBytes, uint64(p.Version()))
-	nrChildrenBytes = append(nrChildrenBytes, versionBytes...)
-	return nrChildrenBytes
+	resultingBytes = append(resultingBytes, versionBytes...)
+
+	bwBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(bwBytes, uint32(p.bandwidth))
+	resultingBytes = append(resultingBytes, bwBytes...)
+
+	childBWBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(childBWBytes, uint32(p.avgChildrenBW))
+	resultingBytes = append(resultingBytes, childBWBytes...)
+
+	return resultingBytes
 }
 
 func UnmarshalPeerWithIDChain(byteArr []byte) (int, *PeerWithIDChain) {
@@ -211,7 +226,14 @@ func UnmarshalPeerWithIDChain(byteArr []byte) (int, *PeerWithIDChain) {
 
 	version := binary.BigEndian.Uint64(byteArr[bufPos:])
 	bufPos += 8
-	return bufPos, NewPeerWithIDChain(peerChain, p, nrChildren, PeerVersion(version), peerCoords)
+
+	bw := binary.BigEndian.Uint32(byteArr[bufPos:])
+	bufPos += 4
+
+	childrenBW := binary.BigEndian.Uint32(byteArr[bufPos:])
+	bufPos += 4
+
+	return bufPos, NewPeerWithIDChain(peerChain, p, nrChildren, PeerVersion(version), peerCoords, int(bw), int(childrenBW))
 }
 
 func DeserializePeerWithIDChainArray(buf []byte) (int, []*PeerWithIDChain) {

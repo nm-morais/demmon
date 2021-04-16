@@ -2,6 +2,7 @@ from typing import ForwardRef
 from graph_tool.all import *
 import math
 import csv
+import numpy as np
 from tqdm import tqdm
 
 
@@ -54,7 +55,7 @@ if __name__ == "__main__":
     g = load_graph("config/graph.xml.gz")
     # Vais buscar a maior component conexa que é o dos 8mil
     g.list_properties()
-
+    g.set_directed(False)
     g = GraphView(g, vfilt=label_largest_component(g))
     added_map = {}
     conf_f = open("config/coords_file.txt", 'w', newline='')
@@ -78,7 +79,7 @@ if __name__ == "__main__":
         for e in g.iter_out_edges(v, eprops=[g.ep.lat]):
             edges_to_add.append((e[0], e[1],  e[2] * 0.3))
 
-    print("adding edge list")
+    # print("adding edge list")
     # print(edges_to_add)
 
     g.add_edge_list(edges_to_add, eprops=[g.ep.lat])
@@ -89,10 +90,11 @@ if __name__ == "__main__":
         n_nodes += 1
     print("filtering by edges")
     print("getting shortest distances...")
-    pbar = tqdm(total=n_nodes)
-    for v in g.iter_vertices():
+    rand_vertex = np.random.choice([v for v in g.iter_vertices()], 1000)
+    pbar = tqdm(total=len(rand_vertex))
+    for v in rand_vertex:
         dist_map = shortest_distance(
-            g, source=v, target=[_v for _v in g.iter_vertices()], weights=g.ep.lat)
+            g, source=v, target=rand_vertex, weights=g.ep.lat)
         lats_writer.writerow(['{:.2f}'.format(x) for x in dist_map])
         conf_writer.writerow([g.vp.lat[v], g.vp.long[v]])
         pbar.update(1)

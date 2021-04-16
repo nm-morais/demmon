@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -99,9 +98,9 @@ func setupBenchmarkExporter(eConf *exporter.Conf, logFolder string, queryFrequen
 	writeLocalTicker := time.NewTicker(queryFrequency)
 
 	getVal := func() float64 {
-		t := time.Now()
-		sin := math.Sin(float64(t.Unix()) / 25)
-		return sin
+		// t := time.Now()
+		// sin := math.Sin(float64(t.Unix()) / 25)
+		return 1
 	}
 
 	go func() {
