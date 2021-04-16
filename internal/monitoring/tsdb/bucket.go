@@ -182,7 +182,10 @@ func (b *Bucket) GetTimeseriesRegex(tagsToMatch map[string]string) []ReadOnlyTim
 
 	toReturn := []ReadOnlyTimeSeries{}
 	for _, ts := range matchingTimeseries {
-		toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), ts.All()...))
+		allPts := ts.All()
+		if len(allPts) > 0 {
+			toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), allPts...))
+		}
 	}
 
 	return toReturn
