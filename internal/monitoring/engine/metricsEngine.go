@@ -431,7 +431,6 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call *otto.FunctionCall) otto
 	}
 
 	var queryResult []tsdb.ReadOnlyTimeSeries
-	defer e.logger.Infof("SelectRange query result: : %+v", queryResult)
 	if isTagFilterAll {
 
 		var b *tsdb.Bucket
@@ -449,12 +448,14 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call *otto.FunctionCall) otto
 			return otto.Value{}
 		}
 		return res
-	}
-
-	b, ok := e.db.GetBucket(name)
-	if !ok {
-		throw(vm, fmt.Sprintf("No measurement found with name %s", name))
-		return otto.Value{}
+	} else {
+		var b *tsdb.Bucket
+		b, ok = e.db.GetBucket(name)
+		if !ok {
+			throw(vm, fmt.Sprintf("No measurement found with name %s", name))
+			return otto.Value{}
+		}
+		queryResult = b.GetTimeseriesRegexRange(tagFilters, startTime, endTime)
 	}
 
 	res, err := vm.ToValue(queryResult)
