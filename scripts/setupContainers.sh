@@ -67,10 +67,11 @@ do
    -e USE_BW='$USE_BW' \
    -e BW_SCORE='$bw' \
     $DOCKER_IMAGE $i $nContainers $bw"
-  
-  echo "running command: '$cmd'"
+  # echo "running command: '$cmd'"
 
-  echo "Starting ${i}. Container $name with ip $ip and name $name on: $node"
+  START=$(date +%s)
   ssh -n $node "$cmd"
+  END=$(date +%s)
+  echo "Starting ${i}. Container $name with ip $ip and name $name on: $node, time took starting container: $(($END-$START))sec"
   i=$((i+1))
 done < "$IPS_FILE"

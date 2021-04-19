@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"testing"
+	"time"
 
 	. "github.com/nm-morais/demmon/internal/membership/protocol"
 	"github.com/nm-morais/go-babel/pkg/peer"
@@ -124,6 +125,25 @@ func TestIsEqual(t *testing.T) {
 	peer2 = nil
 
 	if peer.PeersEqual(peer1, peer2) {
+		t.FailNow()
+	}
+}
+
+func TestIsBetterThan(t *testing.T) {
+	chain := PeerIDChain{}
+	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1}, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
+	peer1 := NewMeasuredPeer(NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{0, 1}, 0, 0), time.Duration(10*time.Millisecond))
+	peer2 := NewMeasuredPeer(NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{0, 1}, 0, 0), time.Duration(70*time.Millisecond))
+	if !peer1.HasBetterLatencyThan(peer2, 10*time.Millisecond) {
+		t.FailNow()
+	}
+	if peer2.HasBetterLatencyThan(peer1, 10*time.Millisecond) {
+		t.FailNow()
+	}
+	if peer1.HasBetterLatencyThan(peer1, 100*time.Millisecond) {
+		t.FailNow()
+	}
+	if peer1.HasBetterLatencyThan(peer1, 30*time.Millisecond) {
 		t.FailNow()
 	}
 }

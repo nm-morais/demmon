@@ -15,6 +15,7 @@ require (
 	github.com/reugn/go-quartz v0.3.2
 	github.com/robertkrimen/otto v0.0.0-20200922221731-ef014fd054ac
 	github.com/sirupsen/logrus v1.8.1
+	github.com/yourbasic/graph v0.0.0-20170921192928-40eb135c0b26
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 )
 

@@ -498,16 +498,21 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 		return
 	}
 
-	r := utils.GetRandFloat64()
-	if r > d.config.AttemptImprovePositionProbability {
-		d.logger.Info("EvalMeasuredPeersTimer returning due to  r > d.config.AttemptImprovePositionProbability")
-		return
-	}
+	// r := utils.GetRandFloat64()
+	// if r > d.config.AttemptImprovePositionProbability {
+	// 	d.logger.Info("EvalMeasuredPeersTimer returning due to  r > d.config.AttemptImprovePositionProbability")
+	// 	return
+	// }
 
 	measuredPeersArr := make(MeasuredPeersByLat, 0, len(d.measuredPeers))
 
 	for _, p := range d.measuredPeers {
 		if d.self.IsDescendentOf(p.chain) {
+			delete(d.measuredPeers, p.String())
+			continue
+		}
+
+		if d.isNeighbour(p) {
 			delete(d.measuredPeers, p.String())
 			continue
 		}
@@ -539,8 +544,8 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 
 		// parent latency is higher than latency to peer
 
-		if measuredPeer.hasBetterLatencyThan(parentAsMeasuredPeer, d.config.MinLatencyImprovementToImprovePosition) {
-			break // can break because measuredPeersArr is sorted, therefore, any remaining measured peer's latencies are higher
+		if !measuredPeer.HasBetterLatencyThan(parentAsMeasuredPeer, d.config.MinLatencyImprovementToImprovePosition) {
+			continue // can break because measuredPeersArr is sorted, therefore, any remaining measured peer's latencies are higher
 		}
 
 		if measuredPeer.nChildren == 0 {
@@ -554,29 +559,32 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 				d.logger.Infof("Not improving towards %s because i have too many children", measuredPeer.StringWithFields())
 				continue
 			}
-
-			if measuredPeer.bandwidth <= d.self.bandwidth {
-				d.logger.Infof("Not improving towards %s because the peer bandwidth and level is lower than mine", measuredPeer.StringWithFields())
-				continue
-			}
-		}
-
-		if d.self.Chain().Level() > measuredPeer.Chain().Level()+1 {
-			if d.self.bandwidth < measuredPeer.avgChildrenBW {
-				d.logger.Infof("Not improving towards %s because the peer is level is higher than mine and avg children bandwidth is higher than my bw", measuredPeer.StringWithFields())
-				diff := measuredPeer.avgChildrenBW - d.self.bandwidth
-				if diff > d.config.MaxDiffForBWScore {
+			if d.config.UseBwScore {
+				if measuredPeer.bandwidth <= d.self.bandwidth {
+					d.logger.Infof("Not improving towards %s because the peer bandwidth and level is lower than mine", measuredPeer.StringWithFields())
 					continue
 				}
 			}
 		}
 
-		// if len(d.myChildren) > 0 {
-		// 	// cannot join as child because due to having children
-		// 	if measuredPeer.Chain().Level() >= d.self.Chain().Level() {
-		// 		continue // TODO possibly send message for the other node to join me as child
-		// 	}
-		// }
+		if d.config.UseBwScore {
+			if d.self.Chain().Level() > measuredPeer.Chain().Level()+1 {
+				if d.self.bandwidth < measuredPeer.avgChildrenBW {
+					d.logger.Infof("Not improving towards %s because the peer is level is higher than mine and avg children bandwidth is higher than my bw", measuredPeer.StringWithFields())
+					diff := measuredPeer.avgChildrenBW - d.self.bandwidth
+					if diff > d.config.MaxDiffForBWScore {
+						continue
+					}
+				}
+			}
+		}
+
+		if len(d.myChildren) > 0 {
+			// cannot join as child because due to having children
+			if measuredPeer.Chain().Level() >= d.self.Chain().Level() {
+				continue // TODO possibly send message for the other node to join me as child
+			}
+		}
 
 		d.logger.Infof("Improving position towards: %s", measuredPeer.StringWithFields())
 		d.logger.Infof("self level: %d", d.self.Chain().Level())
@@ -590,13 +598,6 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 		d.sendJoinAsChildMsg(measuredPeer.PeerWithIDChain, measuredPeer.Latency, false, true)
 		return
 	}
-}
-func (mp *MeasuredPeer) hasBetterLatencyThan(other *MeasuredPeer, threshold time.Duration) bool {
-	if mp.Latency > other.Latency {
-		return false
-	}
-	latencyImprovement := mp.Latency - other.Latency
-	return latencyImprovement >= threshold
 }
 
 func (d *DemmonTree) handleMeasureNewPeersTimer(measureNewPeersTimer timer.Timer) {
@@ -681,7 +682,7 @@ func (d *DemmonTree) measurePeerExternalProcedure(p *PeerWithIDChain) bool {
 func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer) {
 
 	type absorbStats struct {
-		TotalLatency int
+		TotalLatency time.Duration
 		Absorber     *MeasuredPeer
 		PeersToKick  MeasuredPeersByLat
 	}
@@ -693,7 +694,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 		return
 	}
 
-	if len(d.myChildren) < d.config.NrPeersToBecomeChildrenPerParentInAbsorb*d.config.NrPeersToBecomeParentInAbsorb {
+	if len(d.myChildren) < d.config.NrPeersToBecomeChildrenPerParentInAbsorb+int(d.config.MinGrpSize) {
 		d.logger.Info("handleCheckChildrenSize timer trigger returning due to goup size being too small")
 		return
 	}
@@ -710,11 +711,11 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 			// if len(peersToKickPerAbsorber) == d.config.NrPeersToBecomeParentInAbsorb {
 			// 	break
 			// }
-			peersToKickPerAbsorber = append(peersToKickPerAbsorber, &absorbStats{
+			peersToKickPerAbsorber = append([]*absorbStats{{
 				TotalLatency: 0,
 				Absorber:     child,
 				PeersToKick:  []*MeasuredPeer{},
-			})
+			}}, peersToKickPerAbsorber...)
 		}
 	} else {
 		childrenAsMeasuredPeers := d.getPeerWithIDChainMapAsPeerMeasuredArr(d.myChildren)
@@ -746,11 +747,15 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 	// 	return false
 	// }
 
-	for _, peerAbsorberStats := range peersToKickPerAbsorber {
+	type edge struct {
+		peer1   *MeasuredPeer
+		peer2   *MeasuredPeer
+		latency time.Duration
+	}
 
-		if len(peerAbsorberStats.PeersToKick) == d.config.NrPeersToBecomeChildrenPerParentInAbsorb {
-			continue
-		}
+	edgeList := []edge{}
+
+	for _, peerAbsorberStats := range peersToKickPerAbsorber {
 
 		peerAbsorber := peerAbsorberStats.Absorber
 		peerAbsorberSiblingLatencies := d.myChildrenLatencies[peerAbsorber.String()]
@@ -771,7 +776,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 				continue
 			}
 
-			if candidateToKick.Latency == 0 {
+			if candidateToKick.Latency == 0 || candidateToKick.Latency == math.MaxInt64 {
 				continue
 			}
 
@@ -781,37 +786,149 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 			}
 
 			if candidateToKickFromSelfPOV.Latency < candidateToKick.Latency {
-				latencyDowngrade := candidateToKick.Latency - candidateToKickFromSelfPOV.Latency
-				if latencyDowngrade > d.config.MinLatencyImprovementToImprovePosition {
-					continue
-				}
-
+				// latencyDowngrade := candidateToKick.Latency - candidateToKickFromSelfPOV.Latency
+				// if latencyDowngrade > d.config.MinLatencyImprovementToImprovePosition {
+				continue
+				// }
 			}
 
+			edgeList = append(edgeList, edge{
+				peer1:   peerAbsorber,
+				peer2:   candidateToKick,
+				latency: candidateToKick.Latency,
+			})
+
 			peerAbsorberStats.PeersToKick = append(peerAbsorberStats.PeersToKick, candidateToKick)
-			peerAbsorberStats.TotalLatency += int(candidateToKick.Latency)
+			peerAbsorberStats.TotalLatency += candidateToKick.Latency
+
+			// if len(peerAbsorberStats.PeersToKick) == d.config.NrPeersToBecomeChildrenPerParentInAbsorb {
+			// 	break
+			// }
 		}
 	}
 
-	d.logger.Infof("handleCheckChildrenSizeTimer results: %+v", peersToKickPerAbsorber)
-	for _, absorberStats := range peersToKickPerAbsorber {
-		if len(absorberStats.PeersToKick) < int(d.config.NrPeersToBecomeChildrenPerParentInAbsorb) {
-			d.logger.Infof("peer %s does not have enough peers (%d/%d) to become parent in absorb", absorberStats.Absorber.StringWithFields(), len(absorberStats.PeersToKick), int(d.config.NrPeersToBecomeChildrenPerParentInAbsorb))
+	sort.SliceStable(edgeList, func(i, j int) bool {
+		return edgeList[i].latency < edgeList[j].latency
+	})
+	alreadyKicked := map[string]bool{}
+	alreadyParent := map[string]bool{}
+	potentialChildren := map[string][]*PeerWithIDChain{}
+
+	deleteFromPotentialChildren := func(toCompare string) {
+		for k, potentialChildrenArr := range potentialChildren {
+			i := 0
+			for _, c := range potentialChildrenArr {
+				if c.String() == toCompare {
+					continue
+				}
+				potentialChildrenArr[i] = c
+				i += 1
+			}
+			potentialChildren[k] = potentialChildrenArr[:i]
+		}
+	}
+
+	for _, edge := range edgeList {
+		if _, ok := alreadyKicked[edge.peer1.String()]; ok {
 			continue
 		}
-		absorber := absorberStats.Absorber
-		for _, toKickPeer := range absorberStats.PeersToKick {
-			d.logger.Infof(
-				"Sending absorb message with peerToAbsorb: %s, peerAbsorber: %s",
-				toKickPeer.StringWithFields(),
-				absorber.StringWithFields(),
-			)
-			toSend := NewAbsorbMessage(absorber.PeerWithIDChain)
-			d.sendMessage(toSend, toKickPeer)
+		if _, ok := alreadyKicked[edge.peer2.String()]; ok {
+			continue
 		}
-		return
+		if edge.peer1.bandwidth > edge.peer2.bandwidth {
+			if edge.peer1.nChildren > 0 {
+				d.sendMessage(NewAbsorbMessage(edge.peer1.PeerWithIDChain), edge.peer2)
+				alreadyKicked[edge.peer2.String()] = true
+				alreadyParent[edge.peer1.String()] = true
+				continue
+			}
+			potentialChildren[edge.peer1.String()] = append(potentialChildren[edge.peer1.String()], edge.peer2.PeerWithIDChain)
+			if len(potentialChildren[edge.peer1.String()]) == int(d.config.MinGrpSize) {
+				alreadyParent[edge.peer1.String()] = true
+				for _, newC := range potentialChildren[edge.peer1.String()] {
+					d.sendMessage(NewAbsorbMessage(edge.peer1.PeerWithIDChain), newC)
+					alreadyKicked[newC.String()] = true
+					deleteFromPotentialChildren(newC.String())
+				}
+				deleteFromPotentialChildren(edge.peer1.String())
+				potentialChildren[edge.peer1.String()] = []*PeerWithIDChain{}
+			}
+		} else {
+			if edge.peer2.nChildren > 0 {
+				d.sendMessage(NewAbsorbMessage(edge.peer2.PeerWithIDChain), edge.peer1)
+				alreadyKicked[edge.peer1.String()] = true
+				alreadyParent[edge.peer2.String()] = true
+				continue
+			}
+			potentialChildren[edge.peer2.String()] = append(potentialChildren[edge.peer2.String()], edge.peer1.PeerWithIDChain)
+			if len(potentialChildren[edge.peer2.String()]) == int(d.config.MinGrpSize) {
+				alreadyParent[edge.peer2.String()] = true
+				for _, newC := range potentialChildren[edge.peer2.String()] {
+					d.sendMessage(NewAbsorbMessage(edge.peer2.PeerWithIDChain), newC)
+					alreadyKicked[newC.String()] = true
+					deleteFromPotentialChildren(newC.String())
+				}
+				deleteFromPotentialChildren(edge.peer2.String())
+				potentialChildren[edge.peer2.String()] = []*PeerWithIDChain{}
+			}
+		}
 	}
+	return
+
+	// d.logger.Infof("handleCheckChildrenSizeTimer results: %+v", peersToKickPerAbsorber)
+	// sort.SliceStable(peersToKickPerAbsorber, func(i, j int) bool {
+	// 	return peersToKickPerAbsorber[i].TotalLatency < peersToKickPerAbsorber[j].TotalLatency
+	// })
+
+	// for _, absorberStats := range peersToKickPerAbsorber {
+	// 	if absorberStats.Absorber.nChildren == 0 {
+	// 		if len(absorberStats.PeersToKick) < int(d.config.NrPeersToBecomeChildrenPerParentInAbsorb) {
+	// 			d.logger.Infof("peer %s does not have enough peers (%d/%d) to become parent in absorb", absorberStats.Absorber.StringWithFields(), len(peersToKickPerAbsorber), int(d.config.NrPeersToBecomeChildrenPerParentInAbsorb))
+	// 			continue
+	// 		}
+	// 	}
+
+	// 	absorber := absorberStats.Absorber
+	// 	for _, toKickPeer := range absorberStats.PeersToKick {
+	// 		d.logger.Infof(
+	// 			"Sending absorb message with peerToAbsorb: %s, peerAbsorber: %s",
+	// 			toKickPeer.StringWithFields(),
+	// 			absorber.StringWithFields(),
+	// 		)
+	// 		toSend := NewAbsorbMessage(absorber.PeerWithIDChain)
+	// 		d.sendMessage(toSend, toKickPeer)
+	// 	}
+	// 	return
+	// }
 }
+
+// func (d *DemmonTree) computeChildrenGraphMST() {
+// 	intMapper := map[string]int{}
+// 	childrenAsMeasuredPeers := d.getPeerWithIDChainMapAsPeerMeasuredArr(d.myChildren)
+// 	g := graph.New(len(childrenAsMeasuredPeers) + 1)
+// 	intMapper[d.self.String()] = 0
+// 	i := 1
+// 	for _, childrenAsMeasuredPeer := range childrenAsMeasuredPeers {
+// 		intMapper[childrenAsMeasuredPeer.String()] = i
+// 		i += 1
+// 	}
+
+// 	for _, childrenAsMeasuredPeer := range childrenAsMeasuredPeers {
+// 		origVertex := intMapper[childrenAsMeasuredPeer.String()]
+// 		g.AddBothCost(origVertex, 0, childrenAsMeasuredPeer.Latency.Nanoseconds())
+// 		childrenSiblingLatencies, ok := d.myChildrenLatencies[childrenAsMeasuredPeer.String()]
+// 		if !ok {
+// 			continue
+// 		}
+// 		for _, v := range childrenSiblingLatencies {
+// 			destVertex := intMapper[v.String()]
+// 			g.AddBothCost(origVertex, destVertex, v.Latency.Nanoseconds())
+// 		}
+// 	}
+// 	fmt.Println(g.String())
+
+// 	graph.MST(g)
+// }
 
 // message handlers
 
@@ -1023,32 +1140,34 @@ func (d *DemmonTree) canBecomeParentOf(other *PeerWithIDChain, expectedChain Pee
 	}
 
 	if isImprovement {
+
 		if len(d.myChildren) == 0 {
 			d.logger.Warnf("cannot become parent of %s because it is an improvement and i do not have enough children",
 				other.StringWithFields())
 			return false
 		}
 
-		// go down ( if other level is 3, and my level is 5, i am lower in tree)
-		if other.Chain().Level() <= d.self.Chain().Level() {
-			if other.bandwidth > d.self.bandwidth {
-				return false
-			}
-		}
-
-		// go up ( if other level is 5, and my level is 3, i am higher in tree)
-		if other.Chain().Level() > d.self.Chain().Level()+1 {
-			if other.bandwidth < d.self.avgChildrenBW {
-				d.logger.Infof("Not improving towards %s because the peer is level is higher than mine and avg children bandwidth is higher than my bw", d.self.StringWithFields())
-				diff := d.self.avgChildrenBW - other.bandwidth
-				if diff > d.config.MaxDiffForBWScore {
+		if d.config.UseBwScore {
+			// go down ( if other level is 3, and my level is 5, i am lower in tree)
+			if other.Chain().Level() <= d.self.Chain().Level() {
+				if other.bandwidth > d.self.bandwidth {
 					return false
+				}
+			}
+
+			// go up ( if other level is 5, and my level is 3, i am higher in tree)
+			if other.Chain().Level() > d.self.Chain().Level()+1 {
+				if other.bandwidth < d.self.avgChildrenBW {
+					d.logger.Infof("Not improving towards %s because the peer is level is higher than mine and avg children bandwidth is higher than my bw", d.self.StringWithFields())
+					diff := d.self.avgChildrenBW - other.bandwidth
+					if diff > d.config.MaxDiffForBWScore {
+						return false
+					}
 				}
 			}
 		}
 
 	}
-
 	return true
 }
 

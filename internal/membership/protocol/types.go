@@ -353,6 +353,14 @@ func (p *MeasuredPeer) UnmarshalMeasuredPeer(buf []byte) (int, *MeasuredPeer) {
 	}
 }
 
+func (p *MeasuredPeer) HasBetterLatencyThan(other *MeasuredPeer, threshold time.Duration) bool {
+	if other.Latency < p.Latency {
+		return false
+	}
+	latencyImprovement := other.Latency - p.Latency
+	return latencyImprovement >= threshold
+}
+
 func DeserializeMeasuredPeerArray(buf []byte) (int, []*MeasuredPeer) {
 	nrPeers := int(binary.BigEndian.Uint32(buf[:4]))
 	peers := make([]*MeasuredPeer, nrPeers)

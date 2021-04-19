@@ -56,7 +56,7 @@ var (
 
 		MaxDiffForBWScore: 15,
 
-		MinGrpSize: 3,
+		MinGrpSize: 2,
 		MaxGrpSize: 9,
 
 		NrPeersToBecomeParentInAbsorb:            2,
@@ -72,7 +72,7 @@ var (
 		RejoinTimerDuration:           10 * time.Second,
 
 		AttemptImprovePositionProbability:    0.5,
-		EvalMeasuredPeersRefreshTickDuration: 12 * time.Second,
+		EvalMeasuredPeersRefreshTickDuration: 7 * time.Second,
 
 		EmitWalkProbability:                0.33,
 		BiasedWalkProbability:              0.2,
