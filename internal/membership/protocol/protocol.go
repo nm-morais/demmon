@@ -873,7 +873,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 			}
 		}
 	}
-	return
+	// return
 
 	// d.logger.Infof("handleCheckChildrenSizeTimer results: %+v", peersToKickPerAbsorber)
 	// sort.SliceStable(peersToKickPerAbsorber, func(i, j int) bool {
