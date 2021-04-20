@@ -43,7 +43,7 @@ func TestJoinAsChildMsgReplySerializer(t *testing.T) {
 
 	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1}, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
 
-	peer1 := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{0, 2, 0})
+	peer1 := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{0, 2, 0}, 0, 0)
 
 	toSerialize := NewJoinAsChildMessageReply(false, proposedID, 10, peer1, nil, nil)
 	serializer := toSerialize.Serializer()
@@ -73,12 +73,13 @@ func TestUpdateParentMsgSerializer(t *testing.T) {
 		3,
 		0,
 		Coordinates{3, 2, 2},
+		0, 0,
 	)
-	parent := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 1, 1})
+	parent := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 1, 1}, 0, 0)
 
-	peer1 := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 0, 0})
-	peer2 := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 0, 0})
-	peer3 := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 0, 0})
+	peer1 := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 0, 0}, 0, 0)
+	peer2 := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 0, 0}, 0, 0)
+	peer3 := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 0, 0}, 0, 0)
 
 	siblings := []*PeerWithIDChain{peer1, peer2, peer3}
 
@@ -130,7 +131,7 @@ func TestAbsorbMessageSerializer(t *testing.T) {
 	chain := PeerIDChain{}
 	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1}, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
 
-	toKick := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 3, Coordinates{3})
+	toKick := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 3, Coordinates{3}, 0, 0)
 
 	toSerialize := NewAbsorbMessage(toKick)
 	serializer := toSerialize.Serializer()
@@ -148,12 +149,12 @@ func TestJoinReplyMsgSerializer(t *testing.T) {
 
 	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1}, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
 
-	self := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3})
+	self := NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3}, 0, 0)
 
 	children := []*PeerWithIDChain{
-		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3}),
-		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3}),
-		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3}),
+		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3}, 0, 0),
+		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3}, 0, 0),
+		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3}, 0, 0),
 	}
 
 	toSerialize := NewJoinReplyMessage(children, self, self)
@@ -204,12 +205,12 @@ func TestRandomWalkSerializer(t *testing.T) {
 		3,
 		0,
 		Coordinates{3, 3, 3, 4},
-	)
+		0, 0)
 
 	sample := []*PeerWithIDChain{
-		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 1, 1, 2}),
-		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 3, 4, 1}),
-		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{0, 0, 0, 0}),
+		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 1, 1, 2}, 0, 0),
+		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 3, 4, 1}, 0, 0),
+		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{0, 0, 0, 0}, 0, 0),
 	}
 	toSerialize := NewRandomWalkMessage(3, sender, sample)
 
@@ -244,9 +245,9 @@ func TestRandomWalkReplySerializer(t *testing.T) {
 	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1}, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
 
 	sample := []*PeerWithIDChain{
-		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 1, 1, 2}),
-		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 3, 4, 1}),
-		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{0, 0, 0, 0}),
+		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 1, 1, 2}, 0, 0),
+		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{3, 3, 4, 1}, 0, 0),
+		NewPeerWithIDChain(chain, peer.NewPeer(net.IPv4(10, 10, 0, 17), 1200, 1300), 3, 0, Coordinates{0, 0, 0, 0}, 0, 0),
 	}
 	toSerialize := NewWalkReplyMessage(sample)
 

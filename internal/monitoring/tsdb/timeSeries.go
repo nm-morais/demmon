@@ -50,7 +50,7 @@ func (defaultClock) Time() time.Time { return time.Now() }
 // interval equal to the resolution of the level. New observations are added
 // to the last bucket.
 type timeSeries struct {
-	mu           sync.Mutex
+	mu           *sync.RWMutex
 	numBuckets   int        // number of buckets in each level
 	level        *tsLevel   // levels of bucketed Observable
 	lastAdd      time.Time  // time of last Observable tracked
@@ -143,14 +143,14 @@ func (ts *timeSeries) String() string {
 // Advances Timeseries in time
 func (ts *timeSeries) Advance(observation Observable) {
 	ts.mu.Lock()
-
+	ts._advance(observation.TS())
 	ts.mu.Unlock()
 }
 
 // Add records an observation at the current time.
 func (ts *timeSeries) AddPoint(observation Observable) {
 	ts.mu.Lock()
-	ts.addWithTime(observation, observation.TS())
+	ts._addWithTime(observation, observation.TS())
 	ts.mu.Unlock()
 }
 
@@ -159,21 +159,12 @@ func (ts *timeSeries) SetName(newName string) {
 }
 
 func (ts *timeSeries) SetTag(key, val string) {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
-
-	if ts.tags == nil {
-		ts.tags = make(map[string]string)
-	}
-
-	ts.tags[key] = val
+	panic("should never set name of a mutable timeseries")
 }
 
 // ComputeRange computes a specified number of values into a slice using
 // the observations recorded over the specified time period.
 func (ts *timeSeries) Range(start, finish time.Time) ([]Observable, error) {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
 
 	if start.After(finish) {
 		ts.logger.Infof("timeseries: start > finish, %v>%v", start, finish)
@@ -194,29 +185,40 @@ func (ts *timeSeries) Range(start, finish time.Time) ([]Observable, error) {
 }
 
 func (ts *timeSeries) All() []Observable {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
-
 	now := ts.clock.Time()
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
 
 	if ts.level.end.Before(now) {
-		ts.advance(now)
+		ts.mu.RUnlock()
+		ts.mu.Lock()
+		ts._advance(now)
+		ts.mu.Unlock()
+		ts.mu.RLock()
 	}
 
-	ts.mergePendingUpdates()
-	results := make([]Observable, 0, ts.numBuckets)
-	// ts.logger.Info("Getting all points..")
+	if ts.dirty {
+		ts.mu.RUnlock()
+		ts.mu.Lock()
+		if ts.dirty {
+			ts.mergeValue(ts.pending, ts.pendingTime)
+			ts.pending = nil
+			ts.dirty = false
+		}
+		ts.mu.Unlock()
+		ts.mu.RLock()
+	}
 
+	results := make([]Observable, 0)
+	// ts.logger.Info("Getting all points..")
 	for i := 0; i < ts.numBuckets; i++ {
 		idx := (i + ts.level.oldest) % ts.numBuckets
 		// ts.logger.Infof("idx: %d; ts.level.bucket[idx]: %+v", idx, ts.level.bucket[idx])
-
 		if ts.level.bucket[idx] != nil {
 			srcValue := ts.level.bucket[idx]
 			results = append(results, srcValue.Clone())
 		}
 	}
-
 	return results
 }
 
@@ -229,15 +231,15 @@ func (ts *timeSeries) Count() int {
 }
 
 func (ts *timeSeries) Name() string {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
 
 	return ts.name
 }
 
 func (ts *timeSeries) Tags() map[string]string {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
 	toReturn := make(map[string]string, len(ts.tags))
 
 	for k, v := range ts.tags {
@@ -248,38 +250,47 @@ func (ts *timeSeries) Tags() map[string]string {
 }
 
 func (ts *timeSeries) Last() Observable {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
-
 	var result Observable = nil
 
 	now := ts.clock.Time()
 
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
 	if ts.level.end.Before(now) {
-		ts.advance(now)
+		ts.mu.RUnlock()
+		ts.mu.Lock()
+		ts._advance(now)
+		ts.mu.Unlock()
+		ts.mu.RLock()
 	}
 
 	// ts.logger.Info("Getting last point...")
+	if ts.dirty {
+		ts.mu.RUnlock()
+		ts.mu.Lock()
+		if ts.dirty {
+			ts.mergeValue(ts.pending, ts.pendingTime)
+			ts.pending = nil
+			ts.dirty = false
+		}
+		ts.mu.Unlock()
+		ts.mu.RLock()
+	}
 
-	ts.mergePendingUpdates()
 	// ts.logger.Infof("ts.level.newest: %d", ts.level.newest)
 	var idx int
 
 	for i := 0; i < ts.numBuckets; i++ {
-
 		idx = ts.level.newest - i
 		if idx < 0 {
 			idx += ts.numBuckets
 		}
-
 		// ts.logger.Infof("idx: %d; ts.level.bucket[idx]: %+v", idx, ts.level.bucket[idx])
-
 		if ts.level.bucket[idx] != nil {
 			result = ts.level.bucket[idx].Clone()
 			break
 		}
 	}
-
 	return result
 }
 
@@ -290,12 +301,12 @@ func (ts *timeSeries) init(name string,
 	numBuckets int,
 	clock Clock,
 	logger *logrus.Entry) {
-	ts.mu = sync.Mutex{}
+
+	ts.mu = &sync.RWMutex{}
 	ts.name = name
 	ts.tags = tags
 	ts.numBuckets = numBuckets
 	ts.clock = clock
-	ts.level = &tsLevel{}
 	newLevel := new(tsLevel)
 	newLevel.InitLevel(resolution, ts.numBuckets)
 	ts.level = newLevel
@@ -304,7 +315,7 @@ func (ts *timeSeries) init(name string,
 }
 
 // AddWithTime records an observation at the specified time.
-func (ts *timeSeries) addWithTime(observation Observable, t time.Time) {
+func (ts *timeSeries) _addWithTime(observation Observable, t time.Time) {
 
 	// ts.logger.Infof("Adding %+v at time %s", observation, t)
 
@@ -312,8 +323,16 @@ func (ts *timeSeries) addWithTime(observation Observable, t time.Time) {
 		ts.lastAdd = t
 	}
 	if t.After(ts.pendingTime) {
-		ts.advance(t)
-		ts.mergePendingUpdates()
+		ts._advance(t)
+
+		if ts.dirty {
+			if ts.dirty {
+				ts.mergeValue(ts.pending, ts.pendingTime)
+				ts.pending = nil
+				ts.dirty = false
+			}
+		}
+
 		ts.pendingTime = ts.level.end
 		ts.pending = observation
 		ts.dirty = true
@@ -341,18 +360,9 @@ func (ts *timeSeries) mergeValue(observation Observable, t time.Time) {
 	}
 }
 
-// mergePendingUpdates applies the pending updates into all levels.
-func (ts *timeSeries) mergePendingUpdates() {
-	if ts.dirty {
-		ts.mergeValue(ts.pending, ts.pendingTime)
-		ts.pending = nil
-		ts.dirty = false
-	}
-}
-
-// advance cycles the buckets at each level until the latest bucket in
+// _advance cycles the buckets at each level until the latest bucket in
 // each level can hold the time specified.
-func (ts *timeSeries) advance(t time.Time) {
+func (ts *timeSeries) _advance(t time.Time) {
 	if !t.After(ts.level.end) {
 		return
 	}
@@ -380,43 +390,57 @@ func (ts *timeSeries) advance(t time.Time) {
 	t = level.end
 }
 
-// latestBuckets returns a copy of the num latest buckets from level.
-func (ts *timeSeries) latestBuckets(num int) []Observable {
-	if num < 0 || num >= ts.numBuckets {
-		ts.logger.Print("timeseries: bad num argument: ", num)
-		return nil
-	}
+// // latestBuckets returns a copy of the num latest buckets from level.
+// func (ts *timeSeries) latestBuckets(num int) []Observable {
+// 	if num < 0 || num >= ts.numBuckets {
+// 		ts.logger.Print("timeseries: bad num argument: ", num)
+// 		return nil
+// 	}
 
-	results := make([]Observable, num)
-	now := ts.clock.Time()
+// 	results := make([]Observable, num)
+// 	now := ts.clock.Time()
 
-	if ts.level.end.Before(now) {
-		ts.advance(now)
-	}
+// 	if ts.level.end.Before(now) {
+// 		ts._advance(now)
+// 	}
 
-	ts.mergePendingUpdates()
-	l := ts.level
-	index := l.newest
+// 	ts.mergePendingUpdates()
+// 	l := ts.level
+// 	index := l.newest
 
-	for i := 0; i < num; i++ {
-		if l.bucket[index] != nil {
-			results[i] = l.bucket[index].Clone()
-			// result.CopyFrom(l.bucket[index])
-		}
+// 	for i := 0; i < num; i++ {
+// 		if l.bucket[index] != nil {
+// 			results[i] = l.bucket[index].Clone()
+// 			// result.CopyFrom(l.bucket[index])
+// 		}
 
-		if index == 0 {
-			index = ts.numBuckets
-		}
-		index--
-	}
+// 		if index == 0 {
+// 			index = ts.numBuckets
+// 		}
+// 		index--
+// 	}
 
-	return results
-}
+// 	return results
+// }
 
 // extract returns a slice of specified number of observations from a given
 // level over a given range.
 func (ts *timeSeries) extract(l *tsLevel, start, finish time.Time) []Observable {
-	ts.mergePendingUpdates()
+
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+
+	if ts.dirty {
+		ts.mu.RUnlock()
+		ts.mu.Lock()
+		if ts.dirty {
+			ts.mergeValue(ts.pending, ts.pendingTime)
+			ts.pending = nil
+			ts.dirty = false
+		}
+		ts.mu.Unlock()
+		ts.mu.RLock()
+	}
 
 	srcInterval := l.size
 	dstStart := start
@@ -435,7 +459,7 @@ func (ts *timeSeries) extract(l *tsLevel, start, finish time.Time) []Observable 
 	// i'th value = sum of observation in range
 	//   [ start + i       * interval,
 	//     start + (i + 1) * interval )
-	results := make([]Observable, 0, ts.numBuckets-srcIndex)
+	results := make([]Observable, 0)
 
 	for srcIndex < ts.numBuckets && srcStart.Before(finish) {
 		srcEnd := srcStart.Add(srcInterval)

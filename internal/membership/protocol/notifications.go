@@ -78,12 +78,14 @@ const NodeDownNotificationID = 2004
 type NodeDownNotification struct {
 	InView   InView
 	PeerDown *PeerWithIDChain
+	Crash    bool
 }
 
-func NewNodeDownNotification(p *PeerWithIDChain, inView InView) NodeDownNotification {
+func NewNodeDownNotification(p *PeerWithIDChain, inView InView, crash bool) NodeDownNotification {
 	return NodeDownNotification{
 		InView:   inView,
 		PeerDown: p,
+		Crash:    crash,
 	}
 }
 

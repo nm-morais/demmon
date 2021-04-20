@@ -2,9 +2,11 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/csv"
 	"math/big"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 
 	membershipProtocol "github.com/nm-morais/demmon/internal/membership/protocol"
@@ -38,12 +40,52 @@ func GetAdvertiseListenAddrVar() (string, bool) {
 	return hostIP, true
 }
 
+func GetUseBWEnvVar() bool {
+	useBw, ok := os.LookupEnv(UseBandwidthEnvName)
+	if !ok {
+		return false
+	}
+	return useBw == "true"
+}
+
+func GetBWScore() int {
+	bwStr, ok := os.LookupEnv(BandwidthScoreEnvName)
+	if !ok {
+		return 0
+	}
+	bw, err := strconv.ParseInt(bwStr, 10, 32)
+	if err != nil {
+		panic(err)
+	}
+	return int(bw)
+}
+
 func GetWaitForStartEnvVar() bool {
 	waitForStartEnvVarVal, exists := os.LookupEnv(WaitForStartEnvVar)
 	if !exists {
 		return false
 	}
 	return waitForStartEnvVarVal == "true"
+}
+
+func GetBenchmarkMembershipEnvVar() bool {
+	benchmarkEnvVarVal, exists := os.LookupEnv(BenchmarkMembershipEnvName)
+	if !exists {
+		return false
+	}
+	return benchmarkEnvVarVal == "true"
+}
+
+func GetDemmonBenchmarkTypeEnvVar() (string, bool) {
+	return os.LookupEnv(BenchmarkDemmonTypeEnvName)
+}
+
+func GetBenchmarkDemmonEnvVar() bool {
+	benchmarkEnvVarVal, exists := os.LookupEnv(BenchmarkDemmonEnvName)
+	if !exists {
+		return false
+	}
+	return benchmarkEnvVarVal == "true"
 }
 
 func GetLandmarksEnv() ([]*membershipProtocol.PeerWithIDChain, bool) {
@@ -62,6 +104,8 @@ func GetLandmarksEnv() ([]*membershipProtocol.PeerWithIDChain, bool) {
 			0,
 			0,
 			make(membershipProtocol.Coordinates, len(landmarksSplitted)),
+			0,
+			0,
 		)
 		landmarks[i] = landmark
 	}
@@ -75,4 +119,19 @@ func getRandInt(max int64) int64 {
 	}
 
 	return n.Int64()
+}
+
+func setupCSVWriter(folder, fileName string, headers []string) *csv.Writer {
+	err := os.MkdirAll(folder, 0777)
+	if err != nil {
+		panic(err)
+	}
+	allLogsFile, err := os.Create(folder + fileName)
+	if err != nil {
+		panic(err)
+	}
+
+	writer := csv.NewWriter(allLogsFile)
+	writeOrPanic(writer, headers)
+	return writer
 }

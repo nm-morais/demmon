@@ -46,14 +46,14 @@ const AddTreeAggregationFuncReqID = 2002
 
 type AddTreeAggregationFuncReq struct {
 	Id          int64
-	InterestSet body_types.TreeAggregationSet
+	InterestSet *body_types.TreeAggregationSet
 }
 
 func (r AddTreeAggregationFuncReq) ID() protocol.ID {
 	return AddTreeAggregationFuncReqID
 }
 
-func NewAddTreeAggregationFuncReq(id int64, interestSet body_types.TreeAggregationSet) request.Request {
+func NewAddTreeAggregationFuncReq(id int64, interestSet *body_types.TreeAggregationSet) request.Request {
 	return AddTreeAggregationFuncReq{
 		Id:          id,
 		InterestSet: interestSet,

@@ -13,13 +13,14 @@ import (
 type sub struct {
 	p           peer.Peer
 	lastRefresh time.Time
+	values      map[string]interface{}
 }
 
 type globalAggFunc struct {
-	nrRetries   int
-	subscribers map[string]sub
-	NeighValues map[string]map[string]interface{}
-	AF          body_types.GlobalAggregationFunction
+	nrRetries                 int
+	subscribers               map[string]*sub
+	AF                        body_types.GlobalAggregationFunction
+	intermediateValuesTimerID int
 }
 
 // REQUEST CREATORS
@@ -37,38 +38,89 @@ func (m *Monitor) handleAddGlobalAggFuncRequest(req request.Request) request.Rep
 
 	existing, ok := m.globalAggFuncs[addGlobalAggFuncReq.Id]
 	if ok {
-		existing.subscribers[m.babel.SelfPeer().String()] = sub{
-			p: m.babel.SelfPeer(),
+		if _, ok := existing.subscribers[m.babel.SelfPeer().String()]; ok {
+			return nil
 		}
+		if existing.AF.StoreIntermediateValues {
+			t := NewExportGlobalAggregationIntermediateValuesFuncTimer(interestSet.IntermediateBucketOpts.Granularity.Granularity, interestSetID)
+			timerID := m.babel.RegisterPeriodicTimer(m.ID(), t, false)
+			existing.intermediateValuesTimerID = timerID
+		}
+		existing.subscribers[m.babel.SelfPeer().String()] = &sub{
+			p:           m.babel.SelfPeer(),
+			lastRefresh: time.Time{},
+			values:      nil,
+		}
+		m.globalAggFuncs[addGlobalAggFuncReq.Id] = existing
 		return nil
 	}
-
-	m.globalAggFuncs[addGlobalAggFuncReq.Id] = &globalAggFunc{
-		NeighValues: make(map[string]map[string]interface{}),
-		AF:          addGlobalAggFuncReq.AggFunc,
-		nrRetries:   0,
-		subscribers: map[string]sub{
-			m.babel.SelfPeer().String(): {
-				p: m.babel.SelfPeer(),
-			},
-		},
+	timerID := 0
+	if interestSet.StoreIntermediateValues {
+		t := NewExportGlobalAggregationIntermediateValuesFuncTimer(interestSet.IntermediateBucketOpts.Granularity.Granularity, interestSetID)
+		timerID = m.babel.RegisterPeriodicTimer(m.ID(), t, false)
 	}
+	m.globalAggFuncs[addGlobalAggFuncReq.Id] = &globalAggFunc{
+		nrRetries: 0,
+		subscribers: map[string]*sub{
+			m.babel.SelfPeer().String(): {p: m.babel.SelfPeer()},
+		},
+		AF:                        addGlobalAggFuncReq.AggFunc,
+		intermediateValuesTimerID: timerID,
+	}
+
 	frequency := interestSet.OutputBucketOpts.Granularity.Granularity
 	m.logger.Infof("Installing local interest set %d: %+v", interestSetID, interestSet)
 	m.babel.RegisterTimer(m.ID(), NewExportGlobalAggregationFuncTimer(frequency, interestSetID))
 	return nil
 }
 
+func (m *Monitor) handleExportGlobalAggFuncIntermediateValuesTimer(t timer.Timer) {
+	tConverted := t.(*exportGlobalAggregationFuncIntermediateValuesTimer)
+	interestSetID := tConverted.InterestSetID
+	globalAggFunc, ok := m.globalAggFuncs[interestSetID]
+
+	if !ok {
+		m.logger.Warnf("Canceling export timer for intermediate values of global aggregation func %d", interestSetID)
+		m.babel.CancelTimer(globalAggFunc.intermediateValuesTimerID)
+		return
+	}
+	_, local := globalAggFunc.subscribers[m.babel.SelfPeer().String()]
+	if !local {
+		m.logger.Panicf("Exporting intermediate values for non-local global aggregation set %d", interestSetID)
+	}
+
+	// m.logger.Infof("Storing intermediate values for global agg func %d", interestSetID)
+	for _, v := range globalAggFunc.subscribers {
+		if !m.isPeerInView(v.p) {
+			continue
+		}
+		if v.values == nil {
+			continue
+		}
+
+		// m.logger.Info("Adding merged values locally")
+		err := m.tsdb.AddMetric(
+			globalAggFunc.AF.IntermediateBucketOpts.Name,
+			map[string]string{"host": v.p.IP().String()},
+			v.values,
+			time.Now(),
+		)
+		if err != nil {
+			m.logger.Panic(err)
+		}
+	}
+
+}
+
 // BROADCAST AGG FUNCS TIMER
 
 func (m *Monitor) handleRebroadcastGlobalInterestSetsTimer(t timer.Timer) {
-	m.babel.RegisterTimer(
-		m.ID(),
-		NewBroadcastGlobalAggregationFuncsTimer(RebroadcastGlobalAggFuncTimerDuration),
-	)
 	// m.logger.Infof("Broadcasting global interest sets...")
 	m.broadcastGlobalAggFuncsToChildren()
 	m.broadcastGlobalAggFuncsToParent()
+	if m.isLandmark {
+		m.broadcastGlobalAggFuncsToSiblings()
+	}
 }
 
 func (m *Monitor) broadcastGlobalAggFuncsToChildren() {
@@ -94,7 +146,34 @@ func (m *Monitor) broadcastGlobalAggFuncsToChildren() {
 
 		if len(globalIntSetstoSend) > 0 {
 			toSend := NewInstallGlobalAggFuncMessage(globalIntSetstoSend)
-			m.SendMessage(toSend, child)
+			m.SendMessage(toSend, child, false)
+		}
+	}
+}
+
+func (m *Monitor) broadcastGlobalAggFuncsToSiblings() {
+	for _, sibling := range m.currView.Siblings {
+		globalIntSetstoSend := make(map[int64]body_types.GlobalAggregationFunction)
+		for aggFuncID, is := range m.globalAggFuncs {
+
+			_, selfIsSubscriber := is.subscribers[m.babel.SelfPeer().String()]
+			if selfIsSubscriber {
+				globalIntSetstoSend[aggFuncID] = is.AF
+				continue
+			}
+
+			if _, ok := is.subscribers[sibling.String()]; ok {
+				// m.logger.Warnf("Not Broadcasting global interest set %d to %s because node is a subscriber",
+				// 	aggFuncID,
+				// 	child.String())
+				continue
+			}
+			globalIntSetstoSend[aggFuncID] = is.AF
+		}
+
+		if len(globalIntSetstoSend) > 0 {
+			toSend := NewInstallGlobalAggFuncMessage(globalIntSetstoSend)
+			m.SendMessage(toSend, sibling, false)
 		}
 	}
 }
@@ -126,7 +205,7 @@ func (m *Monitor) broadcastGlobalAggFuncsToParent() {
 
 	if len(globalIntSetstoSend) > 0 {
 		toSend := NewInstallGlobalAggFuncMessage(globalIntSetstoSend)
-		m.SendMessage(toSend, m.currView.Parent)
+		m.SendMessage(toSend, m.currView.Parent, false)
 	}
 }
 
@@ -162,8 +241,10 @@ func (m *Monitor) handlePropagateGlobalAggFuncMetricsMessage(sender peer.Peer, m
 	}
 
 	if !found && !peer.PeersEqual(sender, m.currView.Parent) {
-		m.logger.Errorf("received interest set propagation message but target (%s) is not parent or children", sender)
-		return
+		if !m.isLandmark {
+			m.logger.Errorf("received interest set propagation message but target (%s) is not parent or children", sender)
+			return
+		}
 	}
 
 	// m.logger.WithFields(logrus.Fields{"value": msgConverted.Value}).Infof(
@@ -172,7 +253,12 @@ func (m *Monitor) handlePropagateGlobalAggFuncMetricsMessage(sender peer.Peer, m
 	// 	globalAggFunc.AF.OutputBucketOpts.Name,
 	// 	sender.String(),
 	// )
-	globalAggFunc.NeighValues[sender.String()] = msgConverted.Value.Fields
+	sub, ok := globalAggFunc.subscribers[sender.String()]
+	if !ok {
+		m.logger.Errorf("Sub for global agg func %d not present", interestSetID)
+		return
+	}
+	sub.values = msgConverted.Value.Fields
 }
 
 // EXPORT METRICS TIMER
@@ -232,18 +318,21 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 	}
 
 	var mergedVal map[string]interface{}
-	if len(globalAggFunc.NeighValues) > 0 {
+	if len(globalAggFunc.subscribers) > 0 {
 
-		valuesToMerge := make([]map[string]interface{}, 0, len(globalAggFunc.NeighValues)+1)
+		valuesToMerge := make([]map[string]interface{}, 0, len(globalAggFunc.subscribers)+1)
 		valuesToMerge = append(valuesToMerge, queryResult)
-		for _, v := range globalAggFunc.NeighValues {
-			valuesToMerge = append(valuesToMerge, v)
+		for _, v := range globalAggFunc.subscribers {
+			if v.values == nil {
+				continue
+			}
+			valuesToMerge = append(valuesToMerge, v.values)
 		}
 
 		// m.logger.Infof(
 		// 	"Merging value: (%+v) with (%+v)",
 		// 	queryResult,
-		// 	globalAggFunc.NeighValues,
+		// 	globalAggFunc.subscribers,
 		// )
 
 		mergedVal, err = m.me.RunMergeFunc(globalAggFunc.AF.MergeFunction.Expression, globalAggFunc.AF.MergeFunction.Timeout, valuesToMerge)
@@ -271,51 +360,11 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 		}
 	}
 
-	for subID, sub := range globalAggFunc.subscribers {
+	for _, sub := range globalAggFunc.subscribers {
 		if peer.PeersEqual(sub.p, m.babel.SelfPeer()) {
 			continue
 		}
-
-		subVal, ok := globalAggFunc.NeighValues[subID]
-		if !ok {
-			// m.logger.Warnf(
-			// 	"Propagating values (%+v) from global agg func without performing difference from incomming value",
-			// 	mergedVal,
-			// )
-			toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: timeNow, Fields: mergedVal})
-			m.SendMessage(toSendMsg, sub.p)
-			continue
-		}
-
-		// m.logger.Infof(
-		// 	"Performing difference between: (%+v) and: (%+v)",
-		// 	mergedVal,
-		// 	subVal,
-		// )
-
-		differenceResult, err := m.me.RunMergeFunc(
-			globalAggFunc.AF.DifferenceFunction.Expression,
-			globalAggFunc.AF.DifferenceFunction.Timeout,
-			[]map[string]interface{}{mergedVal, subVal},
-		)
-
-		if err != nil {
-			panic(err)
-		}
-
-		// m.logger.Infof(
-		// 	"Difference result: (%+v)",
-		// 	differenceResult,
-		// )
-
-		toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: timeNow, Fields: differenceResult})
-		// m.logger.Infof(
-		// 	"propagating metrics for global aggregation function %d (%+v) to peer %s",
-		// 	interestSetID,
-		// 	differenceResult,
-		// 	sub.p.String(),
-		// )
-		m.SendMessage(toSendMsg, sub.p)
+		m.propagateGlobalAggFuncValuesToSub(timeNow, interestSetID, globalAggFunc, sub, mergedVal)
 	}
 
 	m.babel.RegisterTimer(
@@ -327,30 +376,45 @@ func (m *Monitor) handleExportGlobalAggFuncFuncTimer(t timer.Timer) {
 	)
 }
 
+func (m *Monitor) propagateGlobalAggFuncValuesToSub(timeNow time.Time,
+	interestSetID int64,
+	globalAggFunc *globalAggFunc,
+	sub *sub,
+	mergedVal map[string]interface{}) {
+	toSubtract := []map[string]interface{}{}
+	isSubSibling, _, _ := m.getPeerRelationshipType(sub.p)
+	if m.isLandmark && isSubSibling {
+		for _, sub2 := range globalAggFunc.subscribers {
+			isSibling, _, _ := m.getPeerRelationshipType(sub2.p)
+			if isSibling && sub2.values != nil {
+				toSubtract = append(toSubtract, sub2.values)
+			}
+		}
+	}
+	if !isSubSibling && sub.values != nil {
+		toSubtract = append(toSubtract, sub.values)
+	}
+	if len(toSubtract) > 0 {
+		differenceResult, err := m.me.RunMergeFunc(
+			globalAggFunc.AF.DifferenceFunction.Expression,
+			globalAggFunc.AF.DifferenceFunction.Timeout,
+			append([]map[string]interface{}{mergedVal}, toSubtract...),
+		)
+		if err != nil {
+			panic(err)
+		}
+		toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: timeNow, Fields: differenceResult})
+		m.SendMessage(toSendMsg, sub.p, false)
+	} else {
+		toSendMsg := NewPropagateGlobalAggFuncMetricsMessage(interestSetID, &body_types.ObservableDTO{TS: timeNow, Fields: mergedVal})
+		m.SendMessage(toSendMsg, sub.p, false)
+	}
+}
+
 func (m *Monitor) cleanupGlobalAggFuncs() {
 	for isID, is := range m.globalAggFuncs {
 		for k, sub := range is.subscribers {
 			if peer.PeersEqual(sub.p, m.babel.SelfPeer()) {
-				continue
-			}
-
-			found := false
-
-			for _, child := range m.currView.Children {
-				if peer.PeersEqual(sub.p, child) {
-					found = true
-					break
-				}
-			}
-
-			if !found && !peer.PeersEqual(sub.p, m.currView.Parent) {
-				m.logger.Errorf(
-					"Removing peer %s from global agg func %d because peer is not parent of children",
-					sub.p.String(),
-					isID,
-				)
-				delete(is.subscribers, k)
-				delete(is.NeighValues, k)
 				continue
 			}
 
@@ -361,7 +425,6 @@ func (m *Monitor) cleanupGlobalAggFuncs() {
 					isID,
 				)
 				delete(is.subscribers, k)
-				delete(is.NeighValues, k)
 				continue
 			}
 		}
@@ -382,18 +445,24 @@ func (m *Monitor) handleInstallGlobalAggFuncMessage(sender peer.Peer, msg messag
 	installGlobalAggFuncMsg := msg.(InstallGlobalAggFuncMsg)
 
 	if !m.isPeerInView(sender) {
-		m.logger.Warn("received install global interest set from peer not in my view")
+		m.logger.Warnf("received install global interest set from peer (%s) not in my view", sender.String())
 		return
 	}
 
 	for interestSetID, interestSet := range installGlobalAggFuncMsg.InterestSets {
 
 		is, alreadyExists := m.globalAggFuncs[interestSetID]
-
 		if alreadyExists {
-			is.subscribers[sender.String()] = sub{
+			remoteSub, alreadySubbed := is.subscribers[sender.String()]
+			if alreadySubbed {
+				remoteSub.lastRefresh = time.Now()
+				continue
+			}
+
+			is.subscribers[sender.String()] = &sub{
 				p:           sender,
 				lastRefresh: time.Now(),
+				values:      nil,
 			}
 			// m.logger.Info("Global interest set already present")
 			continue
@@ -402,14 +471,14 @@ func (m *Monitor) handleInstallGlobalAggFuncMessage(sender peer.Peer, msg messag
 		m.logger.Infof("installed global interest set %d: %+v", interestSetID, interestSet)
 		m.globalAggFuncs[interestSetID] = &globalAggFunc{
 			nrRetries: 0,
-			subscribers: map[string]sub{
+			subscribers: map[string]*sub{
 				sender.String(): {
 					p:           sender,
 					lastRefresh: time.Now(),
+					values:      nil,
 				},
 			},
-			NeighValues: map[string]map[string]interface{}{},
-			AF:          interestSet,
+			AF: interestSet,
 		}
 
 		m.babel.RegisterTimer(
@@ -424,16 +493,11 @@ func (m *Monitor) handleInstallGlobalAggFuncMessage(sender peer.Peer, msg messag
 
 // HANDLE NODE DOWN
 
-func (m *Monitor) handleNodeDownGlobalAggFunc(nodeDown peer.Peer) {
-
+func (m *Monitor) handleNodeDownGlobalAggFunc(nodeDown peer.Peer, crash bool) {
 	for aggFuncKey, aggFunc := range m.globalAggFuncs {
-
 		delete(aggFunc.subscribers, nodeDown.String())
-		delete(aggFunc.NeighValues, nodeDown.String())
-
 		if len(aggFunc.subscribers) == 0 {
 			delete(m.globalAggFuncs, aggFuncKey)
 		}
 	}
-
 }

@@ -7,10 +7,11 @@ import (
 )
 
 type InView struct {
-	Grandparent *PeerWithIDChain
-	Parent      *PeerWithIDChain
-	Children    []*PeerWithIDChain
-	Siblings    []*PeerWithIDChain
+	Grandparent     *PeerWithIDChain
+	Parent          *PeerWithIDChain
+	Children        []*PeerWithIDChain
+	Siblings        []*PeerWithIDChain
+	IsSelfBootstrap bool
 }
 
 type GetNeighboursReq struct {

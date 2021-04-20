@@ -13,6 +13,7 @@ type ReadOnlyTimeSeries interface {
 	Name() string
 	Tags() map[string]string
 	Tag(string) (string, bool)
+	SetTag(string, string)
 	All() []Observable
 	Range(start time.Time, end time.Time) ([]Observable, error)
 	Last() Observable

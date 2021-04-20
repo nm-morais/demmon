@@ -24,6 +24,10 @@ const ProtoID = 1000
 const ProtoName = "DemonTree"
 
 type DemmonTreeConfig = struct {
+	MaxDiffForBWScore int
+	BandwidthScore    int
+	UseBwScore        bool
+
 	Landmarks                   []*PeerWithIDChain
 	LandmarkRedialTimer         time.Duration
 	JoinMessageTimeout          time.Duration
@@ -50,7 +54,6 @@ type DemmonTreeConfig = struct {
 	EvalMeasuredPeersRefreshTickDuration   time.Duration
 	MinLatencyImprovementToImprovePosition time.Duration
 	CheckChildenSizeTimerDuration          time.Duration
-	MinLatencyImprovementPerPeerForSwitch  time.Duration
 	EmitWalkProbability                    float64
 	BiasedWalkProbability                  float64
 	AttemptImprovePositionProbability      float64
@@ -109,7 +112,7 @@ type DemmonTree struct {
 }
 
 const (
-	DebugTimerDuration = 5 * time.Second
+	DebugTimerDuration = 3 * time.Second
 )
 
 func New(config *DemmonTreeConfig, babel protocolManager.ProtocolManager, nw nodeWatcher.NodeWatcher) protocol.Protocol {
@@ -153,7 +156,7 @@ func (d *DemmonTree) Logger() *logrus.Logger {
 
 func (d *DemmonTree) Start() {
 
-	d.self = NewPeerWithIDChain(nil, d.babel.SelfPeer(), 0, 0, make(Coordinates, len(d.config.Landmarks)))
+	d.self = NewPeerWithIDChain(nil, d.babel.SelfPeer(), 0, 0, make(Coordinates, len(d.config.Landmarks)), d.config.BandwidthScore, 0)
 	for _, landmark := range d.config.Landmarks {
 
 		if !peer.PeersEqual(d.babel.SelfPeer(), landmark) {
@@ -166,6 +169,8 @@ func (d *DemmonTree) Start() {
 			0,
 			0,
 			make(Coordinates, len(d.config.Landmarks)),
+			d.config.BandwidthScore,
+			0,
 		)
 		d.landmark = true
 		for _, landmark := range d.config.Landmarks {
@@ -194,21 +199,21 @@ func (d *DemmonTree) Start() {
 		d.myParent = nil
 		d.myChildren = make(map[string]*PeerWithIDChain)
 
-		d.babel.RegisterPeriodicTimer(d.ID(), NewCheckChidrenSizeTimer(d.config.CheckChildenSizeTimerDuration))
-		d.babel.RegisterPeriodicTimer(d.ID(), NewParentRefreshTimer(d.config.ParentRefreshTickDuration))
-		d.babel.RegisterPeriodicTimer(d.ID(), NewDebugTimer(DebugTimerDuration))
-		d.babel.RegisterPeriodicTimer(d.ID(), NewUpdateChildTimer(d.config.ChildrenRefreshTickDuration))
+		d.babel.RegisterPeriodicTimer(d.ID(), NewCheckChidrenSizeTimer(d.config.CheckChildenSizeTimerDuration), false)
+		d.babel.RegisterPeriodicTimer(d.ID(), NewParentRefreshTimer(d.config.ParentRefreshTickDuration), false)
+		d.babel.RegisterPeriodicTimer(d.ID(), NewDebugTimer(DebugTimerDuration), false)
+		d.babel.RegisterPeriodicTimer(d.ID(), NewUpdateChildTimer(d.config.ChildrenRefreshTickDuration), false)
 		return
 	}
 
-	d.babel.RegisterPeriodicTimer(d.ID(), NewUnderpopupationTimer(d.config.UnderpopulatedGroupTimerDuration))
-	d.babel.RegisterPeriodicTimer(d.ID(), NewUpdateChildTimer(d.config.ChildrenRefreshTickDuration))
-	d.babel.RegisterPeriodicTimer(d.ID(), NewParentRefreshTimer(d.config.ParentRefreshTickDuration))
-	d.babel.RegisterPeriodicTimer(d.ID(), NewMeasureNewPeersTimer(d.config.MeasureNewPeersRefreshTickDuration))
-	d.babel.RegisterPeriodicTimer(d.ID(), NewExternalNeighboringTimer(d.config.EmitWalkTimeout))
-	d.babel.RegisterPeriodicTimer(d.ID(), NewEvalMeasuredPeersTimer(d.config.EvalMeasuredPeersRefreshTickDuration))
-	d.babel.RegisterPeriodicTimer(d.ID(), NewCheckChidrenSizeTimer(d.config.CheckChildenSizeTimerDuration))
-	d.babel.RegisterPeriodicTimer(d.ID(), NewDebugTimer(DebugTimerDuration))
+	d.babel.RegisterPeriodicTimer(d.ID(), NewUnderpopupationTimer(d.config.UnderpopulatedGroupTimerDuration), false)
+	d.babel.RegisterPeriodicTimer(d.ID(), NewUpdateChildTimer(d.config.ChildrenRefreshTickDuration), false)
+	d.babel.RegisterPeriodicTimer(d.ID(), NewParentRefreshTimer(d.config.ParentRefreshTickDuration), false)
+	d.babel.RegisterPeriodicTimer(d.ID(), NewMeasureNewPeersTimer(d.config.MeasureNewPeersRefreshTickDuration), false)
+	d.babel.RegisterPeriodicTimer(d.ID(), NewExternalNeighboringTimer(d.config.EmitWalkTimeout), false)
+	d.babel.RegisterPeriodicTimer(d.ID(), NewEvalMeasuredPeersTimer(d.config.EvalMeasuredPeersRefreshTickDuration), false)
+	d.babel.RegisterPeriodicTimer(d.ID(), NewCheckChidrenSizeTimer(d.config.CheckChildenSizeTimerDuration), false)
+	d.babel.RegisterPeriodicTimer(d.ID(), NewDebugTimer(DebugTimerDuration), false)
 	d.joinOverlay()
 }
 
@@ -277,8 +282,8 @@ func (d *DemmonTree) handleUnderpopulatedTimer(joinTimer timer.Timer) {
 	}
 
 	r := rand.Float64()
-	probToStay := float64(nrPeersInGrp-1) / float64(d.config.MinGrpSize)
-	if r > probToStay {
+	probToStay := float64(nrPeersInGrp) / float64(d.config.MinGrpSize)
+	if r < probToStay {
 		d.logger.Infof("underpop timer returning (r=%f > prob=%f)", r, probToStay)
 		return
 	}
@@ -317,17 +322,17 @@ func (d *DemmonTree) handleMeasuringPeerInJoinFinish(peerMeasured *PeerWithIDCha
 		peerMeasured,
 		currNodeStats.LatencyCalc().CurrValue(),
 	)
-	p.peer.MeasuredLatency = currNodeStats.LatencyCalc().CurrValue()
+	p.peer.Latency = currNodeStats.LatencyCalc().CurrValue()
 	d.attemptProgress()
 }
 
 func (d *DemmonTree) handleMeasuringPeerInEViewFinish(peerMeasured *PeerWithIDChain) {
 	delete(d.measuringPeers, peerMeasured.String())
-	defer d.nodeWatcher.Unwatch(peerMeasured.Peer, d.ID())
 	if d.isNeighbour(peerMeasured.Peer) {
 		return
 	}
 
+	defer d.nodeWatcher.Unwatch(peerMeasured.Peer, d.ID())
 	currNodeStats, err := d.nodeWatcher.GetNodeInfo(peerMeasured)
 	if err != nil {
 		d.logger.Error(err.Reason())
@@ -350,6 +355,18 @@ func (d *DemmonTree) handleMeasuringPeerInEViewFinish(peerMeasured *PeerWithIDCh
 	// d.logger.Infof("d.measuredPeers:  %+v:", d.measuredPeers)
 }
 
+func (d *DemmonTree) getAvgChildrenBW() int {
+	if len(d.myChildren) == 0 {
+		return 0
+	}
+	tmp := 0
+	for _, c := range d.myChildren {
+		tmp += c.bandwidth
+	}
+	return tmp / len(d.myChildren)
+
+}
+
 func (d *DemmonTree) handleLandmarkMeasuredNotification(nGeneric notification.Notification) {
 	n := nGeneric.(LandmarkMeasuredNotification)
 
@@ -364,7 +381,7 @@ func (d *DemmonTree) handleLandmarkMeasuredNotification(nGeneric notification.No
 		}
 		coordsCopy := d.self.Coordinates
 		coordsCopy[idx] = uint64(landmarkStats.LatencyCalc().CurrValue().Milliseconds())
-		d.self = NewPeerWithIDChain(d.self.chain, d.self, d.self.nChildren, d.self.version+1, coordsCopy)
+		d.self = NewPeerWithIDChain(d.self.chain, d.self, d.self.nChildren, d.self.version+1, coordsCopy, d.config.BandwidthScore, d.getAvgChildrenBW())
 		d.logger.Infof("My Coordinates: %+v", d.self.Coordinates)
 		return
 	}
@@ -398,13 +415,12 @@ func (d *DemmonTree) handleRefreshParentTimer(t timer.Timer) {
 			d.logger.Warnf("Could not send message to children because there is no active conn to it %s", child.StringWithFields())
 			continue
 		}
-		childrenArr := getMapAsPeerWithIDChainArray(d.myChildren, child)
 		// d.logger.Infof("Sending children: %+v to %s", childrenArr, child.StringWithFields())
 		toSend := NewUpdateParentMessage(
 			d.myParent,
 			d.self,
 			child.Chain()[len(child.Chain())-1],
-			childrenArr,
+			getMapAsPeerWithIDChainArray(d.myChildren, child),
 		)
 		d.sendMessage(toSend, child.Peer)
 	}
@@ -418,7 +434,7 @@ func (d *DemmonTree) handleUpdateChildTimer(t timer.Timer) {
 }
 
 func (d *DemmonTree) sendUpdateChildMessage(dest peer.Peer) {
-	measuredSiblings := d.getPeerMapAsPeerMeasuredArr(d.mySiblings)
+	measuredSiblings := d.getPeerWithIDChainMapAsPeerMeasuredArr(d.mySiblings)
 	d.logger.Infof("Sending measured siblings: %+v", measuredSiblings)
 	toSend := NewUpdateChildMessage(d.self, measuredSiblings)
 	d.sendMessage(toSend, dest)
@@ -439,7 +455,7 @@ func (d *DemmonTree) handleExternalNeighboringTimer(joinTimer timer.Timer) {
 	neighbors := d.getNeighborsAsPeerWithIDChainArray()
 	// d.logger.Infof("d.possibilitiesToSend: %+v:", neighbours)
 
-	sample := getRandSample(d.config.NrPeersInWalkMessage-1, append(neighbors, peerMapToArr(d.eView)...)...)
+	sample := getRandSample(d.config.NrPeersInWalkMessage-1, append(neighbors, PeerWithIDChainMapToArr(d.eView)...)...)
 	sample[d.self.String()] = d.self
 
 	// r = rand.Float32()
@@ -449,7 +465,7 @@ func (d *DemmonTree) handleExternalNeighboringTimer(joinTimer timer.Timer) {
 	// 	msgToSend = NewBiasedWalkMessage(uint16(d.config.RandomWalkTTL), selfPeerWithChain, sample)
 	// 	peerToSendTo = getBiasedPeerExcluding(possibilitiesToSend, selfPeerWithChain)
 	// } else {
-	sampleToSend := peerMapToArr(sample)
+	sampleToSend := PeerWithIDChainMapToArr(sample)
 	msgToSend = NewRandomWalkMessage(uint16(d.config.RandomWalkTTL), d.self, sampleToSend)
 	peerToSendTo = getRandomExcluding(
 		getExcludingDescendantsOf(neighbors, d.self.Chain()),
@@ -477,28 +493,34 @@ func (d *DemmonTree) handleExternalNeighboringTimer(joinTimer timer.Timer) {
 
 func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.Timer) {
 
-	if len(d.self.Chain()) == 0 ||
-		d.myParent == nil ||
-		d.myPendingParentInImprovement != nil ||
-		d.myPendingParentInAbsorb != nil ||
-		d.myPendingParentInJoin != nil {
-		d.logger.Info("EvalMeasuredPeersTimer returning because already have pending parent")
+	if d.isChangingParent() {
+		d.logger.Warn("EvalMeasuredPeersTimer returning due to already being changing parent..")
 		return
 	}
 
-	r := utils.GetRandFloat64()
-	if r > d.config.AttemptImprovePositionProbability {
-		d.logger.Info("EvalMeasuredPeersTimer returning due to  r > d.config.AttemptImprovePositionProbability")
-		return
-	}
+	// r := utils.GetRandFloat64()
+	// if r > d.config.AttemptImprovePositionProbability {
+	// 	d.logger.Info("EvalMeasuredPeersTimer returning due to  r > d.config.AttemptImprovePositionProbability")
+	// 	return
+	// }
 
 	measuredPeersArr := make(MeasuredPeersByLat, 0, len(d.measuredPeers))
 
 	for _, p := range d.measuredPeers {
-		if d.self.IsDescendentOf(p.Chain()) {
+		if d.self.IsDescendentOf(p.chain) {
 			delete(d.measuredPeers, p.String())
 			continue
 		}
+
+		if d.isNeighbour(p) {
+			delete(d.measuredPeers, p.String())
+			continue
+		}
+
+		// if d.self.IsDescendentOf(p.chain) {
+		// delete(d.measuredPeers, p.String())
+		// continue
+		// }
 
 		measuredPeersArr = append(measuredPeersArr, p)
 	}
@@ -509,7 +531,7 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 	}
 
 	sort.Sort(measuredPeersArr)
-	parentStats, err := d.nodeWatcher.GetNodeInfo(d.myParent)
+	parentAsMeasuredPeer, err := d.getPeerWithChainAsMeasuredPeer(d.myParent)
 	if err != nil {
 		d.logger.Errorf("Do not have latency measurement for parent")
 		return
@@ -518,48 +540,62 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 	d.logger.Info("Evaluating measuredPeers...")
 	d.logger.Infof("d.measuredPeers:  %s:", measuredPeersArr.String())
 
-	parentLatency := parentStats.LatencyCalc().CurrValue()
 	for _, measuredPeer := range measuredPeersArr {
 
 		// parent latency is higher than latency to peer
-		latencyImprovement := parentLatency - measuredPeer.MeasuredLatency
 
-		if latencyImprovement < d.config.MinLatencyImprovementToImprovePosition {
-			continue
-		}
-
-		if measuredPeer.nChildren >= d.config.MaxGrpSize {
-			continue
+		if !measuredPeer.HasBetterLatencyThan(parentAsMeasuredPeer, d.config.MinLatencyImprovementToImprovePosition) {
+			continue // can break because measuredPeersArr is sorted, therefore, any remaining measured peer's latencies are higher
 		}
 
 		if measuredPeer.nChildren == 0 {
+			// d.logger.Infof("Not improving towards %s because it has no children", measuredPeer.StringWithFields())
 			continue
 		}
 
+		// go down ( if my level is 3, and measured peer is 5, i am higher in tree)
 		if d.self.Chain().Level() <= measuredPeer.Chain().Level() {
 			if len(d.myChildren) > 0 {
+				d.logger.Infof("Not improving towards %s because i have too many children", measuredPeer.StringWithFields())
 				continue
+			}
+			if d.config.UseBwScore {
+				if measuredPeer.bandwidth <= d.self.bandwidth {
+					d.logger.Infof("Not improving towards %s because the peer bandwidth and level is lower than mine", measuredPeer.StringWithFields())
+					continue
+				}
 			}
 		}
 
-		// if len(d.myChildren) > 0 {
-		// 	// cannot join as child because due to having children
-		// 	if measuredPeer.Chain().Level() >= d.self.Chain().Level() {
-		// 		continue // TODO possibly send message for the other node to join me as child
-		// 	}
-		// }
+		if d.config.UseBwScore {
+			if d.self.Chain().Level() > measuredPeer.Chain().Level()+1 {
+				if d.self.bandwidth < measuredPeer.avgChildrenBW {
+					d.logger.Infof("Not improving towards %s because the peer is level is higher than mine and avg children bandwidth is higher than my bw", measuredPeer.StringWithFields())
+					diff := measuredPeer.avgChildrenBW - d.self.bandwidth
+					if diff > d.config.MaxDiffForBWScore {
+						continue
+					}
+				}
+			}
+		}
 
-		d.logger.Infof("Improving position towards: %s", measuredPeer.String())
+		if len(d.myChildren) > 0 {
+			// cannot join as child because due to having children
+			if measuredPeer.Chain().Level() >= d.self.Chain().Level() {
+				continue // TODO possibly send message for the other node to join me as child
+			}
+		}
+
+		d.logger.Infof("Improving position towards: %s", measuredPeer.StringWithFields())
 		d.logger.Infof("self level: %d", d.self.Chain().Level())
 		d.logger.Infof("target peer level: %d", measuredPeer.Chain().Level())
 
-		d.logger.Infof("latencyImprovement: %s", latencyImprovement)
-		d.logger.Infof("parentLatency: %s", parentLatency)
-		d.logger.Infof("measuredPeer.MeasuredLatency: %s", measuredPeer.MeasuredLatency)
+		d.logger.Infof("latencyImprovement: %s", parentAsMeasuredPeer.Latency-measuredPeer.Latency)
+		d.logger.Infof("parentLatency: %s", parentAsMeasuredPeer.Latency)
+		d.logger.Infof("measuredPeer.MeasuredLatency: %s", measuredPeer.Latency)
 		aux := *measuredPeer
 		d.myPendingParentInImprovement = &aux
-		d.sendJoinAsChildMsg(measuredPeer.PeerWithIDChain, measuredPeer.MeasuredLatency, false, true)
-
+		d.sendJoinAsChildMsg(measuredPeer.PeerWithIDChain, measuredPeer.Latency, false, true)
 		return
 	}
 }
@@ -571,7 +607,13 @@ func (d *DemmonTree) handleMeasureNewPeersTimer(measureNewPeersTimer timer.Timer
 		return
 	}
 
-	peersSorted := peerMapToArr(d.eView)
+	for k, p := range d.eView {
+		if d.self.IsDescendentOf(p.chain) || d.isNeighbour(p) {
+			delete(d.eView, k)
+		}
+	}
+
+	peersSorted := PeerWithIDChainMapToArr(d.eView)
 	sort.Slice(
 		peersSorted, func(i, j int) (res bool) {
 			var err error
@@ -594,10 +636,14 @@ func (d *DemmonTree) handleMeasureNewPeersTimer(measureNewPeersTimer timer.Timer
 		}
 	}
 
-	peersRandom := peerMapToArr(d.eView)
+	peersRandom := PeerWithIDChainMapToArr(d.eView)
 	rand.Shuffle(len(peersRandom), func(i, j int) { peersRandom[i], peersRandom[j] = peersRandom[j], peersRandom[i] })
 	nrMeasuredRand := 0
-	for i := 0; i < d.config.NrPeersToMeasureRandom && nrMeasuredRand < d.config.NrPeersToMeasureRandom; i++ {
+
+	for i := 0; i < len(peersRandom) &&
+		i < d.config.NrPeersToMeasureRandom &&
+		nrMeasuredRand < d.config.NrPeersToMeasureRandom; i++ {
+
 		p := peersRandom[i]
 		if d.measurePeerExternalProcedure(p) {
 			nrMeasuredRand++
@@ -615,6 +661,8 @@ func (d *DemmonTree) measurePeerExternalProcedure(p *PeerWithIDChain) bool {
 		return false
 	}
 
+	d.measuringPeers[p.String()] = true
+	delete(d.eView, p.String())
 	d.logger.Infof("measuring peer: %s", p.String())
 	d.nodeWatcher.Watch(p, d.ID())
 	c := nodeWatcher.Condition{
@@ -628,130 +676,259 @@ func (d *DemmonTree) measurePeerExternalProcedure(p *PeerWithIDChain) bool {
 	}
 	// d.logger.Infof("Doing NotifyOnCondition for node %s...", p.String())
 	d.nodeWatcher.NotifyOnCondition(c)
-	d.measuringPeers[p.String()] = true
-
 	return true
 }
 
 func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer) {
 
+	type absorbStats struct {
+		TotalLatency time.Duration
+		Absorber     *MeasuredPeer
+		PeersToKick  MeasuredPeersByLat
+	}
+
 	// nrPeersToKick := d.config.NrPeersToBecomeParentInAbsorb * int(d.config.NrPeersToBecomeChildrenPerParentInAbsorb)
 
-	if len(d.myChildren) < d.config.NrPeersToBecomeChildrenPerParentInAbsorb*d.config.NrPeersToBecomeParentInAbsorb {
+	if d.isChangingParent() {
+		d.logger.Warn("handleCheckChildrenSize timer trigger returning due to being changing parent")
+		return
+	}
+
+	if len(d.myChildren) < d.config.NrPeersToBecomeChildrenPerParentInAbsorb+int(d.config.MinGrpSize) {
 		d.logger.Info("handleCheckChildrenSize timer trigger returning due to goup size being too small")
 		return
 	}
-	childrenAsMeasuredPeers := d.getPeerMapAsPeerMeasuredArr(d.myChildren)
-	peersToKickPerAbsorber := make([]*struct {
-		totalLatency int
-		absorber     *MeasuredPeer
-		peersToKick  MeasuredPeersByLat
-	}, 0) // bit weird, but works for what i need
 
-	for _, child := range childrenAsMeasuredPeers {
-		if len(peersToKickPerAbsorber) == d.config.NrPeersToBecomeParentInAbsorb {
-			break
-		}
-		peersToKickPerAbsorber = append(peersToKickPerAbsorber, &struct {
-			totalLatency int
-			absorber     *MeasuredPeer
-			peersToKick  MeasuredPeersByLat
-		}{
-			totalLatency: 0,
-			absorber:     child,
-			peersToKick:  []*MeasuredPeer{},
+	peersToKickPerAbsorber := make([]*absorbStats, 0)
+
+	if d.config.UseBwScore {
+		childrenAsMeasuredPeers := d.getPeerWithIDChainMapAsPeerMeasuredArr(d.myChildren)
+		sort.SliceStable(childrenAsMeasuredPeers, func(i, j int) bool {
+			return childrenAsMeasuredPeers[i].bandwidth > childrenAsMeasuredPeers[j].bandwidth
 		})
+		// d.logger.Infof("after sorting childrenAsMeasuredPeers: %+v", childrenAsMeasuredPeers)
+		for _, child := range childrenAsMeasuredPeers {
+			// if len(peersToKickPerAbsorber) == d.config.NrPeersToBecomeParentInAbsorb {
+			// 	break
+			// }
+			peersToKickPerAbsorber = append([]*absorbStats{{
+				TotalLatency: 0,
+				Absorber:     child,
+				PeersToKick:  []*MeasuredPeer{},
+			}}, peersToKickPerAbsorber...)
+		}
+	} else {
+		childrenAsMeasuredPeers := d.getPeerWithIDChainMapAsPeerMeasuredArr(d.myChildren)
+		for _, child := range childrenAsMeasuredPeers {
+			// if len(peersToKickPerAbsorber) == d.config.NrPeersToBecomeParentInAbsorb {
+			// 	break
+			// }
+			peersToKickPerAbsorber = append([]*absorbStats{{
+				TotalLatency: 0,
+				Absorber:     child,
+				PeersToKick:  []*MeasuredPeer{}},
+			}, peersToKickPerAbsorber...)
+		}
 	}
 
-	alreadyKicked := func(toFind string) bool {
-		for _, v := range peersToKickPerAbsorber {
-			if v.absorber.String() == toFind {
-				return true
-			}
+	d.logger.Infof("peersToKickPerAbsorber: %+v", peersToKickPerAbsorber)
+	// alreadyKicked := func(toFind string) bool {
+	// 	for _, v := range peersToKickPerAbsorber {
+	// 		if v.Absorber.String() == toFind {
+	// 			return true
+	// 		}
 
-			for _, v2 := range v.peersToKick {
-				if v2.String() == toFind {
-					return true
-				}
-			}
-		}
-		return false
+	// 		for _, v2 := range v.PeersToKick {
+	// 			if v2.String() == toFind {
+	// 				return true
+	// 			}
+	// 		}
+	// 	}
+	// 	return false
+	// }
+
+	type edge struct {
+		peer1   *MeasuredPeer
+		peer2   *MeasuredPeer
+		latency time.Duration
 	}
 
-	for i := 0; i < d.config.NrPeersToBecomeChildrenPerParentInAbsorb*d.config.NrPeersToBecomeParentInAbsorb; i++ {
-		bestLat := time.Duration(math.MaxInt64)
-		var bestPeerToKick *MeasuredPeer
-		var bestPeerAbsorber *struct {
-			totalLatency int
-			absorber     *MeasuredPeer
-			peersToKick  MeasuredPeersByLat
-		}
+	edgeList := []edge{}
 
-		for _, peerAbsorberStats := range peersToKickPerAbsorber {
-			if len(peerAbsorberStats.peersToKick) == d.config.NrPeersToBecomeChildrenPerParentInAbsorb {
+	for _, peerAbsorberStats := range peersToKickPerAbsorber {
+
+		peerAbsorber := peerAbsorberStats.Absorber
+		peerAbsorberSiblingLatencies := d.myChildrenLatencies[peerAbsorber.String()]
+		sort.Sort(peerAbsorberSiblingLatencies)
+
+		// d.logger.Infof("peer %s sibling latencies: %s", peerAbsorber.StringWithFields(), peerAbsorberSiblingLatencies.String())
+		for _, candidateToKick := range peerAbsorberSiblingLatencies {
+
+			if candidateToKick == nil {
 				continue
 			}
 
-			peerAbsorber := peerAbsorberStats.absorber
-			peerAbsorberSiblingLatencies := d.myChildrenLatencies[peerAbsorber.String()]
-			sort.Sort(peerAbsorberSiblingLatencies)
-			// d.logger.Infof("peer %s sibling latencies: %s", peerAbsorber.StringWithFields(), peerAbsorberSiblingLatencies.String())
-			for _, candidateToKick := range peerAbsorberSiblingLatencies {
+			if _, isChild := d.myChildren[candidateToKick.String()]; !isChild {
+				continue
+			}
 
-				if candidateToKick == nil {
+			if peer.PeersEqual(candidateToKick, peerAbsorber) {
+				continue
+			}
+
+			if candidateToKick.Latency == 0 || candidateToKick.Latency == math.MaxInt64 {
+				continue
+			}
+
+			candidateToKickFromSelfPOV, err := d.getPeerWithChainAsMeasuredPeer(candidateToKick.PeerWithIDChain)
+			if err != nil {
+				continue
+			}
+
+			if candidateToKickFromSelfPOV.Latency < candidateToKick.Latency {
+				// latencyDowngrade := candidateToKick.Latency - candidateToKickFromSelfPOV.Latency
+				// if latencyDowngrade > d.config.MinLatencyImprovementToImprovePosition {
+				continue
+				// }
+			}
+
+			edgeList = append(edgeList, edge{
+				peer1:   peerAbsorber,
+				peer2:   candidateToKick,
+				latency: candidateToKick.Latency,
+			})
+
+			peerAbsorberStats.PeersToKick = append(peerAbsorberStats.PeersToKick, candidateToKick)
+			peerAbsorberStats.TotalLatency += candidateToKick.Latency
+
+			// if len(peerAbsorberStats.PeersToKick) == d.config.NrPeersToBecomeChildrenPerParentInAbsorb {
+			// 	break
+			// }
+		}
+	}
+
+	sort.SliceStable(edgeList, func(i, j int) bool {
+		return edgeList[i].latency < edgeList[j].latency
+	})
+	alreadyKicked := map[string]bool{}
+	alreadyParent := map[string]bool{}
+	potentialChildren := map[string][]*PeerWithIDChain{}
+
+	deleteFromPotentialChildren := func(toCompare string) {
+		for k, potentialChildrenArr := range potentialChildren {
+			i := 0
+			for _, c := range potentialChildrenArr {
+				if c.String() == toCompare {
 					continue
 				}
+				potentialChildrenArr[i] = c
+				i += 1
+			}
+			potentialChildren[k] = potentialChildrenArr[:i]
+		}
+	}
 
-				if _, isChild := d.myChildren[candidateToKick.String()]; !isChild {
-					continue
+	for _, edge := range edgeList {
+		if _, ok := alreadyKicked[edge.peer1.String()]; ok {
+			continue
+		}
+		if _, ok := alreadyKicked[edge.peer2.String()]; ok {
+			continue
+		}
+		if edge.peer1.bandwidth > edge.peer2.bandwidth {
+			if edge.peer1.nChildren > 0 {
+				d.sendMessage(NewAbsorbMessage(edge.peer1.PeerWithIDChain), edge.peer2)
+				alreadyKicked[edge.peer2.String()] = true
+				alreadyParent[edge.peer1.String()] = true
+				continue
+			}
+			potentialChildren[edge.peer1.String()] = append(potentialChildren[edge.peer1.String()], edge.peer2.PeerWithIDChain)
+			if len(potentialChildren[edge.peer1.String()]) == int(d.config.MinGrpSize) {
+				alreadyParent[edge.peer1.String()] = true
+				for _, newC := range potentialChildren[edge.peer1.String()] {
+					d.sendMessage(NewAbsorbMessage(edge.peer1.PeerWithIDChain), newC)
+					alreadyKicked[newC.String()] = true
+					deleteFromPotentialChildren(newC.String())
 				}
-
-				if peer.PeersEqual(candidateToKick, peerAbsorber) {
-					continue
+				deleteFromPotentialChildren(edge.peer1.String())
+				potentialChildren[edge.peer1.String()] = []*PeerWithIDChain{}
+			}
+		} else {
+			if edge.peer2.nChildren > 0 {
+				d.sendMessage(NewAbsorbMessage(edge.peer2.PeerWithIDChain), edge.peer1)
+				alreadyKicked[edge.peer1.String()] = true
+				alreadyParent[edge.peer2.String()] = true
+				continue
+			}
+			potentialChildren[edge.peer2.String()] = append(potentialChildren[edge.peer2.String()], edge.peer1.PeerWithIDChain)
+			if len(potentialChildren[edge.peer2.String()]) == int(d.config.MinGrpSize) {
+				alreadyParent[edge.peer2.String()] = true
+				for _, newC := range potentialChildren[edge.peer2.String()] {
+					d.sendMessage(NewAbsorbMessage(edge.peer2.PeerWithIDChain), newC)
+					alreadyKicked[newC.String()] = true
+					deleteFromPotentialChildren(newC.String())
 				}
-
-				if candidateToKick.MeasuredLatency == 0 {
-					continue
-				}
-
-				if alreadyKicked(candidateToKick.String()) {
-					continue
-				}
-
-				if candidateToKick.MeasuredLatency < bestLat {
-					bestPeerToKick = candidateToKick
-					bestPeerAbsorber = peerAbsorberStats
-				}
-
+				deleteFromPotentialChildren(edge.peer2.String())
+				potentialChildren[edge.peer2.String()] = []*PeerWithIDChain{}
 			}
 		}
-		if bestPeerAbsorber == nil {
-			break
-		}
-		bestPeerAbsorber.peersToKick = append(bestPeerAbsorber.peersToKick, bestPeerToKick)
-		bestPeerAbsorber.totalLatency += int(bestPeerToKick.MeasuredLatency)
 	}
+	// return
 
-	for _, absorberStats := range peersToKickPerAbsorber {
-		if len(absorberStats.peersToKick) < int(d.config.NrPeersToBecomeChildrenPerParentInAbsorb) {
-			// d.logger.Infof("peer %s does not have enough siblings (%d/%d) to become parent in absorb", absorberStats.absorber.StringWithFields(), len(absorberStats.peersToKick), int(d.config.NrPeersToBecomeChildrenPerParentInAbsorb))
-			return
-		}
-	}
+	// d.logger.Infof("handleCheckChildrenSizeTimer results: %+v", peersToKickPerAbsorber)
+	// sort.SliceStable(peersToKickPerAbsorber, func(i, j int) bool {
+	// 	return peersToKickPerAbsorber[i].TotalLatency < peersToKickPerAbsorber[j].TotalLatency
+	// })
 
-	for _, absorberStats := range peersToKickPerAbsorber {
-		absorber := absorberStats.absorber
-		for _, toKickPeer := range absorberStats.peersToKick {
-			d.logger.Infof(
-				"Sending absorb message with peerToAbsorb: %s, peerAbsorber: %s",
-				toKickPeer.StringWithFields(),
-				absorber.StringWithFields(),
-			)
-			toSend := NewAbsorbMessage(absorber.PeerWithIDChain)
-			d.sendMessage(toSend, toKickPeer)
-		}
-	}
+	// for _, absorberStats := range peersToKickPerAbsorber {
+	// 	if absorberStats.Absorber.nChildren == 0 {
+	// 		if len(absorberStats.PeersToKick) < int(d.config.NrPeersToBecomeChildrenPerParentInAbsorb) {
+	// 			d.logger.Infof("peer %s does not have enough peers (%d/%d) to become parent in absorb", absorberStats.Absorber.StringWithFields(), len(peersToKickPerAbsorber), int(d.config.NrPeersToBecomeChildrenPerParentInAbsorb))
+	// 			continue
+	// 		}
+	// 	}
+
+	// 	absorber := absorberStats.Absorber
+	// 	for _, toKickPeer := range absorberStats.PeersToKick {
+	// 		d.logger.Infof(
+	// 			"Sending absorb message with peerToAbsorb: %s, peerAbsorber: %s",
+	// 			toKickPeer.StringWithFields(),
+	// 			absorber.StringWithFields(),
+	// 		)
+	// 		toSend := NewAbsorbMessage(absorber.PeerWithIDChain)
+	// 		d.sendMessage(toSend, toKickPeer)
+	// 	}
+	// 	return
+	// }
 }
+
+// func (d *DemmonTree) computeChildrenGraphMST() {
+// 	intMapper := map[string]int{}
+// 	childrenAsMeasuredPeers := d.getPeerWithIDChainMapAsPeerMeasuredArr(d.myChildren)
+// 	g := graph.New(len(childrenAsMeasuredPeers) + 1)
+// 	intMapper[d.self.String()] = 0
+// 	i := 1
+// 	for _, childrenAsMeasuredPeer := range childrenAsMeasuredPeers {
+// 		intMapper[childrenAsMeasuredPeer.String()] = i
+// 		i += 1
+// 	}
+
+// 	for _, childrenAsMeasuredPeer := range childrenAsMeasuredPeers {
+// 		origVertex := intMapper[childrenAsMeasuredPeer.String()]
+// 		g.AddBothCost(origVertex, 0, childrenAsMeasuredPeer.Latency.Nanoseconds())
+// 		childrenSiblingLatencies, ok := d.myChildrenLatencies[childrenAsMeasuredPeer.String()]
+// 		if !ok {
+// 			continue
+// 		}
+// 		for _, v := range childrenSiblingLatencies {
+// 			destVertex := intMapper[v.String()]
+// 			g.AddBothCost(origVertex, destVertex, v.Latency.Nanoseconds())
+// 		}
+// 	}
+// 	fmt.Println(g.String())
+
+// 	graph.MST(g)
+// }
 
 // message handlers
 
@@ -843,8 +1020,8 @@ func (d *DemmonTree) handleAbsorbMessage(sender peer.Peer, m message.Message) {
 		return
 	}
 
-	if d.myPendingParentInAbsorb != nil {
-		d.logger.Warn("Got absorbMessage but returning due to already having pending parent in absorb")
+	if d.isChangingParent() {
+		d.logger.Warn("Got absorbMessage but returning due to already having pending")
 		return
 	}
 
@@ -858,11 +1035,13 @@ func (d *DemmonTree) handleAbsorbMessage(sender peer.Peer, m message.Message) {
 			peerLat = nodeInfo.LatencyCalc().CurrValue()
 		}
 		d.myPendingParentInAbsorb = newParent
-		toSend := NewJoinAsChildMessage(d.self, peerLat, newParent.Chain(), false, false)
+		d.myPendingParentInAbsorb.inConnActive = sibling.inConnActive
+		d.myPendingParentInAbsorb.outConnActive = sibling.outConnActive
+		toSend := NewJoinAsChildMessage(d.config.BandwidthScore, d.self, peerLat, newParent.Chain(), false, false)
 		d.sendMessage(toSend, newParent)
 	} else {
 		d.myPendingParentInAbsorb = newParent
-		toSend := NewJoinAsChildMessage(d.self, 0, newParent.Chain(), false, false)
+		toSend := NewJoinAsChildMessage(d.config.BandwidthScore, d.self, 0, newParent.Chain(), false, false)
 		d.sendMessageTmpTCPChan(toSend, newParent)
 	}
 }
@@ -871,13 +1050,21 @@ func (d *DemmonTree) handleDisconnectAsChildMsg(sender peer.Peer, m message.Mess
 	dacMsg := m.(DisconnectAsChildMessage)
 	d.logger.Infof("got DisconnectAsChildMsg %+v from %s", dacMsg, sender.String())
 	if _, ok := d.myChildren[sender.String()]; ok {
-		d.removeChild(sender)
+		d.removeChild(sender, false)
 	}
 }
 
 func (d *DemmonTree) handleJoinMessage(sender peer.Peer, msg message.Message) {
 	toSend := NewJoinReplyMessage(getMapAsPeerWithIDChainArray(d.myChildren), d.self, d.myParent)
 	d.sendMessageTmpTCPChan(toSend, sender)
+}
+
+func (d *DemmonTree) isChangingParent() bool {
+	return d.myPendingParentInJoin != nil ||
+		d.myPendingParentInRecovery != nil ||
+		d.myPendingParentInAbsorb != nil ||
+		d.myPendingParentInClimb != nil ||
+		d.myPendingParentInImprovement != nil
 }
 
 func (d *DemmonTree) handleJoinMessageResponseTimeout(t timer.Timer) {
@@ -941,12 +1128,7 @@ func (d *DemmonTree) handleJoinReplyMessage(sender peer.Peer, msg message.Messag
 	d.attemptProgress()
 }
 
-func (d *DemmonTree) canBecomeParentOf(other *PeerWithIDChain, isRecovery, isImprovement bool) bool {
-
-	if len(d.self.Chain()) == 0 {
-		d.logger.Warnf("cannot become parent of %s because my chain is nil", other.StringWithFields())
-		return false
-	}
+func (d *DemmonTree) canBecomeParentOf(other *PeerWithIDChain, expectedChain PeerIDChain, isRecovery, isImprovement bool) bool {
 
 	if d.self.IsDescendentOf(other.Chain()) {
 		d.logger.Warnf(
@@ -957,12 +1139,35 @@ func (d *DemmonTree) canBecomeParentOf(other *PeerWithIDChain, isRecovery, isImp
 		return false
 	}
 
-	if isImprovement && len(d.myChildren) == 0 {
-		d.logger.Warnf("cannot become parent of %s because it is an improvement and i do not have enough children",
-			other.StringWithFields())
-		return false
-	}
+	if isImprovement {
 
+		if len(d.myChildren) == 0 {
+			d.logger.Warnf("cannot become parent of %s because it is an improvement and i do not have enough children",
+				other.StringWithFields())
+			return false
+		}
+
+		if d.config.UseBwScore {
+			// go down ( if other level is 3, and my level is 5, i am lower in tree)
+			if other.Chain().Level() <= d.self.Chain().Level() {
+				if other.bandwidth > d.self.bandwidth {
+					return false
+				}
+			}
+
+			// go up ( if other level is 5, and my level is 3, i am higher in tree)
+			if other.Chain().Level() > d.self.Chain().Level()+1 {
+				if other.bandwidth < d.self.avgChildrenBW {
+					d.logger.Infof("Not improving towards %s because the peer is level is higher than mine and avg children bandwidth is higher than my bw", d.self.StringWithFields())
+					diff := d.self.avgChildrenBW - other.bandwidth
+					if diff > d.config.MaxDiffForBWScore {
+						return false
+					}
+				}
+			}
+		}
+
+	}
 	return true
 }
 
@@ -970,7 +1175,7 @@ func (d *DemmonTree) handleJoinAsChildMessage(sender peer.Peer, m message.Messag
 	jacMsg := m.(JoinAsChildMessage)
 	d.logger.Infof("got JoinAsChildMessage %+v from %s", jacMsg, sender.String())
 
-	if !d.canBecomeParentOf(jacMsg.Sender, jacMsg.Urgent, jacMsg.Improvement) {
+	if !d.canBecomeParentOf(jacMsg.Sender, jacMsg.ExpectedID, jacMsg.Urgent, jacMsg.Improvement) {
 		toSend := NewJoinAsChildMessageReply(false, PeerID{}, d.self.Chain().Level(), d.self, nil, nil)
 		d.sendMessageTmpTCPChan(toSend, sender)
 		return
@@ -980,11 +1185,12 @@ func (d *DemmonTree) handleJoinAsChildMessage(sender peer.Peer, m message.Messag
 	var outConnActive, inConnActive bool
 	if isSibling {
 		delete(d.mySiblings, sender.String())
+		d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView(), false))
 		outConnActive = sibling.outConnActive
 		inConnActive = sibling.inConnActive
 	}
 
-	newChildID := d.addChild(jacMsg.Sender, jacMsg.MeasuredLatency, outConnActive, inConnActive)
+	newChildID := d.addChild(jacMsg.Sender, jacMsg.BWScore, jacMsg.MeasuredLatency, outConnActive, inConnActive)
 	toSend := NewJoinAsChildMessageReply(
 		true,
 		newChildID,
@@ -1012,10 +1218,10 @@ func (d *DemmonTree) handleJoinAsChildMessageReply(sender peer.Peer, m message.M
 	}
 
 	if d.myPendingParentInImprovement != nil && peer.PeersEqual(japrMsg.Parent, d.myPendingParentInImprovement) {
-		d.logger.Warnf("Pending Parent In Improvement join as child nessage")
+		d.logger.Warnf("Pending Parent In Improvement denied join as child nessage")
 		if mp, ok := d.measuredPeers[d.myPendingParentInImprovement.String()]; ok {
 			delete(d.measuredPeers, japrMsg.Parent.String())
-			d.addToMeasuredPeers(&MeasuredPeer{PeerWithIDChain: japrMsg.Parent, MeasuredLatency: mp.MeasuredLatency})
+			d.addToMeasuredPeers(&MeasuredPeer{PeerWithIDChain: japrMsg.Parent, Latency: mp.Latency})
 		}
 		d.myPendingParentInImprovement = nil
 		return
@@ -1028,7 +1234,7 @@ func (d *DemmonTree) handleJoinAsChildMessageReply(sender peer.Peer, m message.M
 	}
 
 	// not accepted
-	d.handlePeerDown(japrMsg.Parent)
+	d.handlePeerDown(japrMsg.Parent, false)
 }
 
 func getStringOrNil(p *PeerWithIDChain) string {
@@ -1040,7 +1246,7 @@ func getStringOrNil(p *PeerWithIDChain) string {
 
 func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Message) {
 	upMsg := m.(UpdateParentMessage)
-	// d.logger.Infof("got UpdateParentMessage %+v from %s", upMsg, sender.String())
+	d.logger.Infof("got UpdateParentMessage %+v from %s", upMsg, sender.String())
 
 	if !peer.PeersEqual(sender, d.myParent) &&
 		!peer.PeersEqual(sender, d.myPendingParentInAbsorb) &&
@@ -1076,8 +1282,13 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 		}
 	}
 
+	d.logger.Infof("Conns before: in: %+v, out: %+v", d.myParent.inConnActive, d.myParent.outConnActive)
 	d.myGrandParent = upMsg.GrandParent
+	aux := d.myParent
 	d.myParent = upMsg.Parent
+	d.myParent.outConnActive = aux.outConnActive
+	d.myParent.inConnActive = aux.inConnActive
+	d.logger.Infof("Conns after: in: %+v, out: %+v", d.myParent.inConnActive, d.myParent.outConnActive)
 
 	myNewChain := append(upMsg.Parent.Chain(), upMsg.ProposedID)
 	if !myNewChain.Equal(d.self.Chain()) {
@@ -1088,9 +1299,10 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 			upMsg.Parent.Chain().Level()+1,
 		) // IMPORTANT FOR VISUALIZER
 
-		d.self = NewPeerWithIDChain(myNewChain, d.self.Peer, d.self.nChildren, d.self.Version()+1, d.self.Coordinates)
+		d.self = NewPeerWithIDChain(myNewChain, d.self.Peer, d.self.nChildren, d.self.Version()+1, d.self.Coordinates, d.config.BandwidthScore, d.getAvgChildrenBW())
 	}
-	d.mergeSiblingsWith(upMsg.Siblings)
+
+	d.mergeSiblingsWith(upMsg.Siblings, d.myParent)
 }
 
 func (d *DemmonTree) handleUpdateChildMessage(sender peer.Peer, m message.Message) {
@@ -1106,10 +1318,10 @@ func (d *DemmonTree) handleUpdateChildMessage(sender peer.Peer, m message.Messag
 		)
 		return
 	}
-
-	d.myChildren[sender.String()] = upMsg.Child
-	d.myChildren[sender.String()].inConnActive = child.inConnActive
-	d.myChildren[sender.String()].outConnActive = child.outConnActive
+	tmp := upMsg.Child
+	tmp.inConnActive = child.inConnActive
+	tmp.outConnActive = child.outConnActive
+	d.myChildren[sender.String()] = tmp
 	d.myChildrenLatencies[sender.String()] = upMsg.Siblings
 }
 
@@ -1213,20 +1425,20 @@ func (d *DemmonTree) DialSuccess(sourceProto protocol.ID, p peer.Peer) bool {
 
 func (d *DemmonTree) DialFailed(p peer.Peer) {
 	d.logger.Errorf("Failed to dial %s", p.String())
-	d.handlePeerDown(p)
+	d.handlePeerDown(p, true)
 }
 
 func (d *DemmonTree) OutConnDown(p peer.Peer) {
-	d.handlePeerDown(p)
+	d.handlePeerDown(p, true)
 }
 
 func (d *DemmonTree) handlePeerDownNotification(n notification.Notification) {
 	p := n.(SuspectNotification).peerDown
 	d.logger.Errorf("peer down %s (PHI >= %f)", p.String(), d.config.PhiLevelForNodeDown)
-	d.handlePeerDown(p.Peer)
+	d.handlePeerDown(p.Peer, true)
 }
 
-func (d *DemmonTree) handlePeerDown(p peer.Peer) {
+func (d *DemmonTree) handlePeerDown(p peer.Peer, crash bool) {
 
 	// special case for parent in recovery
 	d.nodeWatcher.Unwatch(p, d.ID())
@@ -1249,14 +1461,7 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer) {
 	if peer.PeersEqual(p, d.myPendingParentInAbsorb) {
 		d.logger.Warnf("Falling back from Pending Parent In Absorb")
 		d.myPendingParentInAbsorb = nil
-		if d.myGrandParent != nil {
-			d.logger.Warnf("falling back to grandparent")
-			d.myPendingParentInRecovery = d.myGrandParent
-			d.sendJoinAsChildMsg(d.myGrandParent, 0, true, false)
-			d.myGrandParent = nil
-		} else {
-			d.fallbackToMeasuredPeers()
-		}
+		return
 	}
 
 	if peer.PeersEqual(p, d.myPendingParentInClimb) {
@@ -1276,7 +1481,7 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer) {
 		d.logger.Warnf("Parent down %s", p.String())
 		aux := d.myParent
 		d.myParent = nil
-		d.babel.SendNotification(NewNodeDownNotification(aux, d.getInView()))
+		d.babel.SendNotification(NewNodeDownNotification(aux, d.getInView(), crash))
 		d.nodeWatcher.Unwatch(p, d.ID())
 		if d.myGrandParent != nil {
 			d.logger.Warnf("Falling back to grandparent %s", d.myGrandParent.String())
@@ -1292,13 +1497,13 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer) {
 
 	if child, isChildren := d.myChildren[p.String()]; isChildren {
 		d.logger.Warnf("Child down %s", p.String())
-		d.removeChild(child)
+		d.removeChild(child, crash)
 		return
 	}
 
 	if sibling, isSibling := d.mySiblings[p.String()]; isSibling {
 		d.logger.Warnf("Sibling down %s", p.String())
-		d.removeSibling(sibling)
+		d.removeSibling(sibling, crash)
 		if l, ok := d.isLandmark(p); d.landmark && ok {
 			d.logger.Warnf("registering redial for sibling %s", p.String())
 			d.babel.RegisterTimer(d.ID(), NewLandmarkRedialTimer(d.config.LandmarkRedialTimer, l))
@@ -1322,12 +1527,11 @@ func (d *DemmonTree) MessageDeliveryErr(msg message.Message, p peer.Peer, err er
 			d.handlePeerDownInJoin(p)
 		}
 	case JoinAsChildMessage:
-		d.handlePeerDown(p)
+		d.handlePeerDown(p, true)
 	case RandomWalkMessage:
 		d.sendMessageTmpUDPChan(msg, p)
 	case WalkReplyMessage:
 		d.sendMessageTmpUDPChan(msg, p)
-
 	case DisconnectAsChildMessage:
 		d.babel.Disconnect(d.ID(), p)
 	}
@@ -1364,7 +1568,7 @@ func (d *DemmonTree) sendJoinAsChildMsg(
 	urgent, improvement bool) {
 
 	d.logger.Infof("Joining level %d", uint16(len(newParent.Chain())))
-	toSend := NewJoinAsChildMessage(d.self, newParentLat, newParent.Chain(), urgent, improvement)
+	toSend := NewJoinAsChildMessage(d.config.BandwidthScore, d.self, newParentLat, newParent.Chain(), urgent, improvement)
 	d.logger.Infof("Sending join as child message %+v to peer %s", toSend, newParent.String())
 	d.sendMessageTmpTCPChan(toSend, newParent)
 }
@@ -1388,13 +1592,13 @@ func (d *DemmonTree) attemptProgress() {
 	d.logger.Infof(
 		"Lowest Latency Peer: %s , Latency: %d",
 		lowestLatencyPeer.peer.String(),
-		lowestLatencyPeer.peer.MeasuredLatency,
+		lowestLatencyPeer.peer.Latency,
 	)
 
 	if lowestLatencyPeer.peer.NrChildren() < d.config.MinGrpSize {
 		d.logger.Infof("Joining under peer %s because nodes in this level do not have enough members", lowestLatencyPeer.peer.StringWithFields())
 		d.myPendingParentInJoin = lowestLatencyPeer
-		d.sendJoinAsChildMsg(lowestLatencyPeer.peer.PeerWithIDChain, lowestLatencyPeer.peer.MeasuredLatency, false, false)
+		d.sendJoinAsChildMsg(lowestLatencyPeer.peer.PeerWithIDChain, lowestLatencyPeer.peer.Latency, false, false)
 		return
 	}
 
@@ -1404,14 +1608,14 @@ func (d *DemmonTree) attemptProgress() {
 			return
 		}
 		d.myPendingParentInJoin = lowestLatencyPeer
-		d.sendJoinAsChildMsg(lowestLatencyPeer.peer.PeerWithIDChain, lowestLatencyPeer.peer.MeasuredLatency, false, false)
+		d.sendJoinAsChildMsg(lowestLatencyPeer.peer.PeerWithIDChain, lowestLatencyPeer.peer.Latency, false, false)
 		return
 	}
 
-	if d.bestPeerlastLevel.peer.MeasuredLatency < lowestLatencyPeer.peer.MeasuredLatency {
+	if d.bestPeerlastLevel.peer.Latency < lowestLatencyPeer.peer.Latency {
 		d.logger.Infof("Joining under peer %s because latency to parent is lower than to its children", d.bestPeerlastLevel.peer.StringWithFields())
 		d.myPendingParentInJoin = d.bestPeerlastLevel
-		d.sendJoinAsChildMsg(d.bestPeerlastLevel.peer.PeerWithIDChain, d.bestPeerlastLevel.peer.MeasuredLatency, false, false)
+		d.sendJoinAsChildMsg(d.bestPeerlastLevel.peer.PeerWithIDChain, d.bestPeerlastLevel.peer.Latency, false, false)
 		return
 	}
 	progress := d.progressToNextLevel(lowestLatencyPeer)
@@ -1420,20 +1624,11 @@ func (d *DemmonTree) attemptProgress() {
 	}
 	d.logger.Infof("Joining under peer %s because nodes in next level do not have enough children", d.bestPeerlastLevel.peer.StringWithFields())
 	d.myPendingParentInJoin = d.bestPeerlastLevel
-	d.sendJoinAsChildMsg(d.bestPeerlastLevel.peer.PeerWithIDChain, d.bestPeerlastLevel.peer.MeasuredLatency, false, false)
-	return
+	d.sendJoinAsChildMsg(d.bestPeerlastLevel.peer.PeerWithIDChain, d.bestPeerlastLevel.peer.Latency, false, false)
 
 	// for _, v := range nextLevelPeers {
 	// 	d.unwatchPeers(v.peer)
 	// }
-}
-
-func (d *DemmonTree) unwatchPeers(toUnwatch ...*MeasuredPeer) {
-	for _, currPeer := range toUnwatch {
-		d.logger.Infof("Unwatching peer %s", toUnwatch)
-		d.addToMeasuredPeers(currPeer)
-		d.nodeWatcher.Unwatch(currPeer, d.ID())
-	}
 }
 
 func (d *DemmonTree) progressToNextLevel(lowestLatencyPeer *PeerWithParentAndChildren) bool {
@@ -1514,18 +1709,18 @@ func (d *DemmonTree) getPeersInNextLevelByLat(lastLevelPeer *PeerWithParentAndCh
 				return false, nil
 			}
 
-			if peerWithChildren.peer.MeasuredLatency == math.MaxInt64 {
+			if peerWithChildren.peer.Latency == math.MaxInt64 {
 				d.logger.Infof("Cannot progress because peer %s has not been measured", peerWithChildren.peer.String())
 				return false, nil
 			}
 			coordsCopy := d.self.Coordinates
-			coordsCopy[idx] = uint64(peerWithChildren.peer.MeasuredLatency.Milliseconds())
-			d.self = NewPeerWithIDChain(d.self.chain, d.self, d.self.nChildren, d.self.version+1, coordsCopy)
+			coordsCopy[idx] = uint64(peerWithChildren.peer.Latency.Milliseconds())
+			d.self = NewPeerWithIDChain(d.self.chain, d.self, d.self.nChildren, d.self.version+1, coordsCopy, d.config.BandwidthScore, d.getAvgChildrenBW())
 			d.logger.Infof("My Coordinates: %+v", d.self.Coordinates)
 			measuredPeersInLvl = append(measuredPeersInLvl, peerWithChildren)
 		}
 		sort.SliceStable(measuredPeersInLvl, func(i, j int) bool {
-			return measuredPeersInLvl[i].peer.MeasuredLatency < measuredPeersInLvl[j].peer.MeasuredLatency
+			return measuredPeersInLvl[i].peer.Latency < measuredPeersInLvl[j].peer.Latency
 		})
 		d.logger.Infof("My Coordinates: %+v", d.self.Coordinates)
 		return true, measuredPeersInLvl
@@ -1543,14 +1738,14 @@ func (d *DemmonTree) getPeersInNextLevelByLat(lastLevelPeer *PeerWithParentAndCh
 			d.logger.Infof("Cannot progress because peer %s has not replied yet", c.peer.String())
 			return false, nil
 		}
-		if c.peer.MeasuredLatency == math.MaxInt64 {
+		if c.peer.Latency == math.MaxInt64 {
 			d.logger.Infof("Cannot progress because peer %s has not been measured", c.peer.String())
 			return false, nil
 		}
 		measuredPeersInLvl = append(measuredPeersInLvl, c)
 	}
 	sort.SliceStable(measuredPeersInLvl, func(i, j int) bool {
-		return measuredPeersInLvl[i].peer.MeasuredLatency < measuredPeersInLvl[j].peer.MeasuredLatency
+		return measuredPeersInLvl[i].peer.Latency < measuredPeersInLvl[j].peer.Latency
 	})
 
 	return true, measuredPeersInLvl
@@ -1575,7 +1770,7 @@ func (d *DemmonTree) fallbackToPreviousLevel(node *PeerWithParentAndChildren) {
 	// }
 
 	d.myPendingParentInJoin = d.joinMap[node.parent.String()]
-	d.sendJoinAsChildMsg(node.parent, d.myPendingParentInJoin.peer.MeasuredLatency, true, false)
+	d.sendJoinAsChildMsg(node.parent, d.myPendingParentInJoin.peer.Latency, true, false)
 }
 
 func (d *DemmonTree) fallbackToMeasuredPeers() {
@@ -1599,7 +1794,7 @@ func (d *DemmonTree) fallbackToMeasuredPeers() {
 	}
 
 	bestPeer = measuredPeersArr[0]
-	d.logger.Infof(" falling back to %s : %s", bestPeer.String(), bestPeer.MeasuredLatency)
+	d.logger.Infof(" falling back to %s : %s", bestPeer.String(), bestPeer.Latency)
 	d.myPendingParentInRecovery = bestPeer.PeerWithIDChain
-	d.sendJoinAsChildMsg(bestPeer.PeerWithIDChain, bestPeer.MeasuredLatency, true, false)
+	d.sendJoinAsChildMsg(bestPeer.PeerWithIDChain, bestPeer.Latency, true, false)
 }

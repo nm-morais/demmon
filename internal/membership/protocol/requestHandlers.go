@@ -10,10 +10,11 @@ import (
 func (d *DemmonTree) handleGetInView(req request.Request) request.Reply {
 	getInViewReq := req.(GetNeighboursReq)
 	view := InView{
-		Grandparent: d.myGrandParent,
-		Parent:      d.myParent,
-		Children:    peerMapToArr(d.myChildren),
-		Siblings:    peerMapToArr(d.mySiblings),
+		IsSelfBootstrap: d.landmark,
+		Grandparent:     d.myGrandParent,
+		Parent:          d.myParent,
+		Children:        PeerWithIDChainMapToArr(d.myChildren),
+		Siblings:        PeerWithIDChainMapToArr(d.mySiblings),
 	}
 	return NewGetNeighboursReqReply(getInViewReq.Key, view)
 }

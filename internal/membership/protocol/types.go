@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/nm-morais/go-babel/pkg/peer"
-	"github.com/sirupsen/logrus"
 )
 
 const IDSegmentLen = 8
@@ -120,29 +119,35 @@ func (c PeerIDChain) String() string {
 
 type PeerWithIDChain struct {
 	Coordinates
+	chain PeerIDChain
+	peer.Peer
+	version       PeerVersion
+	nChildren     uint16
 	outConnActive bool
 	inConnActive  bool
-	peer.Peer
-	chain     PeerIDChain
-	nChildren uint16
-	version   PeerVersion
+	bandwidth     int
+	avgChildrenBW int
 }
 
 func NewPeerWithIDChain(
-	peerIdChain PeerIDChain,
+	peerIDChain PeerIDChain,
 	self peer.Peer,
 	nChildren uint16,
 	version PeerVersion,
 	coords Coordinates,
+	bandwidth int,
+	childBW int,
 ) *PeerWithIDChain {
 	return &PeerWithIDChain{
-		outConnActive: false,
-		inConnActive:  true,
+		Coordinates:   coords,
+		chain:         peerIDChain,
 		Peer:          self,
 		version:       version,
 		nChildren:     nChildren,
-		chain:         peerIdChain,
-		Coordinates:   coords,
+		outConnActive: false,
+		inConnActive:  false,
+		bandwidth:     bandwidth,
+		avgChildrenBW: childBW,
 	}
 }
 
@@ -156,7 +161,7 @@ func (p *PeerWithIDChain) StringWithFields() string {
 		coordinatesStr += fmt.Sprintf("%d,", c)
 	}
 	coordinatesStr = coordinatesStr[:len(coordinatesStr)-1] + ")"
-	return fmt.Sprintf("%s:%s:%s:v_%d:c(%d)", p.String(), coordinatesStr, p.chain.String(), p.version, p.nChildren)
+	return fmt.Sprintf("%s:%s:%s:v_%d:c(%d),c_bw(%d)", p.String(), coordinatesStr, p.chain.String(), p.version, p.nChildren, p.avgChildrenBW)
 }
 
 func (p *PeerWithIDChain) NrChildren() uint16 {
@@ -180,23 +185,32 @@ func (p *PeerWithIDChain) IsHigherVersionThan(otherPeer *PeerWithIDChain) bool {
 }
 
 func (p *PeerWithIDChain) MarshalWithFields() []byte {
-	nrChildrenBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(nrChildrenBytes, p.NrChildren())
-	nrChildrenBytes = append(nrChildrenBytes, p.Marshal()...)
+	resultingBytes := make([]byte, 2)
+	binary.BigEndian.PutUint16(resultingBytes, p.NrChildren())
+	resultingBytes = append(resultingBytes, p.Marshal()...)
 
 	chainBytes := SerializePeerIDChain(p.chain)
-	nrChildrenBytes = append(nrChildrenBytes, chainBytes...)
+	resultingBytes = append(resultingBytes, chainBytes...)
 
 	coordBytes := p.Coordinates.SerializeToBinary()
-	nrChildrenBytes = append(nrChildrenBytes, coordBytes...)
+	resultingBytes = append(resultingBytes, coordBytes...)
 
 	versionBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(versionBytes, uint64(p.Version()))
-	nrChildrenBytes = append(nrChildrenBytes, versionBytes...)
-	return nrChildrenBytes
+	resultingBytes = append(resultingBytes, versionBytes...)
+
+	bwBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(bwBytes, uint32(p.bandwidth))
+	resultingBytes = append(resultingBytes, bwBytes...)
+
+	childBWBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(childBWBytes, uint32(p.avgChildrenBW))
+	resultingBytes = append(resultingBytes, childBWBytes...)
+
+	return resultingBytes
 }
 
-func UnmarshalPeerWithIdChain(byteArr []byte) (int, *PeerWithIDChain) {
+func UnmarshalPeerWithIDChain(byteArr []byte) (int, *PeerWithIDChain) {
 	bufPos := 0
 	nrChildren := binary.BigEndian.Uint16(byteArr[bufPos:])
 	bufPos += 2
@@ -212,20 +226,27 @@ func UnmarshalPeerWithIdChain(byteArr []byte) (int, *PeerWithIDChain) {
 
 	version := binary.BigEndian.Uint64(byteArr[bufPos:])
 	bufPos += 8
-	return bufPos, NewPeerWithIDChain(peerChain, p, nrChildren, PeerVersion(version), peerCoords)
+
+	bw := binary.BigEndian.Uint32(byteArr[bufPos:])
+	bufPos += 4
+
+	childrenBW := binary.BigEndian.Uint32(byteArr[bufPos:])
+	bufPos += 4
+
+	return bufPos, NewPeerWithIDChain(peerChain, p, nrChildren, PeerVersion(version), peerCoords, int(bw), int(childrenBW))
 }
 
 func DeserializePeerWithIDChainArray(buf []byte) (int, []*PeerWithIDChain) {
 	nrPeers := int(binary.BigEndian.Uint32(buf[:4]))
-	logrus.Infof("Nr peers: %d", nrPeers)
 	peers := make([]*PeerWithIDChain, nrPeers)
 	bufPos := 4
 
 	if nrPeers > 0 && len(buf)-4 < 0 {
-		panic(fmt.Sprintf("have %d more peers to deserialize but buf size is too little (%d) ", nrPeers, len(buf)-4))
+		panic(fmt.Sprintf("have %d more peers to deserialize but buf size is too little (%d)", nrPeers, len(buf)-bufPos))
 	}
+
 	for i := 0; i < nrPeers; i++ {
-		read, p := UnmarshalPeerWithIdChain(buf[bufPos:])
+		read, p := UnmarshalPeerWithIDChain(buf[bufPos:])
 		peers[i] = p
 		bufPos += read
 	}
@@ -250,6 +271,7 @@ func SerializePeerIDChain(id PeerIDChain) []byte {
 	binary.BigEndian.PutUint16(nrSegmentBytes, nrSegments)
 	toReturn := make([]byte, nrSegments*IDSegmentLen)
 	var currSegment uint16
+
 	for currSegment = 0; currSegment < nrSegments; currSegment++ {
 		copy(toReturn[int(currSegment)*IDSegmentLen:], id[currSegment][:])
 	}
@@ -260,6 +282,7 @@ func DeserializePeerIDChain(idBytes []byte) (int, PeerIDChain) {
 	nrSegments := int(binary.BigEndian.Uint16(idBytes[0:2]))
 	bufPos := 2
 	toReturn := make(PeerIDChain, nrSegments)
+
 	for i := 0; i < nrSegments; i++ {
 		currSegment := PeerID{}
 		n := copy(currSegment[:], idBytes[bufPos:])
@@ -285,7 +308,7 @@ func (c PeerIDChain) Equal(chain2 PeerIDChain) bool {
 
 type MeasuredPeer struct {
 	*PeerWithIDChain
-	MeasuredLatency time.Duration
+	Latency time.Duration
 }
 
 type MeasuredPeersByLat []*MeasuredPeer
@@ -293,7 +316,7 @@ type MeasuredPeersByLat []*MeasuredPeer
 func (p MeasuredPeersByLat) String() string {
 	toPrint := ""
 	for _, measuredPeer := range p {
-		toPrint = toPrint + "; " + fmt.Sprintf("%s : %s", measuredPeer.String(), measuredPeer.MeasuredLatency)
+		toPrint = toPrint + "; " + fmt.Sprintf("%s : %s", measuredPeer.String(), measuredPeer.Latency)
 	}
 	return toPrint
 }
@@ -302,7 +325,7 @@ func (p MeasuredPeersByLat) Len() int {
 	return len(p)
 }
 func (p MeasuredPeersByLat) Less(i, j int) bool {
-	return p[i].MeasuredLatency < p[j].MeasuredLatency
+	return p[i].Latency < p[j].Latency
 }
 func (p MeasuredPeersByLat) Swap(i, j int) {
 	p[i], p[j] = p[j], p[i]
@@ -311,29 +334,38 @@ func (p MeasuredPeersByLat) Swap(i, j int) {
 func NewMeasuredPeer(p *PeerWithIDChain, measuredLatency time.Duration) *MeasuredPeer {
 	return &MeasuredPeer{
 		PeerWithIDChain: p,
-		MeasuredLatency: measuredLatency,
+		Latency:         measuredLatency,
 	}
 }
 
 func (p *MeasuredPeer) MarshalWithFieldsAndLatency() []byte {
 	latencyBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(latencyBytes, uint64(p.MeasuredLatency))
+	binary.BigEndian.PutUint64(latencyBytes, uint64(p.Latency))
 	return append(latencyBytes, p.MarshalWithFields()...)
 }
 
 func (p *MeasuredPeer) UnmarshalMeasuredPeer(buf []byte) (int, *MeasuredPeer) {
 	latency := time.Duration(binary.BigEndian.Uint64(buf))
-	n, aux := UnmarshalPeerWithIdChain(buf[8:])
+	n, aux := UnmarshalPeerWithIDChain(buf[8:])
 	return n + 8, &MeasuredPeer{
 		PeerWithIDChain: aux,
-		MeasuredLatency: latency,
+		Latency:         latency,
 	}
+}
+
+func (p *MeasuredPeer) HasBetterLatencyThan(other *MeasuredPeer, threshold time.Duration) bool {
+	if other.Latency < p.Latency {
+		return false
+	}
+	latencyImprovement := other.Latency - p.Latency
+	return latencyImprovement >= threshold
 }
 
 func DeserializeMeasuredPeerArray(buf []byte) (int, []*MeasuredPeer) {
 	nrPeers := int(binary.BigEndian.Uint32(buf[:4]))
 	peers := make([]*MeasuredPeer, nrPeers)
 	bufPos := 4
+
 	for i := 0; i < nrPeers; i++ {
 		p := &MeasuredPeer{}
 		read, p := p.UnmarshalMeasuredPeer(buf[bufPos:])

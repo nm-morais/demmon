@@ -24,16 +24,18 @@ const (
 
 	CleanupInterestSetTimerDuration = 5 * time.Second
 	// neigh sets
-	RebroadcastNeighInterestSetsTimerDuration = 5 * time.Second
+	RebroadcastNeighInterestSetsTimerDuration = 3 * time.Second
 	ExpireNeighInterestSetTimeout             = 3 * RebroadcastNeighInterestSetsTimerDuration
 
 	// tree agg funcs
-	RebroadcastTreeAggFuncTimerDuration   = 5 * time.Second
-	RebroadcastGlobalAggFuncTimerDuration = 5 * time.Second
+	RebroadcastTreeAggFuncTimerDuration = 3 * time.Second
+	ExpireTreeAggFuncTimeout            = 3 * RebroadcastTreeAggFuncTimerDuration
+	ExpireTreeAggFuncValues             = 5 * time.Second
 
 	// global agg funcs
-	ExpireGlobalAggFuncTimeout = 3 * RebroadcastNeighInterestSetsTimerDuration
-	ExpireTreeAggFuncTimeout   = 3 * RebroadcastTreeAggFuncTimerDuration
+	RebroadcastGlobalAggFuncTimerDuration = 3 * time.Second
+	ExpireGlobalAggFuncTimeout            = 3 * RebroadcastGlobalAggFuncTimerDuration
+	ExpireGlobalAggFuncValues             = 5 * time.Second
 )
 
 type Monitor struct {
@@ -42,19 +44,21 @@ type Monitor struct {
 	treeAggFuncs      map[int64]*treeAggSet
 	globalAggFuncs    map[int64]*globalAggFunc
 
-	currView membershipProtocol.InView
-	logger   *logrus.Logger
-	babel    protocolManager.ProtocolManager
-	me       *engine.MetricsEngine
-	tsdb     *tsdb.TSDB
+	isLandmark bool
+	currView   membershipProtocol.InView
+	logger     *logrus.Logger
+	babel      protocolManager.ProtocolManager
+	me         *engine.MetricsEngine
+	tsdb       *tsdb.TSDB
 }
 
-func New(babel protocolManager.ProtocolManager, db *tsdb.TSDB, me *engine.MetricsEngine) *Monitor {
+func New(babel protocolManager.ProtocolManager, db *tsdb.TSDB, me *engine.MetricsEngine, isLandmark bool) *Monitor {
 	return &Monitor{
 		currID:            make(membershipProtocol.PeerIDChain, 0),
 		neighInterestSets: make(map[int64]*neighInterestSet),
 		treeAggFuncs:      make(map[int64]*treeAggSet),
 		globalAggFuncs:    make(map[int64]*globalAggFunc),
+		isLandmark:        isLandmark,
 		currView:          membershipProtocol.InView{},
 		logger:            logs.NewLogger(name),
 		babel:             babel,
@@ -66,7 +70,7 @@ func New(babel protocolManager.ProtocolManager, db *tsdb.TSDB, me *engine.Metric
 // BOILERPLATE
 
 func (m *Monitor) MessageDelivered(msg message.Message, p peer.Peer) {
-	// m.logger.Infof("Message of %s delivered to: %s", reflect.TypeOf(msg), p)
+	// m.logger.Infof("Message of type %s delivered to: %s", reflect.TypeOf(msg), p)
 }
 
 func (m *Monitor) MessageDeliveryErr(msg message.Message, p peer.Peer, err errors.Error) {
@@ -85,9 +89,14 @@ func (m *Monitor) Logger() *logrus.Logger {
 	return m.logger
 }
 
-func (m *Monitor) SendMessage(msg message.Message, p peer.Peer) {
+func (m *Monitor) SendMessage(msg message.Message, p peer.Peer, batch bool) {
 	// m.logger.Infof("Sending message of type %s to %s", reflect.TypeOf(msg), p.String())
-	m.babel.SendMessage(msg, p, m.ID(), m.ID(), true)
+	m.babel.SendMessage(msg, p, m.ID(), m.ID(), batch)
+}
+
+func (m *Monitor) SendMessageUDPStream(msg message.Message, p peer.Peer) {
+	// m.logger.Infof("Sending message of type %s to %s", reflect.TypeOf(msg), p.String())
+	m.babel.SendMessageSideStream(msg, p, p.ToUDPAddr(), m.ID(), m.ID())
 }
 
 func (m *Monitor) Init() { // REPLY HANDLERS
@@ -126,18 +135,28 @@ func (m *Monitor) Init() { // REPLY HANDLERS
 
 	m.babel.RegisterMessageHandler(
 		m.ID(),
-		NewInstallTreeAggFuncMessage(nil),
+		NewInstallTreeAggFuncMessage(nil, nil),
 		m.handleInstallTreeAggFuncMetricsMessage,
 	)
 	m.babel.RegisterMessageHandler(
 		m.ID(),
-		NewPropagateTreeAggFuncMetricsMessage(0, nil),
+		NewRequestTreeAggFuncMessage(nil),
+		m.handleRequestTreeAggFuncMsg,
+	)
+	m.babel.RegisterMessageHandler(
+		m.ID(),
+		NewPropagateTreeAggFuncMetricsMessage(0, 0, nil, false),
 		m.handlePropagateTreeAggFuncMetricsMessage,
 	)
 	m.babel.RegisterTimerHandler(
 		m.ID(),
 		ExportTreeAggregationFuncTimerID,
 		m.handleExportTreeAggregationFuncTimer,
+	)
+	m.babel.RegisterTimerHandler(
+		m.ID(),
+		ExportTreeAggregationIntermediateValuesFuncTimerID,
+		m.handleExportTreeAggregationFuncIntermediateValuesTimer,
 	)
 
 	// GLOBAL AGG FUNCS
@@ -150,6 +169,11 @@ func (m *Monitor) Init() { // REPLY HANDLERS
 		m.ID(),
 		ExportGlobalAggregationFuncTimerID,
 		m.handleExportGlobalAggFuncFuncTimer,
+	)
+	m.babel.RegisterTimerHandler(
+		m.ID(),
+		ExportGlobalAggregationIntermediateValuesFuncTimerID,
+		m.handleExportGlobalAggFuncIntermediateValuesTimer,
 	)
 
 	m.babel.RegisterMessageHandler(
@@ -170,31 +194,34 @@ func (m *Monitor) Init() { // REPLY HANDLERS
 }
 
 func (m *Monitor) Start() {
-	m.babel.RegisterTimer(
+	m.babel.RegisterPeriodicTimer(
 		m.ID(),
 		NewRebroadcastInterestSetsTimer(RebroadcastNeighInterestSetsTimerDuration),
+		false,
 	)
 
-	m.babel.RegisterTimer(
+	m.babel.RegisterPeriodicTimer(
 		m.ID(),
 		NewBroadcastTreeAggregationFuncsTimer(RebroadcastTreeAggFuncTimerDuration),
+		false,
 	)
 
-	m.babel.RegisterTimer(
+	m.babel.RegisterPeriodicTimer(
 		m.ID(),
 		NewBroadcastGlobalAggregationFuncsTimer(RebroadcastGlobalAggFuncTimerDuration),
+		false,
 	)
 
-	m.babel.RegisterTimer(
+	m.babel.RegisterPeriodicTimer(
 		m.ID(),
 		NewCleanupInterestSetsTimer(CleanupInterestSetTimerDuration),
+		false,
 	)
 }
 
 // TIMER HANDLERS
 
 func (m *Monitor) handleCleanupInterestSetsTimer(t timer.Timer) {
-	m.babel.RegisterTimer(m.ID(), NewCleanupInterestSetsTimer(CleanupInterestSetTimerDuration))
 	m.cleanupNeighInterestSets()
 	m.cleanupTreeInterestSets()
 	m.cleanupGlobalAggFuncs()
@@ -212,6 +239,7 @@ func (m *Monitor) handleNodeUp(n notification.Notification) {
 	m.currView = nodeUpNotification.InView
 	m.logger.Infof("Node up: %s", nodeUpNotification.PeerUp.String())
 	m.logger.Infof("Curr View: %+v", m.currView)
+	m.handleNodeUpTreeAggFunc(nodeUpNotification.PeerUp)
 }
 
 func (m *Monitor) handleNodeDown(n notification.Notification) {
@@ -222,8 +250,8 @@ func (m *Monitor) handleNodeDown(n notification.Notification) {
 	m.logger.Infof("Curr View: %+v", m.currView)
 
 	m.handleNodeDownNeighInterestSet(nodeDown)
-	m.handleNodeDownTreeAggFunc(nodeDown)
-	m.handleNodeDownGlobalAggFunc(nodeDown)
+	m.handleNodeDownTreeAggFunc(nodeDown, nodeDownNotification.Crash)
+	m.handleNodeDownGlobalAggFunc(nodeDown, nodeDownNotification.Crash)
 }
 
 // UTILS
@@ -242,6 +270,26 @@ func (m *Monitor) isPeerInView(p peer.Peer) bool {
 	}
 
 	return peer.PeersEqual(p, m.currView.Parent)
+}
+
+func (m *Monitor) isPeerStrInView(p string) bool {
+	for _, s := range m.currView.Siblings {
+		if s.String() == p {
+			return true
+		}
+	}
+
+	for _, c := range m.currView.Children {
+		if c.String() == p {
+			return true
+		}
+	}
+	if m.currView.Parent != nil {
+		if m.currView.Parent.String() == p {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Monitor) getPeerRelationshipType(p peer.Peer) (isSibling, isChildren, isParent bool) {

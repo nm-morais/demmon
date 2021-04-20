@@ -19,10 +19,9 @@ def main():
     g.list_properties()
 
     for v in g.vertices():
+        # print(v)
         coords = g.vp.coord[v]
-        try:
-            c = coordsTaken[(coords[0], coords[1])]
-        except KeyError:
+        if (coords[0], coords[1]) not in coordsTaken:
             coordsTaken[(coords[0], coords[1])] = g2.add_vertex()
 
     # print(coordsTaken)

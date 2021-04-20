@@ -61,7 +61,6 @@ func (b *Bucket) GetTimeseries(tags map[string]string) (TimeSeries, bool) {
 	if !ok {
 		return nil, ok
 	}
-
 	return ts.(TimeSeries), ok
 }
 
@@ -74,7 +73,7 @@ func (b *Bucket) GetAllTimeseries() []ReadOnlyTimeSeries {
 			ts := value.(TimeSeries)
 			allPts := ts.All()
 			if len(allPts) == 0 {
-				b.logger.Errorf("Timeseries with tags %+v has no points", ts.Tags())
+				b.logger.Warnf("Timeseries with tags %+v has no points", ts.Tags())
 				return true
 			}
 			toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), allPts...))
@@ -112,11 +111,32 @@ func (b *Bucket) GetAllTimeseriesRange(start, end time.Time) []ReadOnlyTimeSerie
 			if err != nil {
 				panic(err)
 			}
+			if len(points) == 0 {
+				// b.logger.Warnf("Timeseries with tags %+v has no points", ts.Tags())
+				return true
+			}
 			toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), points...))
 			return true
 		},
 	)
 
+	return toReturn
+}
+
+func (b *Bucket) GetTimeseriesRangeRegex(tagsToMatch map[string]string, start, end time.Time) []ReadOnlyTimeSeries {
+	toReturn := make([]ReadOnlyTimeSeries, 0)
+	tmp := b.getTimeseriesRegex(tagsToMatch)
+
+	for _, ts := range tmp {
+		points, err := ts.Range(start, end)
+		if err != nil {
+			panic(err)
+		}
+		if len(points) == 0 {
+			continue
+		}
+		toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), points...))
+	}
 	return toReturn
 }
 
@@ -166,21 +186,6 @@ func (b *Bucket) GetTimeseriesRegex(tagsToMatch map[string]string) []ReadOnlyTim
 		if len(allPts) > 0 {
 			toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), allPts...))
 		}
-	}
-
-	return toReturn
-}
-
-func (b *Bucket) GetTimeseriesRegexRange(tagsToMatch map[string]string, start, end time.Time) []ReadOnlyTimeSeries {
-	matchingTimeseries := b.getTimeseriesRegex(tagsToMatch)
-	toReturn := []ReadOnlyTimeSeries{}
-	for _, ts := range matchingTimeseries {
-		points, err := ts.Range(start, end)
-		if err != nil {
-			panic(err)
-		}
-
-		toReturn = append(toReturn, NewStaticTimeSeries(ts.Name(), ts.Tags(), points...))
 	}
 
 	return toReturn
@@ -259,7 +264,13 @@ func (b *Bucket) DropTimeseriesRegex(tagsToMatch map[string]string) {
 
 func (b *Bucket) GetOrCreateTimeseries(tags map[string]string) TimeSeries {
 	tsKey := convertTagsToTSKey(tags)
-	tsGeneric, loaded := b.timeseries.LoadOrStore(tsKey, NewTimeSeries(b.name, tags, b.granularity, b.count, b.createLoggerForTimeseries(tags)))
+
+	tsGeneric, loaded := b.timeseries.Load(tsKey)
+	if loaded {
+		return tsGeneric.(TimeSeries)
+	}
+
+	tsGeneric, loaded = b.timeseries.LoadOrStore(tsKey, NewTimeSeries(b.name, tags, b.granularity, b.count, b.createLoggerForTimeseries(tags)))
 	ts := tsGeneric.(TimeSeries)
 	if !loaded {
 		for _, watchList := range b.watchLists {
@@ -273,9 +284,14 @@ func (b *Bucket) GetOrCreateTimeseries(tags map[string]string) TimeSeries {
 
 func (b *Bucket) GetOrCreateTimeseriesWithClock(tags map[string]string, c Clock) TimeSeries {
 	tsKey := convertTagsToTSKey(tags)
+	tsGeneric, loaded := b.timeseries.Load(tsKey)
+	if loaded {
+		return tsGeneric.(TimeSeries)
+	}
+
 	b.logger.Infof("Creating timeseries with: name: %s, tags: %s, count:%d\n", b.name, tags, b.count)
 	newTS := NewTimeSeriesWithClock(b.name, tags, b.granularity, b.count, c, b.createLoggerForTimeseries(tags))
-	tsGeneric, loaded := b.timeseries.LoadOrStore(tsKey, newTS)
+	tsGeneric, loaded = b.timeseries.LoadOrStore(tsKey, newTS)
 	ts := tsGeneric.(TimeSeries)
 	if !loaded {
 		b.logger.Infof("Created timeseries: %s\n", ts)
@@ -292,7 +308,7 @@ func (b *Bucket) cleanup() {
 	b.timeseries.Range(func(key, value interface{}) bool {
 		ts := value.(TimeSeries)
 		if ts.Last() == nil {
-			b.logger.Info("Clearing ts with tags: %+v", ts.Tags())
+			b.logger.Infof("Clearing ts with tags: %+v", ts.Tags())
 			b.DeleteTimeseries(ts.Tags())
 		}
 		return true

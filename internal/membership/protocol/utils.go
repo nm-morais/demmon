@@ -3,13 +3,12 @@ package protocol
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"math/rand"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/nm-morais/demmon/internal/utils"
+	"github.com/nm-morais/go-babel/pkg/errors"
 	"github.com/nm-morais/go-babel/pkg/nodeWatcher"
 	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/timer"
@@ -52,51 +51,35 @@ func (d *DemmonTree) printLatencyCollectionStats() {
 }
 
 func (d *DemmonTree) printInViewStats() {
-	type peerWithLatency struct {
-		IP      string `json:"ip,omitempty"`
-		Latency int    `json:"latency,omitempty"`
+	type InViewPeer struct {
+		IP string `json:"ip,omitempty"`
 	}
 
 	type viewWithLatencies struct {
-		Parent   *peerWithLatency   `json:"parent,omitempty"`
-		Children []*peerWithLatency `json:"children,omitempty"`
-		Siblings []*peerWithLatency `json:"siblings,omitempty"`
+		Parent   *InViewPeer   `json:"parent,omitempty"`
+		Children []*InViewPeer `json:"children,omitempty"`
+		Siblings []*InViewPeer `json:"siblings,omitempty"`
 	}
 	tmp := viewWithLatencies{
 		Parent:   nil,
-		Children: []*peerWithLatency{},
-		Siblings: []*peerWithLatency{},
+		Children: []*InViewPeer{},
+		Siblings: []*InViewPeer{},
 	}
-	getNodeWithLat := func(p *PeerWithIDChain) *peerWithLatency {
-		if p == nil {
-			return nil
-		}
-
-		nodeInfo, err := d.nodeWatcher.GetNodeInfo(p)
-
-		if err != nil {
-			return nil
-		}
-		return &peerWithLatency{
-			IP:      p.IP().String(),
-			Latency: int(nodeInfo.LatencyCalc().CurrValue()),
+	convert := func(p *PeerWithIDChain) *InViewPeer {
+		return &InViewPeer{
+			IP: p.IP().String(),
 		}
 	}
 
 	for _, child := range d.myChildren {
-		if aux := getNodeWithLat(child); aux != nil {
-			tmp.Children = append(tmp.Children, aux)
-		}
+		tmp.Children = append(tmp.Children, convert(child))
 	}
 
 	for _, sibling := range d.mySiblings {
-		if aux := getNodeWithLat(sibling); aux != nil {
-			tmp.Siblings = append(tmp.Siblings, aux)
-		}
+		tmp.Siblings = append(tmp.Siblings, convert(sibling))
 	}
-
-	if aux := getNodeWithLat(d.myParent); aux != nil {
-		tmp.Parent = aux
+	if d.myParent != nil {
+		tmp.Parent = convert(d.myParent)
 	}
 
 	res, err := json.Marshal(tmp)
@@ -140,7 +123,7 @@ outer:
 	}
 }
 
-func peerMapToArr(peers map[string]*PeerWithIDChain) []*PeerWithIDChain {
+func PeerWithIDChainMapToArr(peers map[string]*PeerWithIDChain) []*PeerWithIDChain {
 	toReturn := make([]*PeerWithIDChain, 0)
 	for _, p := range peers {
 		toReturn = append(toReturn, p)
@@ -209,11 +192,9 @@ func getExcludingDescendantsOf(toFilter []*PeerWithIDChain, ascendantChain PeerI
 	return toReturn
 }
 
-func (d *DemmonTree) getPeerMapAsPeerMeasuredArr(peerMap map[string]*PeerWithIDChain, exclusions ...*PeerWithIDChain) MeasuredPeersByLat {
+func (d *DemmonTree) getPeerWithIDChainMapAsPeerMeasuredArr(peerMap map[string]*PeerWithIDChain, exclusions ...*PeerWithIDChain) MeasuredPeersByLat {
 	measuredPeers := make(MeasuredPeersByLat, 0)
-
 	for _, p := range peerMap {
-
 		found := false
 		for _, exclusion := range exclusions {
 			if peer.PeersEqual(exclusion, p) {
@@ -224,19 +205,22 @@ func (d *DemmonTree) getPeerMapAsPeerMeasuredArr(peerMap map[string]*PeerWithIDC
 		if found {
 			continue
 		}
-		nodeStats, err := d.nodeWatcher.GetNodeInfo(p.Peer)
-		var currLat time.Duration
+		measuredPeer, err := d.getPeerWithChainAsMeasuredPeer(p)
 		if err != nil {
-			d.logger.Warnf("Do not have latency measurement for %s", p.String())
-			currLat = math.MaxInt64
-		} else {
-			currLat = nodeStats.LatencyCalc().CurrValue()
+			continue
 		}
-		measuredPeers = append(measuredPeers, NewMeasuredPeer(p, currLat))
+		measuredPeers = append(measuredPeers, measuredPeer)
 	}
 	sort.Sort(measuredPeers)
-
 	return measuredPeers
+}
+
+func (d *DemmonTree) getPeerWithChainAsMeasuredPeer(p *PeerWithIDChain) (*MeasuredPeer, errors.Error) {
+	info, err := d.nodeWatcher.GetNodeInfo(p)
+	if err != nil {
+		return nil, err
+	}
+	return NewMeasuredPeer(p, info.LatencyCalc().CurrValue()), nil
 }
 
 func (d *DemmonTree) isNodeDown(n nodeWatcher.NodeInfo) bool {

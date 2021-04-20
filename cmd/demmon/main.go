@@ -22,8 +22,14 @@ const (
 	WaitForStartEnvVar            = "WAIT_FOR_START"
 	LandmarksEnvVarName           = "LANDMARKS"
 	AdvertiseListenAddrEnvVarName = "NODE_IP"
-	minProtosPort                 = 7000
-	maxProtosPort                 = 8000
+	BenchmarkMembershipEnvName    = "BENCKMARK_MEMBERSHIP"
+	BenchmarkDemmonEnvName        = "BENCKMARK_METRICS"
+	BenchmarkDemmonTypeEnvName    = "BENCKMARK_METRICS_TYPE"
+	UseBandwidthEnvName           = "USE_BW"
+	BandwidthScoreEnvName         = "BW_SCORE"
+
+	minProtosPort = 7000
+	maxProtosPort = 8000
 
 	minAnalyticsPort = 8000
 	maxAnalyticsPort = 9000
@@ -48,45 +54,41 @@ var (
 		MaxRetriesJoinMsg:   3,
 		Landmarks:           nil,
 
-		MinGrpSize: 3,
+		MaxDiffForBWScore: 15,
+
+		MinGrpSize: 2,
 		MaxGrpSize: 9,
 
 		NrPeersToBecomeParentInAbsorb:            2,
 		NrPeersToBecomeChildrenPerParentInAbsorb: 3,
 
-		// NrPeersToKickPerParent:                 3,
-		MinLatencyImprovementToImprovePosition: 30 * time.Millisecond,
+		MinLatencyImprovementToImprovePosition: 50 * time.Millisecond,
 
 		PhiLevelForNodeDown: 3,
-		// SwitchProbability:             0.5,
 
 		CheckChildenSizeTimerDuration: 10 * time.Second,
 		ParentRefreshTickDuration:     5 * time.Second,
 		ChildrenRefreshTickDuration:   5 * time.Second,
 		RejoinTimerDuration:           10 * time.Second,
 
-		AttemptImprovePositionProbability:    0.2,
-		EvalMeasuredPeersRefreshTickDuration: 5 * time.Second,
-
-		// EnableSwitch: false,
+		AttemptImprovePositionProbability:    0.5,
+		EvalMeasuredPeersRefreshTickDuration: 7 * time.Second,
 
 		EmitWalkProbability:                0.33,
 		BiasedWalkProbability:              0.2,
 		BiasedWalkTTL:                      5,
 		RandomWalkTTL:                      6,
 		EmitWalkTimeout:                    8 * time.Second,
-		MaxPeersInEView:                    15,
+		MaxPeersInEView:                    20,
 		MeasureNewPeersRefreshTickDuration: 7 * time.Second,
-		MaxMeasuredPeers:                   5,
+		MaxMeasuredPeers:                   15,
 		NrHopsToIgnoreWalk:                 2,
-		NrPeersInWalkMessage:               20,
+		NrPeersInWalkMessage:               15,
 		NrPeersToMeasureBiased:             2,
 		NrPeersToMeasureRandom:             1,
 		NrPeersToMergeInWalkSample:         5,
 
-		MinLatencyImprovementPerPeerForSwitch: 20 * time.Millisecond,
-
-		UnderpopulatedGroupTimerDuration: 5 * time.Second,
+		UnderpopulatedGroupTimerDuration: 12 * time.Second,
 		// CheckSwitchOportunityTimeout:          7500 * time.Millisecond,
 	}
 )
@@ -94,6 +96,9 @@ var (
 func main() {
 	ParseFlags()
 	landmarks, ok := GetLandmarksEnv()
+	benchmarkDemmonMetrics := GetBenchmarkDemmonEnvVar()
+	benchmarkMembership := GetBenchmarkMembershipEnvVar()
+
 	if !ok {
 		landmarks = []*membershipProtocol.PeerWithIDChain{
 			membershipProtocol.NewPeerWithIDChain(
@@ -101,7 +106,7 @@ func main() {
 				peer.NewPeer(net.ParseIP("10.10.1.16"), baseProtoPort, baseAnalyticsPort),
 				0,
 				0,
-				make(membershipProtocol.Coordinates, 4),
+				make(membershipProtocol.Coordinates, 4), 0, 0,
 			),
 			// membershipProtocol.NewPeerWithIDChain(
 			// 	membershipProtocol.PeerIDChain{membershipProtocol.PeerID{17}},
@@ -139,7 +144,7 @@ func main() {
 	}
 
 	logFolder = fmt.Sprintf("%s/%s:%d", logFolder, GetLocalIP(), uint16(protosPortVar))
-	os.MkdirAll(logFolder, os.ModePerm)
+	_ = os.MkdirAll(logFolder, os.ModePerm)
 
 	// f, err := os.Create(fmt.Sprintf("%s/%s", logFolder, "cpuProfile"))
 	// if err != nil {
@@ -182,7 +187,7 @@ func main() {
 		},
 		Silent:           silent,
 		LogFolder:        logFolder,
-		HandshakeTimeout: 20 * time.Second,
+		HandshakeTimeout: 10 * time.Second,
 		Peer:             peer.NewPeer(GetLocalIP(), uint16(protosPortVar), uint16(analyticsPortVar)),
 	}
 
@@ -195,7 +200,7 @@ func main() {
 		DialAttempts:    3,
 		DialBackoffTime: 1 * time.Second,
 		DialTimeout:     5 * time.Second,
-		RequestTimeout:  3 * time.Second,
+		RequestTimeout:  5 * time.Second,
 	}
 
 	advertiseListenAddr, ok := GetAdvertiseListenAddrVar()
@@ -226,6 +231,11 @@ func main() {
 		CleanupFrequency: 5 * time.Second,
 	}
 
+	demmonTreeConf.UseBwScore = GetUseBWEnvVar()
+	if demmonTreeConf.UseBwScore {
+		demmonTreeConf.BandwidthScore = GetBWScore()
+	}
+
 	if randProtosPort {
 		protosPortVar = int(getRandInt(int64(maxProtosPort-minProtosPort))) + minProtosPort
 	}
@@ -233,6 +243,9 @@ func main() {
 	if randAnalyticsPort {
 		analyticsPortVar = int(getRandInt(int64(maxAnalyticsPort-minAnalyticsPort))) + minAnalyticsPort
 	}
+
+	demmonTreeConf.UseBwScore = GetUseBWEnvVar()
+	demmonTreeConf.BandwidthScore = GetBWScore()
 
 	fmt.Println("Self peer: ", babelConf.Peer.String())
 	isLandmark := false
@@ -243,13 +256,23 @@ func main() {
 		}
 	}
 	waitForStart := GetWaitForStartEnvVar()
-	start(babelConf, nodeWatcherConf, exporterConfs, dConf, demmonTreeConf, meConf, dbConf, isLandmark, waitForStart)
+	start(babelConf,
+		nodeWatcherConf,
+		exporterConfs,
+		dConf,
+		demmonTreeConf,
+		meConf,
+		dbConf,
+		isLandmark,
+		waitForStart,
+		benchmarkDemmonMetrics,
+		benchmarkMembership)
 }
 
 func start(
 	babelConf *pkg.Config, nwConf *pkg.NodeWatcherConf, eConf *exporter.Conf,
 	dConf *internal.DemmonConf, membershipConf *membershipProtocol.DemmonTreeConfig,
-	meConf *engine.Conf, dbConf *tsdb.Conf, isLandmark, waitForStart bool,
+	meConf *engine.Conf, dbConf *tsdb.Conf, isLandmark, waitForStart, isBenchmarkDemmonMetrics, benchmarkMembership bool,
 ) {
 
 	babel := pkg.NewProtoManager(*babelConf)
@@ -268,23 +291,32 @@ func start(
 		Port: protosPortVar,
 	})
 
-	fmt.Printf("Starting db with conf: %+v\n", dbConf)
+	fm := membershipFrontend.New(babel)
+	babel.RegisterProtocol(membershipProtocol.New(membershipConf, babel, nw))
+	if benchmarkMembership {
+		fmt.Println("Benchmarking demmon membership protocol")
+		babel.StartSync()
+	}
+
 	db := tsdb.GetDB(dbConf)
 	me := engine.NewMetricsEngine(db, *meConf, true)
-	fm := membershipFrontend.New(babel)
-	monitorProto := monitoringProto.New(babel, db, me)
+	monitorProto := monitoringProto.New(babel, db, me, isLandmark)
 	monitor := internal.New(*dConf, monitorProto, me, db, fm, babel)
-
 	babel.RegisterProtocol(monitorProto)
-	babel.RegisterProtocol(membershipProtocol.New(membershipConf, babel, nw))
-
 	if !waitForStart {
 		babel.StartAsync()
 	}
 
 	go monitor.Listen()
-	// <-time.After(3 * time.Second)
-	// go testDemmonMetrics(eConf, isLandmark)
+	if isBenchmarkDemmonMetrics {
+		fmt.Println("Benchmarking demmon metrics protocol")
+		benchmarkType, ok := GetDemmonBenchmarkTypeEnvVar()
+		if !ok {
+			panic("No benchmark type specified for demmon")
+		}
+		fmt.Println(benchmarkType)
+		benchmarkDemmonMetrics(eConf, isLandmark, benchmarkType) // TODO CHANGE HERE BENCHMARK TYPE
+	}
 	select {}
 
 	// buf := make([]byte, 1<<20)
