@@ -254,7 +254,6 @@ func (d *Demmon) Listen() {
 	r := mux.NewRouter()
 	r.HandleFunc(routes.Dial, d.handleDial)
 	err := http.ListenAndServe(fmt.Sprintf(":%d", d.conf.ListenPort), r)
-
 	if err != nil {
 		d.logger.Panic(err)
 	}
@@ -939,7 +938,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 		wg.Wait()
 		if job.err != nil {
 			d.logger.Errorf("returning from interest set %s due to error %s", taskID, job.err.Error())
-			d.sendResponse(body_types.NewResponse(req.ID, true, nil, 500, routes.InstallCustomInterestSet, body_types.CustomInterestSetErr{Err: body_types.ErrCannotConnect.Error()}), c)
+			d.sendResponse(body_types.NewResponse(req.ID, true, nil, 500, routes.InstallCustomInterestSet, body_types.CustomInterestSetErr{Err: job.err.Error()}), c)
 			return
 		}
 		for _, p := range customJobWrapper.is.Hosts {
@@ -992,7 +991,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 		wg.Wait()
 		if job.err != nil {
 			d.logger.Errorf("returning from interest set %s due to error %s", taskID, job.err.Error())
-			d.sendResponse(body_types.NewResponse(req.ID, true, nil, 500, routes.InstallCustomInterestSet, body_types.CustomInterestSetErr{Err: body_types.ErrQuerying.Error()}), c)
+			d.sendResponse(body_types.NewResponse(req.ID, true, nil, 500, routes.InstallCustomInterestSet, body_types.CustomInterestSetErr{Err: job.err.Error()}), c)
 			return
 		}
 		job.Lock()
