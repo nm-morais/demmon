@@ -454,7 +454,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		customIntSet := &customInterestSetWrapper{
 			nrRetries: make(map[string]int),
 			is:        reqBody,
-			Mutex:     &sync.Mutex{},
+			mux:       &sync.Mutex{},
 			clients:   make(map[string]*demmon_client.DemmonClient),
 		}
 
@@ -483,9 +483,9 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			break
 		}
 		customIS := customISGeneric.(*customInterestSetWrapper)
-		customIS.Lock()
+		customIS.mux.Lock()
 		customIS.is.Hosts = reqBody.Hosts
-		customIS.Unlock()
+		customIS.mux.Unlock()
 		d.logger.Infof("Updated cutom interest set  %s successfully", reqBody.SetID)
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, nil)
 	case routes.InstallNeighborhoodInterestSet:
@@ -882,7 +882,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 			return
 		}
 		query := job.is.IS.Query
-		job.Lock()
+		job.mux.Lock()
 		for _, p := range customJobWrapper.is.Hosts {
 			_, ok := job.clients[p.IP.String()]
 			if ok {
@@ -905,42 +905,43 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 					err, _ := newCL.ConnectTimeout(job.is.DialTimeout)
 					if err != nil {
 						d.logger.Errorf("Got error %s connecting to node %s in custom interest set %s", err.Error(), p.IP.String(), taskID)
-						job.Lock()
+						job.mux.Lock()
 						nrRetries, ok := job.nrRetries[p.IP.String()]
 						if !ok {
 							job.nrRetries[p.IP.String()] = 0
 							nrRetries = 0
 						}
-						job.Unlock()
+						job.mux.Unlock()
 						if nrRetries == customJobWrapper.is.IS.MaxRetries {
-							job.Lock()
+							job.mux.Lock()
 							job.err = err
-							job.Unlock()
+							job.mux.Unlock()
 							d.logger.Errorf("Could not connect to custom interest set %s target: %s ", taskID, p.IP.String())
 							return
 						}
-						job.Lock()
+						job.mux.Lock()
 						job.nrRetries[p.IP.String()]++
-						job.Unlock()
+						job.mux.Unlock()
 						time.Sleep(customJobWrapper.is.DialRetryBackoff * time.Duration(i))
 						continue
 					}
 					d.logger.Infof("Connected to custom interest set %s target: %s successfully", taskID, p.IP.String())
-					job.Lock()
+					job.mux.Lock()
 					job.nrRetries[p.IP.String()] = 0
 					job.clients[p.IP.String()] = newCL
-					job.Unlock()
+					job.mux.Unlock()
 					break
 				}
 			}(pCopy)
 		}
-		job.Unlock()
+		job.mux.Unlock()
 		wg.Wait()
 		if job.err != nil {
 			d.logger.Errorf("returning from interest set %s due to error %s", taskID, job.err.Error())
 			d.sendResponse(body_types.NewResponse(req.ID, true, nil, 500, routes.InstallCustomInterestSet, body_types.CustomInterestSetErr{Err: job.err.Error()}), c)
 			return
 		}
+		job.mux.Lock()
 		for _, p := range customJobWrapper.is.Hosts {
 			cl, ok := job.clients[p.IP.String()]
 			if !ok {
@@ -956,22 +957,22 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 				res, err := cl.Query(query.Expression, query.Timeout)
 				if err != nil {
 					d.logger.Errorf("Got error %s querying node %s in custom interest set %s", err.Error(), p.IP.String(), taskID)
-					job.Lock()
+					job.mux.Lock()
 					nrRetries, ok := job.nrRetries[p.IP.String()]
 					if !ok {
 						job.nrRetries[p.IP.String()] = 0
 						nrRetries = 0
 					}
-					job.Unlock()
+					job.mux.Unlock()
 					if nrRetries == customJobWrapper.is.IS.MaxRetries {
-						job.Lock()
+						job.mux.Lock()
 						job.err = err
-						job.Unlock()
+						job.mux.Unlock()
 						return
 					}
-					job.Lock()
+					job.mux.Lock()
 					job.nrRetries[p.IP.String()]++
-					job.Unlock()
+					job.mux.Unlock()
 					return
 				}
 
@@ -988,13 +989,14 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 				}
 			}(clCopy, pCopy)
 		}
+		job.mux.Unlock()
 		wg.Wait()
 		if job.err != nil {
 			d.logger.Errorf("returning from interest set %s due to error %s", taskID, job.err.Error())
 			d.sendResponse(body_types.NewResponse(req.ID, true, nil, 500, routes.InstallCustomInterestSet, body_types.CustomInterestSetErr{Err: job.err.Error()}), c)
 			return
 		}
-		job.Lock()
+		job.mux.Lock()
 		for host, cl := range job.clients {
 			found := false
 
@@ -1010,7 +1012,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 				delete(job.clients, host)
 			}
 		}
-		job.Unlock()
+		job.mux.Unlock()
 	}
 }
 
