@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nm-morais/demmon/internal/utils"
+	"github.com/nm-morais/demmon/core/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -317,8 +317,6 @@ func (ts *timeSeries) init(name string,
 // AddWithTime records an observation at the specified time.
 func (ts *timeSeries) _addWithTime(observation Observable, t time.Time) {
 
-	// ts.logger.Infof("Adding %+v at time %s", observation, t)
-
 	if t.After(ts.lastAdd) {
 		ts.lastAdd = t
 	}
@@ -353,7 +351,7 @@ func (ts *timeSeries) mergeValue(observation Observable, t time.Time) {
 	if index > 0 && index < ts.numBuckets {
 		bucketNumber := (ts.level.oldest + index) % ts.numBuckets
 		if ts.level.bucket[bucketNumber] == nil {
-			ts.level.bucket[bucketNumber] = observation.Clone()
+			ts.level.bucket[bucketNumber] = observation
 		}
 		ts.level.bucket[bucketNumber] = observation.Clone()
 		go ts.NotifyAll()

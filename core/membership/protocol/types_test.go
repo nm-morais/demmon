@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/nm-morais/demmon/internal/membership/protocol"
+	. "github.com/nm-morais/demmon/core/membership/protocol"
 	"github.com/nm-morais/go-babel/pkg/peer"
 )
 

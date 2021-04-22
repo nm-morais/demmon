@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nm-morais/demmon/internal/monitoring/engine"
-	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
+	"github.com/nm-morais/demmon/core/monitoring/engine"
+	"github.com/nm-morais/demmon/core/monitoring/tsdb"
 )
 
 var db = tsdb.GetDB(&tsdb.Conf{

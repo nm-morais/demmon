@@ -1,4 +1,4 @@
-package internal
+package core
 
 import (
 	"errors"
@@ -15,11 +15,11 @@ import (
 	demmon_client "github.com/nm-morais/demmon-client/pkg"
 	"github.com/nm-morais/demmon-common/body_types"
 	"github.com/nm-morais/demmon-common/routes"
-	membershipFrontend "github.com/nm-morais/demmon/internal/membership/frontend"
-	"github.com/nm-morais/demmon/internal/monitoring/engine"
-	monitoringProto "github.com/nm-morais/demmon/internal/monitoring/protocol"
-	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
-	"github.com/nm-morais/demmon/internal/utils"
+	membershipFrontend "github.com/nm-morais/demmon/core/membership/frontend"
+	"github.com/nm-morais/demmon/core/monitoring/engine"
+	monitoringProto "github.com/nm-morais/demmon/core/monitoring/protocol"
+	"github.com/nm-morais/demmon/core/monitoring/tsdb"
+	"github.com/nm-morais/demmon/core/utils"
 	"github.com/nm-morais/go-babel/pkg/dataStructures/timedEventQueue"
 	"github.com/nm-morais/go-babel/pkg/protocolManager"
 	"github.com/reugn/go-quartz/quartz"
@@ -460,7 +460,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 
 		d.logger.Infof("Creating custom interest set %s func output bucket: %s", setID, reqBody.IS.OutputBucketOpts.Name)
 		d.customInterestSets.Store(setID, customIntSet)
-		go d.handleCustomInterestSet(setID, r, c)
+		go d.handleCustomInterestSet(setID, reqBody, r.ID, c)
 		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, body_types.InstallInterestSetReply{SetID: setID})
 
 	case routes.RemoveCustomInterestSet:
@@ -860,28 +860,25 @@ func (d *Demmon) RemoveAlarmWatchlist(alarm *alarmControl) error {
 	return nil
 }
 
-func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request, c *client) {
+func (d *Demmon) handleCustomInterestSet(taskID string, is body_types.CustomInterestSet, reqID string, c *client) {
 	defer d.logger.Warnf("Custom interest set %s returning", taskID)
-	jobGeneric, ok := d.customInterestSets.Load(taskID)
-	if !ok {
-		return
-	}
-
-	customJobWrapper := jobGeneric.(*customInterestSetWrapper)
-	ticker := time.NewTicker(customJobWrapper.is.IS.OutputBucketOpts.Granularity.Granularity)
-	wg := &sync.WaitGroup{}
-
+	ticker := time.NewTicker(is.IS.OutputBucketOpts.Granularity.Granularity)
 	for range ticker.C {
 		d.logger.Infof("Custom interest set %s trigger", taskID)
-		jobGeneric, ok = d.customInterestSets.Load(taskID)
+		jobGeneric, ok := d.customInterestSets.Load(taskID)
 		if !ok {
+			d.logger.Errorf("returning from interest set %s due to not existing anymore in map", taskID)
 			return
 		}
 		job := jobGeneric.(*customInterestSetWrapper)
 		if job.err != nil {
+			d.logger.Errorf("returning from interest set %s due to error %s", taskID, job.err.Error())
+			d.sendResponse(body_types.NewResponse(reqID, true, nil, 500, routes.InstallCustomInterestSet, body_types.CustomInterestSetErr{Err: job.err.Error()}), c)
 			return
 		}
 		query := job.is.IS.Query
+		wg := &sync.WaitGroup{}
+		customJobWrapper := jobGeneric.(*customInterestSetWrapper)
 		job.mux.Lock()
 		for _, p := range customJobWrapper.is.Hosts {
 			_, ok := job.clients[p.IP.String()]
@@ -901,46 +898,42 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 					RequestTimeout: customJobWrapper.is.IS.Query.Timeout,
 				})
 
-				for i := 0; i < customJobWrapper.is.IS.MaxRetries; i++ {
-					err, _ := newCL.ConnectTimeout(job.is.DialTimeout)
-					if err != nil {
-						d.logger.Errorf("Got error %s connecting to node %s in custom interest set %s", err.Error(), p.IP.String(), taskID)
-						job.mux.Lock()
-						nrRetries, ok := job.nrRetries[p.IP.String()]
-						if !ok {
-							job.nrRetries[p.IP.String()] = 0
-							nrRetries = 0
-						}
-						job.mux.Unlock()
-						if nrRetries == customJobWrapper.is.IS.MaxRetries {
-							job.mux.Lock()
-							job.err = err
-							job.mux.Unlock()
-							d.logger.Errorf("Could not connect to custom interest set %s target: %s ", taskID, p.IP.String())
-							return
-						}
-						job.mux.Lock()
-						job.nrRetries[p.IP.String()]++
-						job.mux.Unlock()
-						time.Sleep(customJobWrapper.is.DialRetryBackoff * time.Duration(i))
-						continue
-					}
-					d.logger.Infof("Connected to custom interest set %s target: %s successfully", taskID, p.IP.String())
+				err, _ := newCL.ConnectTimeout(job.is.DialTimeout)
+				if err != nil {
+					d.logger.Errorf("Got error %s connecting to node %s in custom interest set %s", err.Error(), p.IP.String(), taskID)
 					job.mux.Lock()
-					job.nrRetries[p.IP.String()] = 0
-					job.clients[p.IP.String()] = newCL
+					nrRetries, ok := job.nrRetries[p.IP.String()]
+					if !ok {
+						job.nrRetries[p.IP.String()] = 0
+						nrRetries = 0
+					}
 					job.mux.Unlock()
-					break
+					if nrRetries == customJobWrapper.is.IS.MaxRetries {
+						job.mux.Lock()
+						job.err = err
+						job.mux.Unlock()
+						d.logger.Errorf("Could not connect to custom interest set %s target: %s ", taskID, p.IP.String())
+						return
+					}
+					job.mux.Lock()
+					job.nrRetries[p.IP.String()]++
+					job.mux.Unlock()
 				}
+				d.logger.Infof("Connected to custom interest set %s target: %s successfully", taskID, p.IP.String())
+				job.mux.Lock()
+				job.nrRetries[p.IP.String()] = 0
+				job.clients[p.IP.String()] = newCL
+				job.mux.Unlock()
 			}(pCopy)
 		}
 		job.mux.Unlock()
 		wg.Wait()
 		if job.err != nil {
 			d.logger.Errorf("returning from interest set %s due to error %s", taskID, job.err.Error())
-			d.sendResponse(body_types.NewResponse(req.ID, true, nil, 500, routes.InstallCustomInterestSet, body_types.CustomInterestSetErr{Err: job.err.Error()}), c)
+			d.sendResponse(body_types.NewResponse(reqID, true, nil, 500, routes.InstallCustomInterestSet, body_types.CustomInterestSetErr{Err: job.err.Error()}), c)
 			return
 		}
+		wg = &sync.WaitGroup{}
 		job.mux.Lock()
 		for _, p := range customJobWrapper.is.Hosts {
 			cl, ok := job.clients[p.IP.String()]
@@ -975,7 +968,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 					job.mux.Unlock()
 					return
 				}
-
+				d.logger.Infof("Query from interest %s set got result: %+v", taskID, res)
 				toAdd := []tsdb.ReadOnlyTimeSeries{}
 				for _, ts := range res {
 					ts.MeasurementName = job.is.IS.OutputBucketOpts.Name
@@ -993,7 +986,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 		wg.Wait()
 		if job.err != nil {
 			d.logger.Errorf("returning from interest set %s due to error %s", taskID, job.err.Error())
-			d.sendResponse(body_types.NewResponse(req.ID, true, nil, 500, routes.InstallCustomInterestSet, body_types.CustomInterestSetErr{Err: job.err.Error()}), c)
+			d.sendResponse(body_types.NewResponse(reqID, true, nil, 500, routes.InstallCustomInterestSet, body_types.CustomInterestSetErr{Err: job.err.Error()}), c)
 			return
 		}
 		job.mux.Lock()

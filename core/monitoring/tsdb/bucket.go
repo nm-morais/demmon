@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/nm-morais/demmon-common/body_types"
-	"github.com/nm-morais/demmon/internal/utils"
+	"github.com/nm-morais/demmon/core/utils"
 	"github.com/sirupsen/logrus"
 )
 

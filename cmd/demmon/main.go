@@ -5,15 +5,16 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"time"
 
 	exporter "github.com/nm-morais/demmon-exporter"
-	"github.com/nm-morais/demmon/internal"
-	membershipFrontend "github.com/nm-morais/demmon/internal/membership/frontend"
-	membershipProtocol "github.com/nm-morais/demmon/internal/membership/protocol"
-	"github.com/nm-morais/demmon/internal/monitoring/engine"
-	monitoringProto "github.com/nm-morais/demmon/internal/monitoring/protocol"
-	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
+	"github.com/nm-morais/demmon/core"
+	membershipFrontend "github.com/nm-morais/demmon/core/membership/frontend"
+	membershipProtocol "github.com/nm-morais/demmon/core/membership/protocol"
+	"github.com/nm-morais/demmon/core/monitoring/engine"
+	monitoringProto "github.com/nm-morais/demmon/core/monitoring/protocol"
+	"github.com/nm-morais/demmon/core/monitoring/tsdb"
 	"github.com/nm-morais/go-babel/pkg"
 	"github.com/nm-morais/go-babel/pkg/peer"
 )
@@ -183,11 +184,11 @@ func main() {
 		SmConf: pkg.StreamManagerConf{
 			BatchMaxSizeBytes: 1500,
 			BatchTimeout:      500 * time.Millisecond,
-			DialTimeout:       10 * time.Second,
+			DialTimeout:       2 * time.Second,
 		},
 		Silent:           silent,
 		LogFolder:        logFolder,
-		HandshakeTimeout: 10 * time.Second,
+		HandshakeTimeout: 6 * time.Second,
 		Peer:             peer.NewPeer(GetLocalIP(), uint16(protosPortVar), uint16(analyticsPortVar)),
 	}
 
@@ -210,7 +211,7 @@ func main() {
 		babelConf.Peer = peer.NewPeer(net.ParseIP(advertiseListenAddr), uint16(protosPortVar), uint16(analyticsPortVar))
 	}
 
-	dConf := &internal.DemmonConf{
+	dConf := &core.DemmonConf{
 		Silent:     silent,
 		LogFolder:  logFolder,
 		LogFile:    "metrics_frontend.log",
@@ -271,7 +272,7 @@ func main() {
 
 func start(
 	babelConf *pkg.Config, nwConf *pkg.NodeWatcherConf, eConf *exporter.Conf,
-	dConf *internal.DemmonConf, membershipConf *membershipProtocol.DemmonTreeConfig,
+	dConf *core.DemmonConf, membershipConf *membershipProtocol.DemmonTreeConfig,
 	meConf *engine.Conf, dbConf *tsdb.Conf, isLandmark, waitForStart, isBenchmarkDemmonMetrics, benchmarkMembership bool,
 ) {
 
@@ -301,7 +302,7 @@ func start(
 	db := tsdb.GetDB(dbConf)
 	me := engine.NewMetricsEngine(db, *meConf, true)
 	monitorProto := monitoringProto.New(babel, db, me, isLandmark)
-	monitor := internal.New(*dConf, monitorProto, me, db, fm, babel)
+	monitor := core.New(*dConf, monitorProto, me, db, fm, babel)
 	babel.RegisterProtocol(monitorProto)
 	if !waitForStart {
 		babel.StartAsync()
@@ -317,7 +318,12 @@ func start(
 		fmt.Println(benchmarkType)
 		benchmarkDemmonMetrics(eConf, isLandmark, benchmarkType) // TODO CHANGE HERE BENCHMARK TYPE
 	}
-	select {}
+	ticker := time.NewTicker(5 * time.Minute)
+	// timeStart := time.Now()
+	for range ticker.C {
+		// memProfile(logFolder, fmt.Sprintf("memProfile-%d_min", int(time.Since(timeStart).Minutes())))
+		runtime.Gosched()
+	}
 
 	// buf := make([]byte, 1<<20)
 	// stacklen := runtime.Stack(buf, true)
@@ -329,11 +335,11 @@ func start(
 }
 
 func ParseFlags() {
-	flag.IntVar(&protosPortVar, "protos", 1200, "protos")
+	flag.IntVar(&protosPortVar, "protos", int(baseProtoPort), "protos")
 	flag.BoolVar(&silent, "s", false, "s")
 	flag.StringVar(&logFolder, "l", "", "log file")
 	flag.BoolVar(&randProtosPort, "rprotos", false, "port")
-	flag.IntVar(&analyticsPortVar, "analytics", 1201, "analytics")
+	flag.IntVar(&analyticsPortVar, "analytics", int(baseAnalyticsPort), "analytics")
 	flag.BoolVar(&randAnalyticsPort, "ranalytics", false, "port")
 	flag.BoolVar(&cpuprofile, "cpuprofile", false, "cpuprofile")
 	flag.BoolVar(&memprofile, "memprofile", false, "memprofile")

@@ -4,9 +4,9 @@ import (
 	"reflect"
 	"time"
 
-	membershipProtocol "github.com/nm-morais/demmon/internal/membership/protocol"
-	"github.com/nm-morais/demmon/internal/monitoring/engine"
-	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
+	membershipProtocol "github.com/nm-morais/demmon/core/membership/protocol"
+	"github.com/nm-morais/demmon/core/monitoring/engine"
+	"github.com/nm-morais/demmon/core/monitoring/tsdb"
 	"github.com/nm-morais/go-babel/pkg/errors"
 	"github.com/nm-morais/go-babel/pkg/logs"
 	"github.com/nm-morais/go-babel/pkg/message"

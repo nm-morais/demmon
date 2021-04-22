@@ -17,7 +17,7 @@ import (
 	"time"
 
 	pool "github.com/jolestar/go-commons-pool/v2"
-	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
+	"github.com/nm-morais/demmon/core/monitoring/tsdb"
 	"github.com/robertkrimen/otto"
 	"github.com/sirupsen/logrus"
 )

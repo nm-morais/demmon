@@ -69,15 +69,15 @@ func benchmarkDemmonMetrics(eConf *exporter.Conf, isLandmark bool, benchmarkType
 	time.Sleep(5 * time.Second)
 	switch benchmarkType {
 	case BenchmarkTreeAggFunc:
-		benchmarkTreeAggFunc(cl, expressionTimeout, exportFrequency)
+		go benchmarkTreeAggFunc(cl, expressionTimeout, exportFrequency)
 	case BenchmarkGlobalAggFunc:
-		benchmarkGlobalAggFunc(cl, expressionTimeout, exportFrequency)
+		go benchmarkGlobalAggFunc(cl, expressionTimeout, exportFrequency)
 	case BenchmarkNeighAggFunc:
-		benchmarkNeighAggFunc(cl, expressionTimeout, exportFrequency)
+		go benchmarkNeighAggFunc(cl, expressionTimeout, exportFrequency)
 	case BenchmarkAll:
 		go benchmarkTreeAggFunc(cl, expressionTimeout, exportFrequency)
 		go benchmarkGlobalAggFunc(cl, expressionTimeout, exportFrequency)
-		benchmarkNeighAggFunc(cl, expressionTimeout, exportFrequency)
+		go benchmarkNeighAggFunc(cl, expressionTimeout, exportFrequency)
 	default:
 		panic(fmt.Sprintf("unknown type of benchmark : <%s> specified for demmon", benchmarkType))
 	}

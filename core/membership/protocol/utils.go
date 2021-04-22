@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/nm-morais/demmon/internal/utils"
+	"github.com/nm-morais/demmon/core/utils"
 	"github.com/nm-morais/go-babel/pkg/errors"
 	"github.com/nm-morais/go-babel/pkg/nodeWatcher"
 	"github.com/nm-morais/go-babel/pkg/peer"

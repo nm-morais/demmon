@@ -1,4 +1,4 @@
-package internal
+package core
 
 import (
 	"fmt"
@@ -24,15 +24,15 @@ func (d *Demmon) readPump(c *client) {
 	}()
 
 	for {
-		req := &body_types.Request{}
-		err := c.conn.ReadJSON(req)
+		req := body_types.Request{}
+		err := c.conn.ReadJSON(&req)
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
 				d.logger.Errorf("Demmon-frontend connection error: %v, ", err)
 			}
 			return
 		}
-		go d.handleRequest(req, c)
+		go d.handleRequest(&req, c)
 	}
 }
 

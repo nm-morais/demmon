@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/nm-morais/demmon-common/body_types"
-	membershipProtocol "github.com/nm-morais/demmon/internal/membership/protocol"
-	"github.com/nm-morais/demmon/internal/utils"
+	membershipProtocol "github.com/nm-morais/demmon/core/membership/protocol"
+	"github.com/nm-morais/demmon/core/utils"
 	"github.com/nm-morais/go-babel/pkg/errors"
 	"github.com/nm-morais/go-babel/pkg/logs"
 	"github.com/nm-morais/go-babel/pkg/message"

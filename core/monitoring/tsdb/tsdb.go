@@ -80,7 +80,6 @@ func (db *TSDB) AddAll(toAdd []ReadOnlyTimeSeries) error {
 			db.logger.Error("err: Cannot add timeseries to DB because it is empty")
 			continue
 		}
-
 		for _, pt := range allPts {
 			err := db.AddMetric(ts.Name(), ts.Tags(), pt.Value(), pt.TS())
 			if err != nil {

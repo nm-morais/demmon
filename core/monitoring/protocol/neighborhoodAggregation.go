@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/nm-morais/demmon-common/body_types"
-	"github.com/nm-morais/demmon/internal/monitoring/tsdb"
+	"github.com/nm-morais/demmon/core/monitoring/tsdb"
 	"github.com/nm-morais/go-babel/pkg/message"
 	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/request"
