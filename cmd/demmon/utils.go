@@ -15,20 +15,20 @@ import (
 
 func GetLocalIP() net.IP {
 
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		panic(err)
-	}
-
-	for _, address := range addrs {
-		// check the address type and if it is not a loopback the display it
-		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil {
-				return ipnet.IP
+	itf, _ := net.InterfaceByName("eth0") //here your interface
+	item, _ := itf.Addrs()
+	var ip net.IP
+	for _, addr := range item {
+		switch v := addr.(type) {
+		case *net.IPNet:
+			if !v.IP.IsLoopback() {
+				if v.IP.To4() != nil { //Verify if IP is IPV4
+					ip = v.IP
+					return ip
+				}
 			}
 		}
 	}
-
 	panic("no available loopback interfaces")
 }
 
