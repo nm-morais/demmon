@@ -34,17 +34,21 @@ func NewObservable(fields map[string]interface{}, ts time.Time) Observable {
 
 // Value returns the float's value.
 func (f *observable) Value() map[string]interface{} {
-	toReturn := make(map[string]interface{}, len(f.ObsFields))
+	toReturn := map[string]interface{}{}
 	for k, v := range f.ObsFields {
 		toReturn[k] = v
 	}
-
 	return toReturn
 }
 
 func (f *observable) Clone() Observable {
-	toReturn := NewObservable(f.Value(), f.TS())
-	return toReturn
+	tmpMap := map[string]interface{}{}
+	var tmpTS time.Time
+	for k, v := range f.ObsFields {
+		tmpMap[k] = v
+		tmpTS = f.ObsTS
+	}
+	return NewObservable(tmpMap, tmpTS)
 }
 
 func (f *observable) TS() time.Time {
@@ -58,14 +62,10 @@ func (f *observable) Clear() {
 }
 
 func (f *observable) CopyFrom(other Observable) {
-	otherFields := other.Value()
-	f.ObsFields = make(map[string]interface{}, len(otherFields))
-
-	for k, v := range otherFields {
+	for k, v := range other.Value() {
 		f.ObsFields[k] = v
+		f.ObsTS = other.TS()
 	}
-
-	f.ObsTS = other.TS()
 }
 
 func (f *observable) String() string {
@@ -77,7 +77,7 @@ func (f *observable) String() string {
 		return "<empty field>"
 	}
 
-	var sb strings.Builder
+	sb := &strings.Builder{}
 
 	sb.WriteString("[")
 
