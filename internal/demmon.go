@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"reflect"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -65,7 +64,7 @@ type customInterestSetWrapper struct {
 	nrRetries map[string]int
 	clients   map[string]*demmon_client.DemmonClient
 	is        body_types.CustomInterestSet
-	*sync.Mutex
+	mux       *sync.Mutex
 }
 
 type alarmControl struct {
@@ -315,7 +314,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 			break
 		}
 
-		d.logger.Infof("Adding: %+v, type:%s", r.Message, reflect.TypeOf(r.Message))
+		// d.logger.Infof("Adding: %+v, type:%s", r.Message, reflect.TypeOf(r.Message))
 		tsArr := make([]tsdb.ReadOnlyTimeSeries, 0, len(reqBody))
 		for _, ts := range reqBody {
 			tsArr = append(tsArr, tsdb.StaticTimeseriesFromDTO(ts))
@@ -883,7 +882,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 			return
 		}
 		query := job.is.IS.Query
-
+		job.Lock()
 		for _, p := range customJobWrapper.is.Hosts {
 			_, ok := job.clients[p.IP.String()]
 			if ok {
@@ -935,6 +934,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, req *body_types.Request,
 				}
 			}(pCopy)
 		}
+		job.Unlock()
 		wg.Wait()
 		if job.err != nil {
 			d.logger.Errorf("returning from interest set %s due to error %s", taskID, job.err.Error())
