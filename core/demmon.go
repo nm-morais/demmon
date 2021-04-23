@@ -977,11 +977,6 @@ func (d *Demmon) handleCustomInterestSet(taskID string, is body_types.CustomInte
 						}
 					}
 				}
-
-				if err != nil {
-					d.logger.Panicf("Unexpected err adding metric to db: %s", err.Error())
-					return
-				}
 			}(p)
 		}
 		job.mux.Unlock()
@@ -1002,7 +997,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, is body_types.CustomInte
 			}
 			if !found {
 				d.logger.Warnf("Continuous query removing client %s because it is not present in hosts array", host)
-				cl.Disconnect()
+				go cl.Disconnect()
 				delete(job.clients, host)
 			}
 		}
