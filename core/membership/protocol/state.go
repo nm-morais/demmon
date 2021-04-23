@@ -99,7 +99,6 @@ func (d *DemmonTree) addParent(
 		toSend := NewDisconnectAsChildMessage()
 		d.myParent = nil
 		d.babel.SendNotification(NewNodeDownNotification(oldParent, d.getInView(), false))
-		d.babel.SendNotification(NeighborDownNotification{PeerDown: oldParent})
 		d.sendMessageAndDisconnect(toSend, oldParent)
 		d.nodeWatcher.Unwatch(oldParent, d.ID())
 	}
@@ -132,7 +131,6 @@ func (d *DemmonTree) addParent(
 	d.myParent.inConnActive = hasInConnection
 	if hasOutConnection {
 		d.babel.SendNotification(NewNodeUpNotification(d.myParent, d.getInView()))
-		d.babel.SendNotification(NeighborUpNotification{PeerUp: d.myParent})
 
 	} else {
 		d.babel.Dial(d.ID(), newParent, newParent.ToTCPAddr())
@@ -199,7 +197,6 @@ func (d *DemmonTree) addChild(newChild *PeerWithIDChain, bwScore int, childrenLa
 	} else {
 		d.myChildren[newChild.String()] = newChildWithID
 		d.babel.SendNotification(NewNodeUpNotification(newChild, d.getInView()))
-		d.babel.SendNotification(NeighborUpNotification{PeerUp: newChild})
 	}
 
 	d.myChildren[newChild.String()] = newChildWithID
@@ -234,7 +231,6 @@ func (d *DemmonTree) removeChild(toRemove peer.Peer, crash bool) {
 	delete(d.myChildren, toRemove.String())
 	d.updateSelfVersion()
 	d.babel.SendNotification(NewNodeDownNotification(child, d.getInView(), crash))
-	d.babel.SendNotification(NeighborDownNotification{PeerDown: child})
 
 	d.babel.Disconnect(d.ID(), toRemove)
 	d.nodeWatcher.Unwatch(toRemove, d.ID())
@@ -265,7 +261,6 @@ func (d *DemmonTree) removeSibling(toRemove peer.Peer, crash bool) {
 	}
 	delete(d.mySiblings, toRemove.String())
 	d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView(), crash))
-	d.babel.SendNotification(NeighborDownNotification{PeerDown: sibling})
 
 	d.nodeWatcher.Unwatch(sibling, d.ID())
 	d.babel.Disconnect(d.ID(), toRemove)

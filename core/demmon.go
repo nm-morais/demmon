@@ -280,6 +280,7 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 
 	var resp = &body_types.Response{}
 
+responseTypeSwitch:
 	switch r.Type {
 	case routes.GetInView:
 		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, d.fm.GetInView())
@@ -315,22 +316,21 @@ func (d *Demmon) handleRequest(r *body_types.Request, c *client) {
 		}
 
 		// d.logger.Infof("Adding: %+v, type:%s", r.Message, reflect.TypeOf(r.Message))
-		tsArr := make([]tsdb.ReadOnlyTimeSeries, 0, len(reqBody))
 		for _, ts := range reqBody {
-			tsArr = append(tsArr, tsdb.StaticTimeseriesFromDTO(ts))
-		}
-		err := d.db.AddAll(tsArr)
-		if err != nil {
-			d.logger.Errorf("Got error adding metric blob: %s", err.Error())
-			if errors.Is(err, tsdb.ErrBucketNotFound) {
-				resp = body_types.NewResponse(r.ID, false, err, 404, r.Type, nil)
-				break
+			for _, pt := range ts.Values {
+				err := d.db.AddMetric(ts.MeasurementName, ts.TSTags, pt.Fields, pt.TS)
+				if err != nil {
+					d.logger.Errorf("Got error adding metric blob: %s", err.Error())
+					if errors.Is(err, tsdb.ErrBucketNotFound) {
+						resp = body_types.NewResponse(r.ID, false, err, 404, r.Type, nil)
+						break responseTypeSwitch
+					}
+					resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
+					break responseTypeSwitch
+				}
 			}
-			resp = body_types.NewResponse(r.ID, false, err, 500, r.Type, nil)
-			break
 		}
-
-		resp = body_types.NewResponse(r.ID, false, err, 200, r.Type, nil)
+		resp = body_types.NewResponse(r.ID, false, nil, 200, r.Type, nil)
 	case routes.Query:
 		reqBody := body_types.QueryRequest{}
 		if !d.extractBody(r, &reqBody, resp) {
@@ -936,16 +936,16 @@ func (d *Demmon) handleCustomInterestSet(taskID string, is body_types.CustomInte
 		wg = &sync.WaitGroup{}
 		job.mux.Lock()
 		for _, p := range customJobWrapper.is.Hosts {
-			cl, ok := job.clients[p.IP.String()]
-			if !ok {
-				continue
-			}
-			clCopy := cl
-			pCopy := p
-
 			wg.Add(1)
-
-			go func(cl *demmon_client.DemmonClient, p body_types.CustomInterestSetHost) {
+			go func(p body_types.CustomInterestSetHost) {
+				job.mux.Lock()
+				cl, ok := job.clients[p.IP.String()]
+				if !ok {
+					job.mux.Unlock()
+					d.logger.Errorf("Do not have client for peer %s in customInterestSet %s", p.IP.String(), taskID)
+					return
+				}
+				job.mux.Unlock()
 				defer wg.Done()
 				res, err := cl.Query(query.Expression, query.Timeout)
 				if err != nil {
@@ -969,18 +969,20 @@ func (d *Demmon) handleCustomInterestSet(taskID string, is body_types.CustomInte
 					return
 				}
 				d.logger.Infof("Query from interest %s set got result: %+v", taskID, res)
-				toAdd := []tsdb.ReadOnlyTimeSeries{}
 				for _, ts := range res {
-					ts.MeasurementName = job.is.IS.OutputBucketOpts.Name
-					tmp := tsdb.StaticTimeseriesFromDTO(ts)
-					toAdd = append(toAdd, tmp)
+					for _, v := range ts.Values {
+						err = d.db.AddMetric(job.is.IS.OutputBucketOpts.Name, ts.TSTags, v.Fields, v.TS)
+						if err != nil {
+							d.logger.Panic("Error inserting into TSDB: %s", err.Error())
+						}
+					}
 				}
-				err = d.db.AddAll(toAdd)
+
 				if err != nil {
 					d.logger.Panicf("Unexpected err adding metric to db: %s", err.Error())
 					return
 				}
-			}(clCopy, pCopy)
+			}(p)
 		}
 		job.mux.Unlock()
 		wg.Wait()
@@ -992,7 +994,6 @@ func (d *Demmon) handleCustomInterestSet(taskID string, is body_types.CustomInte
 		job.mux.Lock()
 		for host, cl := range job.clients {
 			found := false
-
 			for _, h := range job.is.Hosts {
 				if host == h.IP.String() {
 					found = true
@@ -1044,23 +1045,7 @@ func (d *Demmon) handleContinuousQueryTrigger(taskID int) {
 		}
 		return
 	}
-
-	for _, ts := range res {
-		ts.(*tsdb.StaticTimeseries).SetName(job.IS.OutputBucketOpts.Name)
-
-		// allPts := ts.All()
-		// if len(allPts) == 0 {
-		// 	d.logger.Error("Timeseries result is empty")
-		// 	continue
-		// }
-		// for _, pt := range allPts {
-		// 	err := d.db.AddMetric(job.outputBucketOpts.Name, ts.Tags(), pt.Value(), pt.TS())
-		// 	if err != nil {
-		// 		panic(err)
-		// 	}
-		// }
-	}
-	err = d.db.AddAll(res)
+	err = d.db.AddAll(job.IS.OutputBucketOpts.Name, res)
 	if err != nil {
 		panic(err)
 	}

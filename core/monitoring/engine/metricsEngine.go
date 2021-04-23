@@ -57,7 +57,6 @@ func NewMetricsEngine(db *tsdb.TSDB, conf Conf, logToFile bool) *MetricsEngine {
 var (
 	errExpressionTimeout    = errors.New("timeout running expression")
 	errUnsuportedReturnType = errors.New("unsupported return type")
-	errEmptyResult          = errors.New("query did not return any values")
 )
 
 func (e *MetricsEngine) borrowVM() *otto.Otto {

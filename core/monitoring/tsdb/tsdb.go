@@ -73,7 +73,7 @@ func (db *TSDB) GetBucket(name string) (*Bucket, bool) {
 	return bucket.(*Bucket), ok
 }
 
-func (db *TSDB) AddAll(toAdd []ReadOnlyTimeSeries) error {
+func (db *TSDB) AddAll(bucketName string, toAdd []ReadOnlyTimeSeries) error {
 	for _, ts := range toAdd {
 		allPts := ts.All()
 		if len(allPts) == 0 {
@@ -81,7 +81,7 @@ func (db *TSDB) AddAll(toAdd []ReadOnlyTimeSeries) error {
 			continue
 		}
 		for _, pt := range allPts {
-			err := db.AddMetric(ts.Name(), ts.Tags(), pt.Value(), pt.TS())
+			err := db.AddMetric(bucketName, ts.Tags(), pt.Value(), pt.TS())
 			if err != nil {
 				return err
 			}

@@ -1141,7 +1141,6 @@ func (d *DemmonTree) handleJoinAsChildMessage(sender peer.Peer, m message.Messag
 	if isSibling {
 		delete(d.mySiblings, sender.String())
 		d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView(), false))
-		d.babel.SendNotification(NeighborDownNotification{PeerDown: sibling})
 		outConnActive = sibling.outConnActive
 		inConnActive = sibling.inConnActive
 	}
@@ -1351,7 +1350,6 @@ func (d *DemmonTree) DialSuccess(sourceProto protocol.ID, p peer.Peer) bool {
 		d.installNotifyOnCondition(d.myParent)
 		d.sendUpdateChildMessage(d.myParent)
 		d.babel.SendNotification(NewNodeUpNotification(d.myParent, d.getInView()))
-		d.babel.SendNotification(NeighborUpNotification{PeerUp: d.myParent})
 		return true
 	}
 
@@ -1368,7 +1366,6 @@ func (d *DemmonTree) DialSuccess(sourceProto protocol.ID, p peer.Peer) bool {
 		d.sendMessage(toSend, child)
 		d.installNotifyOnCondition(child)
 		d.babel.SendNotification(NewNodeUpNotification(child, d.getInView()))
-		d.babel.SendNotification(NeighborUpNotification{PeerUp: child})
 		d.updateSelfVersion()
 		return true
 	}
@@ -1378,8 +1375,6 @@ func (d *DemmonTree) DialSuccess(sourceProto protocol.ID, p peer.Peer) bool {
 		sibling.outConnActive = true
 		d.logger.Infof("Dialed sibling with success: %s", sibling.StringWithFields())
 		d.babel.SendNotification(NewNodeUpNotification(sibling, d.getInView()))
-		d.babel.SendNotification(NeighborUpNotification{PeerUp: sibling})
-
 		d.installNotifyOnCondition(sibling)
 		return true
 	}
@@ -1438,7 +1433,6 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer, crash bool) {
 		aux := d.myParent
 		d.myParent = nil
 		d.babel.SendNotification(NewNodeDownNotification(aux, d.getInView(), crash))
-		d.babel.SendNotification(NeighborDownNotification{PeerDown: aux})
 		d.nodeWatcher.Unwatch(p, d.ID())
 		if d.myGrandParent != nil {
 			d.logger.Warnf("Falling back to grandparent %s", d.myGrandParent.String())
