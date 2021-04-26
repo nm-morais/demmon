@@ -938,6 +938,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, is body_types.CustomInte
 		for _, p := range customJobWrapper.is.Hosts {
 			wg.Add(1)
 			go func(p body_types.CustomInterestSetHost) {
+				defer wg.Done()
 				job.mux.Lock()
 				cl, ok := job.clients[p.IP.String()]
 				if !ok {
@@ -946,7 +947,6 @@ func (d *Demmon) handleCustomInterestSet(taskID string, is body_types.CustomInte
 					return
 				}
 				job.mux.Unlock()
-				defer wg.Done()
 				res, err := cl.Query(query.Expression, query.Timeout)
 				if err != nil {
 					d.logger.Errorf("Got error %s querying node %s in custom interest set %s", err.Error(), p.IP.String(), taskID)
