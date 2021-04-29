@@ -48,6 +48,8 @@ var (
 	memprofile        bool
 	silent            bool
 	logFolder         string
+	bwScore           *int64
+	useBW             *bool
 
 	demmonTreeConf = &membershipProtocol.DemmonTreeConfig{
 		LandmarkRedialTimer: 5 * time.Second,
@@ -236,6 +238,9 @@ func main() {
 	if demmonTreeConf.UseBwScore {
 		demmonTreeConf.BandwidthScore = GetBWScore()
 	}
+	if *useBW {
+		demmonTreeConf.BandwidthScore = int(*bwScore)
+	}
 
 	if randProtosPort {
 		protosPortVar = int(getRandInt(int64(maxProtosPort-minProtosPort))) + minProtosPort
@@ -245,7 +250,7 @@ func main() {
 		analyticsPortVar = int(getRandInt(int64(maxAnalyticsPort-minAnalyticsPort))) + minAnalyticsPort
 	}
 
-	demmonTreeConf.UseBwScore = GetUseBWEnvVar()
+	demmonTreeConf.UseBwScore = GetUseBWEnvVar() || *useBW
 	demmonTreeConf.BandwidthScore = GetBWScore()
 
 	fmt.Println("Self peer: ", babelConf.Peer.String())
@@ -335,6 +340,8 @@ func start(
 }
 
 func ParseFlags() {
+	bwScore = flag.Int64("bandwidth", 0, "bandwidth score")
+	useBW = flag.Bool("useBW", false, "if bandwidths are used")
 	flag.IntVar(&protosPortVar, "protos", int(baseProtoPort), "protos")
 	flag.BoolVar(&silent, "s", false, "s")
 	flag.StringVar(&logFolder, "l", "", "log file")

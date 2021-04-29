@@ -861,7 +861,20 @@ func (d *Demmon) RemoveAlarmWatchlist(alarm *alarmControl) error {
 }
 
 func (d *Demmon) handleCustomInterestSet(taskID string, is body_types.CustomInterestSet, reqID string, c *client) {
-	defer d.logger.Warnf("Custom interest set %s returning", taskID)
+	defer func() {
+		d.logger.Warnf("Custom interest set %s returning", taskID)
+		jobGeneric, ok := d.customInterestSets.Load(taskID)
+		if !ok {
+			d.logger.Errorf("returning from interest set %s due to not existing anymore in map", taskID)
+			return
+		}
+		job := jobGeneric.(*customInterestSetWrapper)
+		job.mux.Lock()
+		defer job.mux.Unlock()
+		for _, cl := range job.clients {
+			cl.Disconnect()
+		}
+	}()
 	ticker := time.NewTicker(is.IS.OutputBucketOpts.Granularity.Granularity)
 	for range ticker.C {
 		d.logger.Infof("Custom interest set %s trigger", taskID)

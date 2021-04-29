@@ -842,7 +842,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 		if _, ok := alreadyKicked[edge.peer2.String()]; ok {
 			continue
 		}
-		if edge.peer1.bandwidth > edge.peer2.bandwidth {
+		if edge.peer1.bandwidth >= edge.peer2.bandwidth {
 			if edge.peer1.nChildren > 0 {
 				d.sendMessage(NewAbsorbMessage(edge.peer1.PeerWithIDChain), edge.peer2)
 				alreadyKicked[edge.peer2.String()] = true
@@ -860,7 +860,9 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 				deleteFromPotentialChildren(edge.peer1.String())
 				potentialChildren[edge.peer1.String()] = []*PeerWithIDChain{}
 			}
-		} else {
+		}
+
+		if edge.peer1.bandwidth <= edge.peer2.bandwidth {
 			if edge.peer2.nChildren > 0 {
 				d.sendMessage(NewAbsorbMessage(edge.peer2.PeerWithIDChain), edge.peer1)
 				alreadyKicked[edge.peer1.String()] = true
@@ -1140,7 +1142,9 @@ func (d *DemmonTree) handleJoinAsChildMessage(sender peer.Peer, m message.Messag
 	var outConnActive, inConnActive bool
 	if isSibling {
 		delete(d.mySiblings, sender.String())
-		d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView(), false))
+		if sibling.outConnActive {
+			d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView(), false))
+		}
 		outConnActive = sibling.outConnActive
 		inConnActive = sibling.inConnActive
 	}
@@ -1432,7 +1436,9 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer, crash bool) {
 		d.logger.Warnf("Parent down %s", p.String())
 		aux := d.myParent
 		d.myParent = nil
-		d.babel.SendNotification(NewNodeDownNotification(aux, d.getInView(), crash))
+		if d.myParent.outConnActive {
+			d.babel.SendNotification(NewNodeDownNotification(aux, d.getInView(), crash))
+		}
 		d.nodeWatcher.Unwatch(p, d.ID())
 		if d.myGrandParent != nil {
 			d.logger.Warnf("Falling back to grandparent %s", d.myGrandParent.String())
