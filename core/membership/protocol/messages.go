@@ -57,7 +57,7 @@ type JoinReplyMessage struct {
 
 func NewJoinReplyMessage(children []*PeerWithIDChain, sender, parent *PeerWithIDChain) JoinReplyMessage {
 	return JoinReplyMessage{
-		Children: children,
+		Children: ClonePeerWithIDChainArr(children),
 		Sender:   sender,
 		Parent:   parent,
 	}
@@ -131,10 +131,10 @@ func NewUpdateParentMessage(
 	siblings []*PeerWithIDChain,
 ) UpdateParentMessage {
 	upMsg := UpdateParentMessage{
-		Parent:      parent,
+		Parent:      parent.Clone(),
 		ProposedID:  proposedID,
-		Siblings:    siblings,
-		GrandParent: gparent,
+		Siblings:    ClonePeerWithIDChainArr(siblings),
+		GrandParent: gparent.Clone(),
 	}
 
 	return upMsg
@@ -218,7 +218,7 @@ func (UpdateChildMessage) Type() message.ID {
 
 func NewUpdateChildMessage(self *PeerWithIDChain, siblingLatencies MeasuredPeersByLat) UpdateChildMessage {
 	return UpdateChildMessage{
-		Child:    self,
+		Child:    self.Clone(),
 		Siblings: siblingLatencies,
 	}
 }
@@ -352,7 +352,7 @@ func NewJoinAsChildMessage(
 		Urgent:          urgent,
 		ExpectedID:      expectedID,
 		MeasuredLatency: measuredLatency,
-		Sender:          sender,
+		Sender:          sender.Clone(),
 	}
 }
 
@@ -444,13 +444,12 @@ func NewJoinAsChildMessageReply(
 	grandparent *PeerWithIDChain,
 ) JoinAsChildMessageReply {
 	jacMsg := JoinAsChildMessageReply{
-		Parent: parent,
-
+		Parent:      parent.Clone(),
 		ProposedID:  proposedID,
 		Accepted:    accepted,
 		ParentLevel: uint16(level),
-		Siblings:    siblings,
-		GrandParent: grandparent,
+		Siblings:    ClonePeerWithIDChainArr(siblings),
+		GrandParent: grandparent.Clone(),
 	}
 
 	return jacMsg
@@ -561,7 +560,7 @@ type AbsorbMessage struct {
 
 func NewAbsorbMessage(peerAbsorber *PeerWithIDChain) AbsorbMessage {
 	return AbsorbMessage{
-		peerAbsorber: peerAbsorber,
+		peerAbsorber: peerAbsorber.Clone(),
 	}
 }
 
@@ -641,8 +640,8 @@ func NewRandomWalkMessage(ttl uint16, sender *PeerWithIDChain, sample []*PeerWit
 	}
 	return RandomWalkMessage{
 		TTL:    ttl,
-		Sample: sample,
-		Sender: sender,
+		Sample: ClonePeerWithIDChainArr(sample),
+		Sender: sender.Clone(),
 	}
 }
 
@@ -701,8 +700,8 @@ const biasedWalkMessageID = 1010
 func NewBiasedWalkMessage(ttl uint16, sender *PeerWithIDChain, sample []*PeerWithIDChain) BiasedWalkMessage {
 	return BiasedWalkMessage{
 		TTL:    ttl,
-		Sample: sample,
-		Sender: sender,
+		Sample: ClonePeerWithIDChainArr(sample),
+		Sender: sender.Clone(),
 	}
 }
 
@@ -760,7 +759,7 @@ const walkReplyMessageID = 1011
 
 func NewWalkReplyMessage(sample []*PeerWithIDChain) WalkReplyMessage {
 	return WalkReplyMessage{
-		Sample: sample,
+		Sample: ClonePeerWithIDChainArr(sample),
 	}
 }
 

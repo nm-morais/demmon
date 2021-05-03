@@ -201,7 +201,6 @@ func (d *DemmonTree) Start() {
 		d.logger.Infof("I am landmark, my ID is: %+v", d.self.Chain())
 		d.myParent = nil
 		d.myChildren = make(map[string]*PeerWithIDChain)
-
 		d.babel.RegisterPeriodicTimer(d.ID(), NewCheckChidrenSizeTimer(d.config.CheckChildenSizeTimerDuration), false)
 		d.babel.RegisterPeriodicTimer(d.ID(), NewParentRefreshTimer(d.config.ParentRefreshTickDuration), false)
 		d.babel.RegisterPeriodicTimer(d.ID(), NewDebugTimer(DebugTimerDuration), false)
@@ -382,7 +381,10 @@ func (d *DemmonTree) handleLandmarkMeasuredNotification(nGeneric notification.No
 		if err != nil {
 			d.logger.Panic("landmark was measured but has no measurement...")
 		}
-		coordsCopy := d.self.Coordinates
+		coordsCopy := make(Coordinates, len(d.self.Coordinates))
+		for idx, c := range d.self.Coordinates {
+			coordsCopy[idx] = c
+		}
 		coordsCopy[idx] = uint64(landmarkStats.LatencyCalc().CurrValue().Milliseconds())
 		d.self = NewPeerWithIDChain(d.self.chain, d.self, d.self.nChildren, d.self.version+1, coordsCopy, d.config.BandwidthScore, d.getAvgChildrenBW())
 		d.logger.Infof("My Coordinates: %+v", d.self.Coordinates)
@@ -1436,7 +1438,7 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer, crash bool) {
 		d.logger.Warnf("Parent down %s", p.String())
 		aux := d.myParent
 		d.myParent = nil
-		if d.myParent.outConnActive {
+		if aux.outConnActive {
 			d.babel.SendNotification(NewNodeDownNotification(aux, d.getInView(), crash))
 		}
 		d.nodeWatcher.Unwatch(p, d.ID())
