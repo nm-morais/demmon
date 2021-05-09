@@ -131,7 +131,6 @@ func (d *DemmonTree) addParent(
 	d.myParent.inConnActive = hasInConnection
 	if hasOutConnection {
 		d.babel.SendNotification(NewNodeUpNotification(d.myParent, d.getInView()))
-
 	} else {
 		d.babel.Dial(d.ID(), newParent, newParent.ToTCPAddr())
 	}
@@ -151,6 +150,7 @@ func (d *DemmonTree) addParent(
 		newChildrenPtr.outConnActive = child.outConnActive
 		d.myChildren[childStr] = newChildrenPtr
 	}
+	d.lastParentChange = time.Now()
 }
 
 func (d *DemmonTree) getNeighborsAsPeerWithIDChainArray() []*PeerWithIDChain {
@@ -260,11 +260,10 @@ func (d *DemmonTree) removeSibling(toRemove peer.Peer, crash bool) {
 		return
 	}
 	delete(d.mySiblings, toRemove.String())
-	d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView(), crash))
-
 	d.nodeWatcher.Unwatch(sibling, d.ID())
 	d.babel.Disconnect(d.ID(), toRemove)
 	d.logger.Infof("Removed sibling: %s", toRemove.String())
+	d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView(), crash))
 }
 
 func (d *DemmonTree) isNeighbour(toTest peer.Peer) bool {
@@ -302,7 +301,6 @@ func (d *DemmonTree) getInView() InView {
 		if !sibling.outConnActive {
 			continue
 		}
-
 		siblingArr = append(siblingArr, sibling)
 	}
 

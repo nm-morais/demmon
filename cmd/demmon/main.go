@@ -67,7 +67,7 @@ var (
 
 		MinLatencyImprovementToImprovePosition: 50 * time.Millisecond,
 
-		PhiLevelForNodeDown: 3,
+		PhiLevelForNodeDown: 5,
 
 		CheckChildenSizeTimerDuration: 10 * time.Second,
 		ParentRefreshTickDuration:     5 * time.Second,

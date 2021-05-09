@@ -222,7 +222,7 @@ func benchmarkGlobalAggFunc(cl *client.DemmonClient, expressionTimeout, exportFr
 											aux = {"count":0, "value":0}
 											for (i = 0; i < args.length; i++) {
 												aux.count += args[i].count
-												aux.value += args[i].value					
+												aux.value += args[i].value
 											}
 											result = aux
 											`},
@@ -230,7 +230,7 @@ func benchmarkGlobalAggFunc(cl *client.DemmonClient, expressionTimeout, exportFr
 											toSubtractFrom = args[0]
 											for (i = 1; i < args.length; i++) {
 												toSubtractFrom.count -= args[i].count
-												toSubtractFrom.value -= args[i].value					
+												toSubtractFrom.value -= args[i].value
 											}
 											result = toSubtractFrom
 											`},

@@ -75,7 +75,7 @@ func (p *PeerWithParentAndChildren) String() string {
 }
 
 type DemmonTree struct {
-
+	lastParentChange time.Time
 	// utils
 	nodeWatcher nodeWatcher.NodeWatcher
 	babel       protocolManager.ProtocolManager
@@ -133,6 +133,8 @@ func New(config *DemmonTreeConfig, babel protocolManager.ProtocolManager, nw nod
 		myChildren:          make(map[string]*PeerWithIDChain),
 		myChildrenLatencies: make(map[string]MeasuredPeersByLat),
 		joinTimeoutTimerIds: make(map[string]int),
+
+		lastParentChange: time.Now(),
 
 		// improvement state
 		eView:                        make(map[string]*PeerWithIDChain),
@@ -290,6 +292,9 @@ func (d *DemmonTree) handleUnderpopulatedTimer(joinTimer timer.Timer) {
 		return
 	}
 
+	if time.Since(d.lastParentChange) < 5*time.Second {
+		return
+	}
 	d.logger.Info("climbing...")
 	d.myPendingParentInClimb = d.myGrandParent
 	d.sendJoinAsChildMsg(d.myGrandParent, 0, false, false)
@@ -435,6 +440,10 @@ func (d *DemmonTree) handleUpdateChildTimer(t timer.Timer) {
 	// d.logger.Info("UpdateChildTimer trigger")
 	if d.myParent != nil {
 		d.sendUpdateChildMessage(d.myParent)
+	} else {
+		if !d.landmark {
+			d.logger.Error("Could not send update message to parent because it is nil")
+		}
 	}
 }
 
@@ -825,15 +834,15 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 
 	deleteFromPotentialChildren := func(toCompare string) {
 		for k, potentialChildrenArr := range potentialChildren {
-			i := 0
-			for _, c := range potentialChildrenArr {
+			tmp := 0
+			for i, c := range potentialChildrenArr {
 				if c.String() == toCompare {
 					continue
 				}
 				potentialChildrenArr[i] = c
-				i += 1
+				tmp = i
 			}
-			potentialChildren[k] = potentialChildrenArr[:i]
+			potentialChildren[k] = potentialChildrenArr[:tmp]
 		}
 	}
 
@@ -842,6 +851,12 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 			continue
 		}
 		if _, ok := alreadyKicked[edge.peer2.String()]; ok {
+			continue
+		}
+		if _, ok := alreadyParent[edge.peer1.String()]; ok {
+			continue
+		}
+		if _, ok := alreadyParent[edge.peer2.String()]; ok {
 			continue
 		}
 		if edge.peer1.bandwidth >= edge.peer2.bandwidth {
@@ -974,7 +989,7 @@ func (d *DemmonTree) handleAbsorbMessage(sender peer.Peer, m message.Message) {
 	}
 
 	if d.isChangingParent() {
-		d.logger.Warn("Got absorbMessage but returning due to already having pending")
+		d.logger.Warn("Got absorbMessage but returning due to already having pending parent")
 		return
 	}
 
@@ -991,7 +1006,7 @@ func (d *DemmonTree) handleAbsorbMessage(sender peer.Peer, m message.Message) {
 		d.myPendingParentInAbsorb.inConnActive = sibling.inConnActive
 		d.myPendingParentInAbsorb.outConnActive = sibling.outConnActive
 		toSend := NewJoinAsChildMessage(d.config.BandwidthScore, d.self, peerLat, newParent.Chain(), false, false)
-		d.sendMessage(toSend, newParent)
+		d.sendMessage(toSend, d.myPendingParentInAbsorb)
 	} else {
 		d.myPendingParentInAbsorb = newParent
 		toSend := NewJoinAsChildMessage(d.config.BandwidthScore, d.self, 0, newParent.Chain(), false, false)
@@ -1089,6 +1104,13 @@ func (d *DemmonTree) canBecomeParentOf(other *PeerWithIDChain, expectedChain Pee
 			other.StringWithFields(),
 			other.Chain(),
 		)
+		return false
+	}
+
+	if peer.PeersEqual(other, d.myPendingParentInAbsorb) ||
+		peer.PeersEqual(other, d.myPendingParentInClimb) ||
+		peer.PeersEqual(other, d.myPendingParentInImprovement) ||
+		peer.PeersEqual(other, d.myPendingParentInRecovery) {
 		return false
 	}
 
@@ -1213,6 +1235,7 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 		!peer.PeersEqual(sender, d.myPendingParentInAbsorb) &&
 		!peer.PeersEqual(sender, d.myPendingParentInClimb) &&
 		!peer.PeersEqual(sender, d.myPendingParentInRecovery) &&
+		!peer.PeersEqual(sender, d.myPendingParentInImprovement) &&
 		!(d.myPendingParentInJoin != nil && peer.PeersEqual(sender, d.myPendingParentInJoin.peer)) {
 		d.logger.Errorf(
 			"Received UpdateParentMessage from not my parent (parent:%s sender:%s)",
@@ -1227,12 +1250,8 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 		return
 	}
 
-	if d.myPendingParentInAbsorb != nil {
-		d.logger.Infof(
-			"Discarding UpdateParentMessage because d.myPendingParentInAbsorb != nil (myPendingParentInAbsorb:%s sender:%s)",
-			getStringOrNil(d.myPendingParentInAbsorb),
-			upMsg.Parent.StringWithFields(),
-		)
+	if d.isChangingParent() {
+		d.logger.Info("Discarding UpdateParentMessage because parent is changing")
 		return
 	}
 
@@ -1379,6 +1398,9 @@ func (d *DemmonTree) DialSuccess(sourceProto protocol.ID, p peer.Peer) bool {
 	sibling, isSibling := d.mySiblings[p.String()]
 	if isSibling {
 		sibling.outConnActive = true
+		if peer.PeersEqual(sibling, d.myPendingParentInAbsorb) {
+			d.myPendingParentInAbsorb.outConnActive = true
+		}
 		d.logger.Infof("Dialed sibling with success: %s", sibling.StringWithFields())
 		d.babel.SendNotification(NewNodeUpNotification(sibling, d.getInView()))
 		d.installNotifyOnCondition(sibling)
