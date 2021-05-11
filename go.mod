@@ -15,7 +15,6 @@ require (
 	github.com/reugn/go-quartz v0.3.4
 	github.com/robertkrimen/otto v0.0.0-20200922221731-ef014fd054ac
 	github.com/sirupsen/logrus v1.8.1
-	golang.org/x/sys v0.0.0-20210503080704-8803ae5d1324 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 )
 

@@ -74,8 +74,8 @@ var (
 		ChildrenRefreshTickDuration:   5 * time.Second,
 		RejoinTimerDuration:           10 * time.Second,
 
-		AttemptImprovePositionProbability:    0.5,
-		EvalMeasuredPeersRefreshTickDuration: 7 * time.Second,
+		AttemptImprovePositionProbability: 0.5,
+		// EvalMeasuredPeersRefreshTickDuration: 7 * time.Second,
 
 		EmitWalkProbability:                0.33,
 		BiasedWalkProbability:              0.2,
