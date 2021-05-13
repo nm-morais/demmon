@@ -842,6 +842,62 @@ func (BroadcastMessageSerializer) Deserialize(msgBytes []byte) message.Message {
 	return BroadcastMessage{Message: broadcastMsg}
 }
 
+const disconnectAsParentMessageID = 1013
+
+type DisconnectAsParentMessage struct {
+}
+
+func NewDisconnectAsParentMessage() DisconnectAsParentMessage {
+	return DisconnectAsParentMessage{}
+}
+
+func (DisconnectAsParentMessage) Type() message.ID {
+	return disconnectAsParentMessageID
+}
+
+func (DisconnectAsParentMessage) Serializer() message.Serializer {
+	return disconnectAsParentMsgSerializer
+}
+
+func (DisconnectAsParentMessage) Deserializer() message.Deserializer {
+	return disconnectAsParentMsgSerializer
+}
+
+var disconnectAsParentMsgSerializer = DisconnectAsParentMsgSerializer{}
+
+type DisconnectAsParentMsgSerializer struct{}
+
+func (DisconnectAsParentMsgSerializer) Serialize(_ message.Message) []byte {
+	return []byte{}
+}
+
+func (DisconnectAsParentMsgSerializer) Deserialize(_ []byte) message.Message {
+	return DisconnectAsParentMessage{}
+}
+
+const NeighbourMaintenanceMessageType = 1014
+
+type NeighbourMaintenanceMessage struct {
+}
+type neighbourMaintenanceMessageSerializer struct{}
+
+var defaultNeighbourMaintenanceMessageSerializer = neighbourMaintenanceMessageSerializer{}
+
+func (NeighbourMaintenanceMessage) Type() message.ID { return NeighbourMaintenanceMessageType }
+func (NeighbourMaintenanceMessage) Serializer() message.Serializer {
+	return defaultNeighbourMaintenanceMessageSerializer
+}
+func (NeighbourMaintenanceMessage) Deserializer() message.Deserializer {
+	return defaultNeighbourMaintenanceMessageSerializer
+}
+func (neighbourMaintenanceMessageSerializer) Serialize(msg message.Message) []byte {
+	return []byte{}
+}
+
+func (neighbourMaintenanceMessageSerializer) Deserialize(msgBytes []byte) message.Message {
+	return NeighbourMaintenanceMessage{}
+}
+
 /*
 
 const switchMessageID = 1012

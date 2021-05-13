@@ -99,9 +99,10 @@ type DemmonTree struct {
 	myPendingParentInClimb       *PeerWithIDChain
 	myPendingParentInImprovement *MeasuredPeer
 
-	myChildren          map[string]*PeerWithIDChain
-	mySiblings          map[string]*PeerWithIDChain
-	myChildrenLatencies map[string]MeasuredPeersByLat
+	danglingNeighCounters map[string]int
+	myChildren            map[string]*PeerWithIDChain
+	mySiblings            map[string]*PeerWithIDChain
+	myChildrenLatencies   map[string]MeasuredPeersByLat
 
 	measuringPeers map[string]bool
 	// measuredPeers  map[string]*MeasuredPeer
@@ -126,13 +127,14 @@ func New(config *DemmonTreeConfig, babel protocolManager.ProtocolManager, nw nod
 		// join state
 		joinMap: make(map[string]*PeerWithParentAndChildren),
 		// node state
-		self:                nil,
-		myGrandParent:       nil,
-		myParent:            nil,
-		mySiblings:          make(map[string]*PeerWithIDChain),
-		myChildren:          make(map[string]*PeerWithIDChain),
-		myChildrenLatencies: make(map[string]MeasuredPeersByLat),
-		joinTimeoutTimerIds: make(map[string]int),
+		self:                  nil,
+		myGrandParent:         nil,
+		myParent:              nil,
+		mySiblings:            make(map[string]*PeerWithIDChain),
+		myChildren:            make(map[string]*PeerWithIDChain),
+		myChildrenLatencies:   make(map[string]MeasuredPeersByLat),
+		joinTimeoutTimerIds:   make(map[string]int),
+		danglingNeighCounters: make(map[string]int),
 
 		lastParentChange: time.Now(),
 
@@ -204,6 +206,7 @@ func (d *DemmonTree) Start() {
 		d.myChildren = make(map[string]*PeerWithIDChain)
 		d.babel.RegisterPeriodicTimer(d.ID(), NewCheckChidrenSizeTimer(d.config.CheckChildenSizeTimerDuration), false)
 		d.babel.RegisterPeriodicTimer(d.ID(), NewParentRefreshTimer(d.config.ParentRefreshTickDuration), false)
+		d.babel.RegisterPeriodicTimer(d.ID(), MaintenanceTimer{1 * time.Second}, false)
 		d.babel.RegisterPeriodicTimer(d.ID(), NewDebugTimer(DebugTimerDuration), false)
 		d.babel.RegisterPeriodicTimer(d.ID(), NewUpdateChildTimer(d.config.ChildrenRefreshTickDuration), false)
 		return
@@ -253,7 +256,8 @@ func (d *DemmonTree) Init() {
 	d.babel.RegisterTimerHandler(d.ID(), peerJoinMessageResponseTimeoutID, d.handleJoinMessageResponseTimeout)
 	d.babel.RegisterTimerHandler(d.ID(), underpopulationTimerID, d.handleUnderpopulatedTimer)
 
-	// other
+	d.babel.RegisterMessageHandler(d.ID(), DisconnectAsParentMessage{}, d.handleDisconnectAsParentMsg)
+	d.babel.RegisterTimerHandler(d.ID(), MaintenanceTimerID, d.HandleMaintenanceTimer)
 	d.babel.RegisterTimerHandler(d.ID(), debugTimerID, d.handleDebugTimer)
 	d.babel.RegisterMessageHandler(d.ID(), BroadcastMessage{}, d.handleBroadcastMessage)
 }
@@ -371,6 +375,15 @@ func (d *DemmonTree) getAvgChildrenBW() int {
 	}
 	return tmp / len(d.myChildren)
 
+}
+
+func (d *DemmonTree) HandleMaintenanceTimer(t timer.Timer) {
+	if d.myParent != nil {
+		if !d.myParent.outConnActive {
+			d.babel.Dial(d.ID(), d.myParent, d.myParent.ToTCPAddr())
+		}
+		d.sendMessage(NeighbourMaintenanceMessage{}, d.myParent)
+	}
 }
 
 func (d *DemmonTree) handleLandmarkMeasuredNotification(nGeneric notification.Notification) {
@@ -1015,6 +1028,12 @@ func (d *DemmonTree) handleDisconnectAsChildMsg(sender peer.Peer, m message.Mess
 	}
 }
 
+func (d *DemmonTree) handleDisconnectAsParentMsg(sender peer.Peer, m message.Message) {
+	dacMsg := m.(DisconnectAsParentMessage)
+	d.logger.Infof("got DisconnectAsParentMsg %+v from %s", dacMsg, sender.String())
+	d.handlePeerDown(sender, false)
+}
+
 func (d *DemmonTree) handleJoinMessage(sender peer.Peer, msg message.Message) {
 	toSend := NewJoinReplyMessage(getMapAsPeerWithIDChainArray(d.myChildren), d.self, d.myParent)
 	d.sendMessageTmpTCPChan(toSend, sender)
@@ -1277,11 +1296,34 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 	d.mergeSiblingsWith(upMsg.Siblings, d.myParent)
 }
 
+// _, ok := d.danglingNeighCounters[sender.String()]
+// 	if !ok {
+// 		d.danglingNeighCounters[sender.String()] = 0
+// 	}
+// 	d.danglingNeighCounters[sender.String()]++
+// 	if d.danglingNeighCounters[sender.String()] > 3 {
+// 		d.babel.SendMessage(DisconnectAsParentMessage{})
+// 	}
+
+func (d *DemmonTree) HandleNeighbourMaintenanceMessage(sender peer.Peer, msg message.Message) {
+	if _, ok := d.myChildren[sender.String()]; ok {
+		delete(d.danglingNeighCounters, sender.String())
+		return
+	}
+	_, ok := d.danglingNeighCounters[sender.String()]
+	if !ok {
+		d.danglingNeighCounters[sender.String()] = 0
+	}
+	d.danglingNeighCounters[sender.String()]++
+	if d.danglingNeighCounters[sender.String()] > 3 {
+		d.babel.SendMessageSideStream(DisconnectAsParentMessage{}, sender, sender.ToTCPAddr(), d.ID(), d.ID())
+	}
+}
+
 func (d *DemmonTree) handleUpdateChildMessage(sender peer.Peer, m message.Message) {
 	upMsg := m.(UpdateChildMessage)
 	// d.logger.Infof("got updateChildMessage %+v from %s", m, sender.String())
 	child, ok := d.myChildren[sender.String()]
-
 	if !ok {
 		d.logger.Errorf(
 			"got updateChildMessage %+v from not my children, or my pending children: %s",
@@ -1290,6 +1332,7 @@ func (d *DemmonTree) handleUpdateChildMessage(sender peer.Peer, m message.Messag
 		)
 		return
 	}
+
 	if upMsg.Child.IsHigherVersionThan(child) {
 		tmp := upMsg.Child
 		tmp.inConnActive = child.inConnActive
