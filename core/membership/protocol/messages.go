@@ -91,7 +91,6 @@ func (JoinReplyMsgSerializer) Serialize(msg message.Message) []byte {
 	} else {
 		msgBytes = append(msgBytes, 0)
 	}
-
 	return append(msgBytes, SerializePeerWithIDChainArray(jrMsg.Children)...)
 }
 
@@ -254,76 +253,6 @@ func (updateChildMessageSerializer) Deserialize(msgBytes []byte) message.Message
 }
 
 var updateChildMsgSerializer = updateChildMessageSerializer{}
-
-// -------------- JoinAsParent --------------
-
-const joinAsParentMessageID = 2004
-
-type JoinAsParentMessage struct {
-	ExpectedID PeerIDChain
-	ProposedID PeerIDChain
-	Siblings   []*PeerWithIDChain
-	Level      uint16
-}
-
-func NewJoinAsParentMessage(
-	expectedID, proposedID PeerIDChain,
-	level uint16,
-	siblings []*PeerWithIDChain,
-) JoinAsParentMessage {
-	return JoinAsParentMessage{
-		ExpectedID: expectedID,
-		Level:      level,
-		ProposedID: proposedID,
-		Siblings:   siblings,
-	}
-}
-
-func (JoinAsParentMessage) Type() message.ID {
-	return joinAsParentMessageID
-}
-
-func (JoinAsParentMessage) Serializer() message.Serializer {
-	return joinAsParentMsgSerializer
-}
-
-func (JoinAsParentMessage) Deserializer() message.Deserializer {
-	return joinAsParentMsgSerializer
-}
-
-type JoinAsParentMsgSerializer struct{}
-
-var joinAsParentMsgSerializer = JoinAsParentMsgSerializer{}
-
-func (JoinAsParentMsgSerializer) Serialize(msg message.Message) []byte {
-	japMsg := msg.(JoinAsParentMessage)
-	toSend := make([]byte, 2)
-	binary.BigEndian.PutUint16(toSend[:2], japMsg.Level)
-	toSend = append(toSend, SerializePeerIDChain(japMsg.ExpectedID)...)
-	idBytes := SerializePeerIDChain(japMsg.ProposedID)
-	toSend = append(toSend, idBytes...)
-	toSend = append(toSend, SerializePeerWithIDChainArray(japMsg.Siblings)...)
-
-	return toSend
-}
-
-func (JoinAsParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
-	bufPos := 0
-	level := binary.BigEndian.Uint16(msgBytes[0:2])
-	bufPos += 2
-	idSize, expectedID := DeserializePeerIDChain(msgBytes[bufPos:])
-	bufPos += idSize
-	n, proposedID := DeserializePeerIDChain(msgBytes[bufPos:])
-	bufPos += n
-	_, siblings := DeserializePeerWithIDChainArray(msgBytes[bufPos:])
-
-	return JoinAsParentMessage{
-		Level:      level,
-		ExpectedID: expectedID,
-		ProposedID: proposedID,
-		Siblings:   siblings,
-	}
-}
 
 // -------------- Join As Child --------------
 

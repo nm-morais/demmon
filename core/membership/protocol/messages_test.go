@@ -11,32 +11,6 @@ import (
 	"github.com/nm-morais/go-babel/pkg/peer"
 )
 
-func TestJoinAsParentMsgSerializer(t *testing.T) {
-	chain := PeerIDChain{}
-	chain = append(chain, PeerID{0, 0, 0, 1, 1, 0, 0, 1}, PeerID{1, 1, 0, 1, 1, 0, 0, 1})
-	toSerialize := NewJoinAsParentMessage(PeerIDChain{PeerID{0, 0, 0, 1, 1, 0, 0, 1}}, chain, 10, nil)
-	serializer := toSerialize.Serializer()
-	deserializer := toSerialize.Deserializer()
-	msgBytes := serializer.Serialize(toSerialize)
-	deserialized := deserializer.Deserialize(msgBytes)
-	msgConverted := deserialized.(JoinAsParentMessage)
-	fmt.Println(msgConverted)
-
-	if msgConverted.Level != toSerialize.Level {
-		t.Log("levels do not match")
-		t.FailNow()
-
-		return
-	}
-
-	if !chain.Equal(msgConverted.ProposedID) {
-		t.Log("chains not match")
-		t.FailNow()
-
-		return
-	}
-}
-
 func TestJoinAsChildMsgReplySerializer(t *testing.T) {
 	chain := PeerIDChain{}
 	proposedID := PeerID{0, 0, 0, 1, 1, 0, 0, 1}

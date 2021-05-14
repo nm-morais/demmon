@@ -206,7 +206,6 @@ func (d *DemmonTree) Start() {
 		d.myChildren = make(map[string]*PeerWithIDChain)
 		d.babel.RegisterPeriodicTimer(d.ID(), NewCheckChidrenSizeTimer(d.config.CheckChildenSizeTimerDuration), false)
 		d.babel.RegisterPeriodicTimer(d.ID(), NewParentRefreshTimer(d.config.ParentRefreshTickDuration), false)
-		d.babel.RegisterPeriodicTimer(d.ID(), MaintenanceTimer{1 * time.Second}, false)
 		d.babel.RegisterPeriodicTimer(d.ID(), NewDebugTimer(DebugTimerDuration), false)
 		d.babel.RegisterPeriodicTimer(d.ID(), NewUpdateChildTimer(d.config.ChildrenRefreshTickDuration), false)
 		return
@@ -220,6 +219,7 @@ func (d *DemmonTree) Start() {
 	// d.babel.RegisterPeriodicTimer(d.ID(), NewEvalMeasuredPeersTimer(d.config.EvalMeasuredPeersRefreshTickDuration), false)
 	d.babel.RegisterPeriodicTimer(d.ID(), NewCheckChidrenSizeTimer(d.config.CheckChildenSizeTimerDuration), false)
 	d.babel.RegisterPeriodicTimer(d.ID(), NewDebugTimer(DebugTimerDuration), false)
+	d.babel.RegisterPeriodicTimer(d.ID(), MaintenanceTimer{1 * time.Second}, false)
 	d.joinOverlay()
 }
 
@@ -257,6 +257,8 @@ func (d *DemmonTree) Init() {
 	d.babel.RegisterTimerHandler(d.ID(), underpopulationTimerID, d.handleUnderpopulatedTimer)
 
 	d.babel.RegisterMessageHandler(d.ID(), DisconnectAsParentMessage{}, d.handleDisconnectAsParentMsg)
+	d.babel.RegisterMessageHandler(d.ID(), NeighbourMaintenanceMessage{}, d.HandleNeighbourMaintenanceMessage)
+
 	d.babel.RegisterTimerHandler(d.ID(), MaintenanceTimerID, d.HandleMaintenanceTimer)
 	d.babel.RegisterTimerHandler(d.ID(), debugTimerID, d.handleDebugTimer)
 	d.babel.RegisterMessageHandler(d.ID(), BroadcastMessage{}, d.handleBroadcastMessage)
@@ -1315,8 +1317,8 @@ func (d *DemmonTree) HandleNeighbourMaintenanceMessage(sender peer.Peer, msg mes
 		d.danglingNeighCounters[sender.String()] = 0
 	}
 	d.danglingNeighCounters[sender.String()]++
-	if d.danglingNeighCounters[sender.String()] > 3 {
-		d.babel.SendMessageSideStream(DisconnectAsParentMessage{}, sender, sender.ToTCPAddr(), d.ID(), d.ID())
+	if d.danglingNeighCounters[sender.String()] >= 3 {
+		d.sendMessageTmpTCPChan(DisconnectAsParentMessage{}, sender)
 	}
 }
 
