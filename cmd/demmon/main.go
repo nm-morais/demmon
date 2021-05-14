@@ -17,6 +17,7 @@ import (
 	"github.com/nm-morais/demmon/core/monitoring/tsdb"
 	"github.com/nm-morais/go-babel/pkg"
 	"github.com/nm-morais/go-babel/pkg/peer"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -327,6 +328,7 @@ func start(
 	// timeStart := time.Now()
 	for range ticker.C {
 		// memProfile(logFolder, fmt.Sprintf("memProfile-%d_min", int(time.Since(timeStart).Minutes())))
+		logrus.Printf("Number of goroutines: %d", runtime.NumGoroutine())
 		runtime.Gosched()
 	}
 
