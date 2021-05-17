@@ -102,9 +102,9 @@ func (d *DemmonTree) addParent(
 		d.sendMessageAndDisconnect(toSend, oldParent)
 		d.nodeWatcher.Unwatch(oldParent, d.ID())
 	}
-	if !myNewChain.Equal(d.self.chain) {
-		d.babel.SendNotification(NewIDChangeNotification(myNewChain))
-	}
+	// if !myNewChain.Equal(d.self.chain) {
+	// 	d.babel.SendNotification(NewIDChangeNotification(myNewChain))
+	// }
 
 	d.myGrandParent = newGrandParent
 	d.myParent = newParent
