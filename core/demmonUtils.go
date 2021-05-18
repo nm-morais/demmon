@@ -101,9 +101,9 @@ func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) 
 	var out io.Writer = file
 	if !silent {
 		out = io.MultiWriter(os.Stdout, file)
-
 		fmt.Println("Setting metrics_frontend non-silently")
 	}
+	logger.SetLevel(logrus.ErrorLevel)
 	logger.SetOutput(out)
 }
 

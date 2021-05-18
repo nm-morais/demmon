@@ -930,6 +930,7 @@ func setupLogger(logger *logrus.Logger, logFolder, logFile string, silent bool) 
 	if !silent {
 		out = io.MultiWriter(os.Stdout, file)
 	}
+	logger.SetLevel(logrus.ErrorLevel)
 	logger.SetOutput(out)
 }
 
