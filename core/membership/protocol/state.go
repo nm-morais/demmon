@@ -187,6 +187,7 @@ func (d *DemmonTree) addChild(newChild *PeerWithIDChain, bwScore int, childrenLa
 	newChildWithID.inConnActive = inConnActive
 	newChildWithID.outConnActive = outConnActive
 
+	d.logger.Infof("added children: %s", newChildWithID.String())
 	if !outConnActive {
 		if childrenLatency != 0 {
 			d.nodeWatcher.WatchWithInitialLatencyValue(newChild, d.ID(), childrenLatency)
@@ -197,11 +198,11 @@ func (d *DemmonTree) addChild(newChild *PeerWithIDChain, bwScore int, childrenLa
 	} else {
 		d.myChildren[newChild.String()] = newChildWithID
 		d.babel.SendNotification(NewNodeUpNotification(newChild, d.getInView()))
+		return proposedID
 	}
 
 	d.myChildren[newChild.String()] = newChildWithID
 	d.updateSelfVersion()
-	d.logger.Infof("added children: %s", newChildWithID.String())
 	d.removeFromEView(newChild)
 	return proposedID
 }

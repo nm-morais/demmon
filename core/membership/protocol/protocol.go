@@ -381,10 +381,11 @@ func (d *DemmonTree) getAvgChildrenBW() int {
 
 func (d *DemmonTree) HandleMaintenanceTimer(t timer.Timer) {
 	if d.myParent != nil {
-		if !d.myParent.outConnActive {
+		if d.myParent.outConnActive {
+			d.sendMessage(NeighbourMaintenanceMessage{}, d.myParent)
+		} else {
 			d.babel.Dial(d.ID(), d.myParent, d.myParent.ToTCPAddr())
 		}
-		d.sendMessage(NeighbourMaintenanceMessage{}, d.myParent)
 	}
 }
 
@@ -1121,7 +1122,8 @@ func (d *DemmonTree) canBecomeParentOf(other *PeerWithIDChain, expectedChain Pee
 		return false
 	}
 
-	if peer.PeersEqual(other, d.myPendingParentInAbsorb) ||
+	if peer.PeersEqual(other, d.myParent) ||
+		peer.PeersEqual(other, d.myPendingParentInAbsorb) ||
 		peer.PeersEqual(other, d.myPendingParentInClimb) ||
 		peer.PeersEqual(other, d.myPendingParentInImprovement) ||
 		peer.PeersEqual(other, d.myPendingParentInRecovery) {
@@ -1308,7 +1310,10 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 // 	}
 
 func (d *DemmonTree) HandleNeighbourMaintenanceMessage(sender peer.Peer, msg message.Message) {
-	if _, ok := d.myChildren[sender.String()]; ok {
+	if c, ok := d.myChildren[sender.String()]; ok {
+		if !c.outConnActive {
+			d.babel.Dial(d.ID(), sender, sender.ToTCPAddr())
+		}
 		delete(d.danglingNeighCounters, sender.String())
 		return
 	}
