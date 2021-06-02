@@ -271,3 +271,17 @@ func (t *debugTimer) ID() timer.ID {
 func (t *debugTimer) Duration() time.Duration {
 	return t.duration
 }
+
+const MaintenanceTimerID = 2012
+
+type MaintenanceTimer struct {
+	duration time.Duration
+}
+
+func (MaintenanceTimer) ID() timer.ID {
+	return MaintenanceTimerID
+}
+
+func (s MaintenanceTimer) Duration() time.Duration {
+	return s.duration
+}

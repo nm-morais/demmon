@@ -861,7 +861,20 @@ func (d *Demmon) RemoveAlarmWatchlist(alarm *alarmControl) error {
 }
 
 func (d *Demmon) handleCustomInterestSet(taskID string, is body_types.CustomInterestSet, reqID string, c *client) {
-	defer d.logger.Warnf("Custom interest set %s returning", taskID)
+	defer func() {
+		d.logger.Warnf("Custom interest set %s returning", taskID)
+		jobGeneric, ok := d.customInterestSets.Load(taskID)
+		if !ok {
+			d.logger.Errorf("returning from interest set %s due to not existing anymore in map", taskID)
+			return
+		}
+		job := jobGeneric.(*customInterestSetWrapper)
+		job.mux.Lock()
+		defer job.mux.Unlock()
+		for _, cl := range job.clients {
+			cl.Disconnect()
+		}
+	}()
 	ticker := time.NewTicker(is.IS.OutputBucketOpts.Granularity.Granularity)
 	for range ticker.C {
 		d.logger.Infof("Custom interest set %s trigger", taskID)
@@ -871,7 +884,9 @@ func (d *Demmon) handleCustomInterestSet(taskID string, is body_types.CustomInte
 			return
 		}
 		job := jobGeneric.(*customInterestSetWrapper)
+		job.mux.Lock()
 		if job.err != nil {
+			job.mux.Unlock()
 			d.logger.Errorf("returning from interest set %s due to error %s", taskID, job.err.Error())
 			d.sendResponse(body_types.NewResponse(reqID, true, nil, 500, routes.InstallCustomInterestSet, body_types.CustomInterestSetErr{Err: job.err.Error()}), c)
 			return
@@ -879,7 +894,6 @@ func (d *Demmon) handleCustomInterestSet(taskID string, is body_types.CustomInte
 		query := job.is.IS.Query
 		wg := &sync.WaitGroup{}
 		customJobWrapper := jobGeneric.(*customInterestSetWrapper)
-		job.mux.Lock()
 		for _, p := range customJobWrapper.is.Hosts {
 			_, ok := job.clients[p.IP.String()]
 			if ok {
@@ -904,8 +918,8 @@ func (d *Demmon) handleCustomInterestSet(taskID string, is body_types.CustomInte
 					job.mux.Lock()
 					nrRetries, ok := job.nrRetries[p.IP.String()]
 					if !ok {
-						job.nrRetries[p.IP.String()] = 0
-						nrRetries = 0
+						job.nrRetries[p.IP.String()] = 1
+						nrRetries = 1
 					}
 					job.mux.Unlock()
 					if nrRetries == customJobWrapper.is.IS.MaxRetries {
@@ -918,6 +932,7 @@ func (d *Demmon) handleCustomInterestSet(taskID string, is body_types.CustomInte
 					job.mux.Lock()
 					job.nrRetries[p.IP.String()]++
 					job.mux.Unlock()
+					return
 				}
 				d.logger.Infof("Connected to custom interest set %s target: %s successfully", taskID, p.IP.String())
 				job.mux.Lock()

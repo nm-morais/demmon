@@ -16,7 +16,7 @@ const IDSegmentLen = 8
 
 type PeerVersion uint64
 
-type Coordinates []uint64
+type Coordinates = []uint64
 
 func EuclideanDist(coords1, coords2 Coordinates) (float64, error) {
 	if len(coords1) != len(coords2) {
@@ -45,7 +45,7 @@ func DeserializeCoordsFromBinary(byteArr []byte) (int, Coordinates) {
 	return bufPos, coords
 }
 
-func (coords Coordinates) SerializeToBinary() []byte {
+func SerializeCoordsToBinary(coords Coordinates) []byte {
 	toReturn := make([]byte, 2)
 	binary.BigEndian.PutUint16(toReturn, uint16(len(coords)))
 	for _, coord := range coords {
@@ -66,6 +66,13 @@ type PeerIDChain []PeerID
 
 func (c PeerIDChain) Level() int {
 	return len(c) - 1
+}
+func (c PeerIDChain) Clone() PeerIDChain {
+	tmp := make(PeerIDChain, len(c))
+	for i, s := range c {
+		tmp[i] = s
+	}
+	return tmp
 }
 
 // IsDescendant returns true if chain <c> is contained in chain <otherPeerChain>.
@@ -151,6 +158,14 @@ func NewPeerWithIDChain(
 	}
 }
 
+func ClonePeerWithIDChainArr(pArr []*PeerWithIDChain) []*PeerWithIDChain {
+	tmp := []*PeerWithIDChain{}
+	for _, p := range pArr {
+		tmp = append(tmp, p.Clone())
+	}
+	return tmp
+}
+
 func (p *PeerWithIDChain) Chain() PeerIDChain {
 	return p.chain
 }
@@ -162,6 +177,13 @@ func (p *PeerWithIDChain) StringWithFields() string {
 	}
 	coordinatesStr = coordinatesStr[:len(coordinatesStr)-1] + ")"
 	return fmt.Sprintf("%s:%s:%s:v_%d:c(%d),c_bw(%d)", p.String(), coordinatesStr, p.chain.String(), p.version, p.nChildren, p.avgChildrenBW)
+}
+
+func (p *PeerWithIDChain) Clone() *PeerWithIDChain {
+	if p == nil {
+		return nil
+	}
+	return NewPeerWithIDChain(p.chain.Clone(), p.Peer, p.nChildren, p.version, p.Coordinates, p.bandwidth, p.avgChildrenBW)
 }
 
 func (p *PeerWithIDChain) NrChildren() uint16 {
@@ -192,7 +214,7 @@ func (p *PeerWithIDChain) MarshalWithFields() []byte {
 	chainBytes := SerializePeerIDChain(p.chain)
 	resultingBytes = append(resultingBytes, chainBytes...)
 
-	coordBytes := p.Coordinates.SerializeToBinary()
+	coordBytes := SerializeCoordsToBinary(p.Coordinates)
 	resultingBytes = append(resultingBytes, coordBytes...)
 
 	versionBytes := make([]byte, 8)

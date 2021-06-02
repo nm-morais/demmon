@@ -57,7 +57,7 @@ type JoinReplyMessage struct {
 
 func NewJoinReplyMessage(children []*PeerWithIDChain, sender, parent *PeerWithIDChain) JoinReplyMessage {
 	return JoinReplyMessage{
-		Children: children,
+		Children: ClonePeerWithIDChainArr(children),
 		Sender:   sender,
 		Parent:   parent,
 	}
@@ -91,7 +91,6 @@ func (JoinReplyMsgSerializer) Serialize(msg message.Message) []byte {
 	} else {
 		msgBytes = append(msgBytes, 0)
 	}
-
 	return append(msgBytes, SerializePeerWithIDChainArray(jrMsg.Children)...)
 }
 
@@ -131,10 +130,10 @@ func NewUpdateParentMessage(
 	siblings []*PeerWithIDChain,
 ) UpdateParentMessage {
 	upMsg := UpdateParentMessage{
-		Parent:      parent,
+		Parent:      parent.Clone(),
 		ProposedID:  proposedID,
-		Siblings:    siblings,
-		GrandParent: gparent,
+		Siblings:    ClonePeerWithIDChainArr(siblings),
+		GrandParent: gparent.Clone(),
 	}
 
 	return upMsg
@@ -218,7 +217,7 @@ func (UpdateChildMessage) Type() message.ID {
 
 func NewUpdateChildMessage(self *PeerWithIDChain, siblingLatencies MeasuredPeersByLat) UpdateChildMessage {
 	return UpdateChildMessage{
-		Child:    self,
+		Child:    self.Clone(),
 		Siblings: siblingLatencies,
 	}
 }
@@ -255,76 +254,6 @@ func (updateChildMessageSerializer) Deserialize(msgBytes []byte) message.Message
 
 var updateChildMsgSerializer = updateChildMessageSerializer{}
 
-// -------------- JoinAsParent --------------
-
-const joinAsParentMessageID = 2004
-
-type JoinAsParentMessage struct {
-	ExpectedID PeerIDChain
-	ProposedID PeerIDChain
-	Siblings   []*PeerWithIDChain
-	Level      uint16
-}
-
-func NewJoinAsParentMessage(
-	expectedID, proposedID PeerIDChain,
-	level uint16,
-	siblings []*PeerWithIDChain,
-) JoinAsParentMessage {
-	return JoinAsParentMessage{
-		ExpectedID: expectedID,
-		Level:      level,
-		ProposedID: proposedID,
-		Siblings:   siblings,
-	}
-}
-
-func (JoinAsParentMessage) Type() message.ID {
-	return joinAsParentMessageID
-}
-
-func (JoinAsParentMessage) Serializer() message.Serializer {
-	return joinAsParentMsgSerializer
-}
-
-func (JoinAsParentMessage) Deserializer() message.Deserializer {
-	return joinAsParentMsgSerializer
-}
-
-type JoinAsParentMsgSerializer struct{}
-
-var joinAsParentMsgSerializer = JoinAsParentMsgSerializer{}
-
-func (JoinAsParentMsgSerializer) Serialize(msg message.Message) []byte {
-	japMsg := msg.(JoinAsParentMessage)
-	toSend := make([]byte, 2)
-	binary.BigEndian.PutUint16(toSend[:2], japMsg.Level)
-	toSend = append(toSend, SerializePeerIDChain(japMsg.ExpectedID)...)
-	idBytes := SerializePeerIDChain(japMsg.ProposedID)
-	toSend = append(toSend, idBytes...)
-	toSend = append(toSend, SerializePeerWithIDChainArray(japMsg.Siblings)...)
-
-	return toSend
-}
-
-func (JoinAsParentMsgSerializer) Deserialize(msgBytes []byte) message.Message {
-	bufPos := 0
-	level := binary.BigEndian.Uint16(msgBytes[0:2])
-	bufPos += 2
-	idSize, expectedID := DeserializePeerIDChain(msgBytes[bufPos:])
-	bufPos += idSize
-	n, proposedID := DeserializePeerIDChain(msgBytes[bufPos:])
-	bufPos += n
-	_, siblings := DeserializePeerWithIDChainArray(msgBytes[bufPos:])
-
-	return JoinAsParentMessage{
-		Level:      level,
-		ExpectedID: expectedID,
-		ProposedID: proposedID,
-		Siblings:   siblings,
-	}
-}
-
 // -------------- Join As Child --------------
 
 const joinAsChildMessageID = 2005
@@ -352,7 +281,7 @@ func NewJoinAsChildMessage(
 		Urgent:          urgent,
 		ExpectedID:      expectedID,
 		MeasuredLatency: measuredLatency,
-		Sender:          sender,
+		Sender:          sender.Clone(),
 	}
 }
 
@@ -444,13 +373,12 @@ func NewJoinAsChildMessageReply(
 	grandparent *PeerWithIDChain,
 ) JoinAsChildMessageReply {
 	jacMsg := JoinAsChildMessageReply{
-		Parent: parent,
-
+		Parent:      parent.Clone(),
 		ProposedID:  proposedID,
 		Accepted:    accepted,
 		ParentLevel: uint16(level),
-		Siblings:    siblings,
-		GrandParent: grandparent,
+		Siblings:    ClonePeerWithIDChainArr(siblings),
+		GrandParent: grandparent.Clone(),
 	}
 
 	return jacMsg
@@ -561,7 +489,7 @@ type AbsorbMessage struct {
 
 func NewAbsorbMessage(peerAbsorber *PeerWithIDChain) AbsorbMessage {
 	return AbsorbMessage{
-		peerAbsorber: peerAbsorber,
+		peerAbsorber: peerAbsorber.Clone(),
 	}
 }
 
@@ -641,8 +569,8 @@ func NewRandomWalkMessage(ttl uint16, sender *PeerWithIDChain, sample []*PeerWit
 	}
 	return RandomWalkMessage{
 		TTL:    ttl,
-		Sample: sample,
-		Sender: sender,
+		Sample: ClonePeerWithIDChainArr(sample),
+		Sender: sender.Clone(),
 	}
 }
 
@@ -701,8 +629,8 @@ const biasedWalkMessageID = 1010
 func NewBiasedWalkMessage(ttl uint16, sender *PeerWithIDChain, sample []*PeerWithIDChain) BiasedWalkMessage {
 	return BiasedWalkMessage{
 		TTL:    ttl,
-		Sample: sample,
-		Sender: sender,
+		Sample: ClonePeerWithIDChainArr(sample),
+		Sender: sender.Clone(),
 	}
 }
 
@@ -760,7 +688,7 @@ const walkReplyMessageID = 1011
 
 func NewWalkReplyMessage(sample []*PeerWithIDChain) WalkReplyMessage {
 	return WalkReplyMessage{
-		Sample: sample,
+		Sample: ClonePeerWithIDChainArr(sample),
 	}
 }
 
@@ -841,6 +769,62 @@ func (BroadcastMessageSerializer) Deserialize(msgBytes []byte) message.Message {
 		panic(err)
 	}
 	return BroadcastMessage{Message: broadcastMsg}
+}
+
+const disconnectAsParentMessageID = 1013
+
+type DisconnectAsParentMessage struct {
+}
+
+func NewDisconnectAsParentMessage() DisconnectAsParentMessage {
+	return DisconnectAsParentMessage{}
+}
+
+func (DisconnectAsParentMessage) Type() message.ID {
+	return disconnectAsParentMessageID
+}
+
+func (DisconnectAsParentMessage) Serializer() message.Serializer {
+	return disconnectAsParentMsgSerializer
+}
+
+func (DisconnectAsParentMessage) Deserializer() message.Deserializer {
+	return disconnectAsParentMsgSerializer
+}
+
+var disconnectAsParentMsgSerializer = DisconnectAsParentMsgSerializer{}
+
+type DisconnectAsParentMsgSerializer struct{}
+
+func (DisconnectAsParentMsgSerializer) Serialize(_ message.Message) []byte {
+	return []byte{}
+}
+
+func (DisconnectAsParentMsgSerializer) Deserialize(_ []byte) message.Message {
+	return DisconnectAsParentMessage{}
+}
+
+const NeighbourMaintenanceMessageType = 1014
+
+type NeighbourMaintenanceMessage struct {
+}
+type neighbourMaintenanceMessageSerializer struct{}
+
+var defaultNeighbourMaintenanceMessageSerializer = neighbourMaintenanceMessageSerializer{}
+
+func (NeighbourMaintenanceMessage) Type() message.ID { return NeighbourMaintenanceMessageType }
+func (NeighbourMaintenanceMessage) Serializer() message.Serializer {
+	return defaultNeighbourMaintenanceMessageSerializer
+}
+func (NeighbourMaintenanceMessage) Deserializer() message.Deserializer {
+	return defaultNeighbourMaintenanceMessageSerializer
+}
+func (neighbourMaintenanceMessageSerializer) Serialize(msg message.Message) []byte {
+	return []byte{}
+}
+
+func (neighbourMaintenanceMessageSerializer) Deserialize(msgBytes []byte) message.Message {
+	return NeighbourMaintenanceMessage{}
 }
 
 /*

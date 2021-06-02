@@ -102,9 +102,9 @@ func (d *DemmonTree) addParent(
 		d.sendMessageAndDisconnect(toSend, oldParent)
 		d.nodeWatcher.Unwatch(oldParent, d.ID())
 	}
-	if !myNewChain.Equal(d.self.chain) {
-		d.babel.SendNotification(NewIDChangeNotification(myNewChain))
-	}
+	// if !myNewChain.Equal(d.self.chain) {
+	// 	d.babel.SendNotification(NewIDChangeNotification(myNewChain))
+	// }
 
 	d.myGrandParent = newGrandParent
 	d.myParent = newParent
@@ -126,12 +126,11 @@ func (d *DemmonTree) addParent(
 	} else {
 		d.nodeWatcher.Watch(newParent, d.ID())
 	}
-	d.removeFromMeasuredPeers(newParent)
+	d.removeFromEView(newParent)
 	d.myParent.outConnActive = hasOutConnection
 	d.myParent.inConnActive = hasInConnection
 	if hasOutConnection {
 		d.babel.SendNotification(NewNodeUpNotification(d.myParent, d.getInView()))
-
 	} else {
 		d.babel.Dial(d.ID(), newParent, newParent.ToTCPAddr())
 	}
@@ -151,6 +150,7 @@ func (d *DemmonTree) addParent(
 		newChildrenPtr.outConnActive = child.outConnActive
 		d.myChildren[childStr] = newChildrenPtr
 	}
+	d.lastParentChange = time.Now()
 }
 
 func (d *DemmonTree) getNeighborsAsPeerWithIDChainArray() []*PeerWithIDChain {
@@ -187,6 +187,7 @@ func (d *DemmonTree) addChild(newChild *PeerWithIDChain, bwScore int, childrenLa
 	newChildWithID.inConnActive = inConnActive
 	newChildWithID.outConnActive = outConnActive
 
+	d.logger.Infof("added children: %s", newChildWithID.String())
 	if !outConnActive {
 		if childrenLatency != 0 {
 			d.nodeWatcher.WatchWithInitialLatencyValue(newChild, d.ID(), childrenLatency)
@@ -197,13 +198,12 @@ func (d *DemmonTree) addChild(newChild *PeerWithIDChain, bwScore int, childrenLa
 	} else {
 		d.myChildren[newChild.String()] = newChildWithID
 		d.babel.SendNotification(NewNodeUpNotification(newChild, d.getInView()))
+		return proposedID
 	}
 
 	d.myChildren[newChild.String()] = newChildWithID
 	d.updateSelfVersion()
-	d.logger.Infof("added children: %s", newChildWithID.String())
-	d.removeFromMeasuredPeers(newChild)
-
+	d.removeFromEView(newChild)
 	return proposedID
 }
 
@@ -248,7 +248,7 @@ func (d *DemmonTree) addSibling(newSibling *PeerWithIDChain) {
 	d.mySiblings[newSibling.String()] = newSibling
 	d.nodeWatcher.Watch(newSibling.Peer, d.ID())
 	d.babel.Dial(d.ID(), newSibling.Peer, newSibling.Peer.ToTCPAddr())
-	d.removeFromMeasuredPeers(newSibling)
+	d.removeFromEView(newSibling)
 	d.logger.Infof("Added sibling: %s", newSibling.String())
 }
 
@@ -260,11 +260,10 @@ func (d *DemmonTree) removeSibling(toRemove peer.Peer, crash bool) {
 		return
 	}
 	delete(d.mySiblings, toRemove.String())
-	d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView(), crash))
-
 	d.nodeWatcher.Unwatch(sibling, d.ID())
 	d.babel.Disconnect(d.ID(), toRemove)
 	d.logger.Infof("Removed sibling: %s", toRemove.String())
+	d.babel.SendNotification(NewNodeDownNotification(sibling, d.getInView(), crash))
 }
 
 func (d *DemmonTree) isNeighbour(toTest peer.Peer) bool {
@@ -302,7 +301,6 @@ func (d *DemmonTree) getInView() InView {
 		if !sibling.outConnActive {
 			continue
 		}
-
 		siblingArr = append(siblingArr, sibling)
 	}
 
@@ -323,39 +321,40 @@ func (d *DemmonTree) getInView() InView {
 	}
 }
 
-func (d *DemmonTree) removeFromMeasuredPeers(p peer.Peer) {
-	delete(d.measuredPeers, p.String())
-}
+// func (d *DemmonTree) removeFromEView(p peer.Peer) {
+// 	delete(d.measuredPeers, p.String())
+// }
 
 func (d *DemmonTree) addToMeasuredPeers(p *MeasuredPeer) {
 	if p.IsDescendentOf(d.self.chain) {
 		return
 	}
 
-	_, alreadyMeasured := d.measuredPeers[p.String()]
-	if alreadyMeasured || len(d.measuredPeers) < d.config.MaxMeasuredPeers {
-		d.measuredPeers[p.String()] = p
-		return
-	}
+	// _, alreadyMeasured := d.measuredPeers[p.String()]
+	// if alreadyMeasured || len(d.measuredPeers) < d.config.MaxMeasuredPeers {
+	// 	d.measuredPeers[p.String()] = p
+	// 	return
+	// }
+	d.evalMeasuredPeer(p)
 
-	var maxLatPeerStr string = ""
-	maxLat := time.Duration(0)
-	for measuredPeerID, alreadyPresentPeer := range d.measuredPeers {
-		if alreadyPresentPeer.Latency > maxLat {
-			maxLat = alreadyPresentPeer.Latency
-			maxLatPeerStr = measuredPeerID
-		}
-	}
+	// var maxLatPeerStr string = ""
+	// maxLat := time.Duration(0)
+	// for measuredPeerID, alreadyPresentPeer := range d.measuredPeers {
+	// 	if alreadyPresentPeer.Latency > maxLat {
+	// 		maxLat = alreadyPresentPeer.Latency
+	// 		maxLatPeerStr = measuredPeerID
+	// 	}
+	// }
 
-	if maxLatPeerStr == "" {
-		panic("Shouldnt happen")
-	}
+	// if maxLatPeerStr == "" {
+	// 	panic("Shouldnt happen")
+	// }
 
-	if maxLat > p.Latency {
-		delete(d.measuredPeers, maxLatPeerStr)
-		d.measuredPeers[p.String()] = p
-		return
-	}
+	// if maxLat > p.Latency {
+	// 	delete(d.measuredPeers, maxLatPeerStr)
+	// 	d.measuredPeers[p.String()] = p
+	// 	return
+	// }
 }
 
 func (d *DemmonTree) removeFromEView(p peer.Peer) {
@@ -413,12 +412,12 @@ func (d *DemmonTree) mergeSampleWithEview(
 	)
 
 	knownPeers := PeerWithIDChainMapToArr(d.eView)
-	for _, v := range d.measuredPeers {
-		if _, ok := d.eView[v.String()]; ok {
-			continue
-		}
-		knownPeers = append(knownPeers, v.PeerWithIDChain)
-	}
+	// for _, v := range d.measuredPeers {
+	// 	if _, ok := d.eView[v.String()]; ok {
+	// 		continue
+	// 	}
+	// 	knownPeers = append(knownPeers, v.PeerWithIDChain)
+	// }
 
 	exclusions := map[string]bool{}
 	for _, aux := range neighboursWithoutSenderDescendantsAndNotInSample {
@@ -549,8 +548,7 @@ func (d *DemmonTree) updateAndMergeSampleEntriesWithEView(sample []*PeerWithIDCh
 		if ok {
 			if currPeer.IsHigherVersionThan(eViewPeer) {
 				if currPeer.IsDescendentOf(d.self.Chain()) {
-					d.removeFromMeasuredPeers(currPeer)
-					d.removeFromEView(eViewPeer)
+					d.removeFromEView(currPeer)
 					continue
 				}
 				d.eView[currPeer.String()] = currPeer
@@ -558,20 +556,20 @@ func (d *DemmonTree) updateAndMergeSampleEntriesWithEView(sample []*PeerWithIDCh
 			continue
 		}
 
-		measuredPeer, ok := d.measuredPeers[currPeer.String()]
-		if ok {
-			if currPeer.IsHigherVersionThan(measuredPeer.PeerWithIDChain) {
-				if currPeer.IsDescendentOf(d.self.Chain()) {
-					delete(d.measuredPeers, measuredPeer.String())
-					continue
-				}
-				d.measuredPeers[currPeer.String()] = NewMeasuredPeer(
-					currPeer,
-					measuredPeer.Latency,
-				)
-			}
-			continue
-		}
+		// measuredPeer, ok := d.measuredPeers[currPeer.String()]
+		// if ok {
+		// 	if currPeer.IsHigherVersionThan(measuredPeer.PeerWithIDChain) {
+		// 		if currPeer.IsDescendentOf(d.self.Chain()) {
+		// 			delete(d.measuredPeers, measuredPeer.String())
+		// 			continue
+		// 		}
+		// 		d.measuredPeers[currPeer.String()] = NewMeasuredPeer(
+		// 			currPeer,
+		// 			measuredPeer.Latency,
+		// 		)
+		// 	}
+		// 	continue
+		// }
 
 		if currPeer.IsDescendentOf(d.self.Chain()) {
 			continue

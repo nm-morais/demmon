@@ -103,6 +103,7 @@ func (e *MetricsEngine) MakeQuerySingleReturn(expression string, timeoutDuration
 	ottoVal, err := e.runWithTimeout(vm, expression, timeoutDuration)
 
 	if err != nil {
+		e.logger.Errorf("QuerySingleReturn %s got error %s", expression, err.Error())
 		return nil, err
 	}
 	vGeneric, err := ottoVal.Export()
