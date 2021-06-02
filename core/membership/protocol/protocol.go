@@ -868,7 +868,8 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 		if _, ok := alreadyParent[edge.peer2.String()]; ok {
 			continue
 		}
-		if edge.peer1.bandwidth >= edge.peer2.bandwidth {
+
+		if !d.config.UseBwScore || edge.peer1.bandwidth >= edge.peer2.bandwidth {
 			if edge.peer1.nChildren > 0 {
 				d.sendMessage(NewAbsorbMessage(edge.peer1.PeerWithIDChain), edge.peer2)
 				alreadyKicked[edge.peer2.String()] = true
@@ -885,10 +886,10 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 				}
 				deleteFromPotentialChildren(edge.peer1.String())
 				potentialChildren[edge.peer1.String()] = []*PeerWithIDChain{}
+				continue
 			}
 		}
-
-		if edge.peer1.bandwidth <= edge.peer2.bandwidth {
+		if !d.config.UseBwScore || edge.peer1.bandwidth <= edge.peer2.bandwidth {
 			if edge.peer2.nChildren > 0 {
 				d.sendMessage(NewAbsorbMessage(edge.peer2.PeerWithIDChain), edge.peer1)
 				alreadyKicked[edge.peer1.String()] = true
@@ -905,6 +906,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 				}
 				deleteFromPotentialChildren(edge.peer2.String())
 				potentialChildren[edge.peer2.String()] = []*PeerWithIDChain{}
+				continue
 			}
 		}
 	}
