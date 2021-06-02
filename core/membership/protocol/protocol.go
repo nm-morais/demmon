@@ -534,9 +534,13 @@ func (d *DemmonTree) handleEvalMeasuredPeersTimer(evalMeasuredPeersTimer timer.T
 	}
 
 	sort.Sort(measuredPeersArr)
+	if d.myParent == nil {
+		d.logger.Warnf("Parent is nil in handleEvalMeasuredPeersTimer")
+		return
+	}
 	parentAsMeasuredPeer, err := d.getPeerWithChainAsMeasuredPeer(d.myParent)
 	if err != nil {
-		d.logger.Errorf("Do not have latency measurement for parent")
+		d.logger.Warnf("Do not have latency measurement for parent")
 		return
 	}
 
