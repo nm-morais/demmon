@@ -320,18 +320,16 @@ func (e *MetricsEngine) setVMFunctions(vm *otto.Otto) {
 
 func (e *MetricsEngine) selectTs(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
 
-	var queryResult []tsdb.ReadOnlyTimeSeries
+	queryResult := make([]tsdb.ReadOnlyTimeSeries, 0)
 	// defer e.logger.Infof("Select query result: %+v", queryResult)
 
 	name, tagFilters, isTagFilterAll := extractSelectArgs(vm, call)
 
 	if isTagFilterAll {
 		b, ok := e.db.GetBucket(name)
-		if !ok {
-			throw(vm, fmt.Sprintf("No bucket found with name %s", name))
-			return otto.Value{}
+		if ok {
+			queryResult = b.GetAllTimeseries()
 		}
-		queryResult = b.GetAllTimeseries()
 		// for _, ts := range queryResult {
 		// 	fmt.Printf("Select query result : %+v\n", ts)
 		// }
@@ -344,12 +342,9 @@ func (e *MetricsEngine) selectTs(vm *otto.Otto, call *otto.FunctionCall) otto.Va
 	}
 
 	b, ok := e.db.GetBucket(name)
-	if !ok {
-		throw(vm, fmt.Sprintf("No measurement found with name %s", name))
-		return otto.Value{}
+	if ok {
+		queryResult = b.GetTimeseriesRegex(tagFilters)
 	}
-	queryResult = b.GetTimeseriesRegex(tagFilters)
-
 	res, err := vm.ToValue(queryResult)
 	if err != nil {
 		throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
@@ -394,12 +389,9 @@ func (e *MetricsEngine) selectLast(vm *otto.Otto, call *otto.FunctionCall) otto.
 	var queryResult []tsdb.ReadOnlyTimeSeries
 	if isTagFilterAll {
 		b, ok := e.db.GetBucket(name)
-		if !ok {
-			throw(vm, fmt.Sprintf("No measurement found with name %s", name))
-			return otto.Value{}
+		if ok {
+			queryResult = b.GetAllTimeseriesLast()
 		}
-		queryResult = b.GetAllTimeseriesLast()
-
 		res, err := vm.ToValue(queryResult)
 		if err != nil {
 			throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
@@ -409,12 +401,9 @@ func (e *MetricsEngine) selectLast(vm *otto.Otto, call *otto.FunctionCall) otto.
 	}
 
 	b, ok := e.db.GetBucket(name)
-	if !ok {
-		throw(vm, fmt.Sprintf("No measurement found with name %s", name))
-		return otto.Value{}
+	if ok {
+		queryResult = b.GetTimeseriesRegexLastVal(tagFilters)
 	}
-
-	queryResult = b.GetTimeseriesRegexLastVal(tagFilters)
 
 	res, err := vm.ToValue(queryResult)
 	if err != nil {
@@ -445,12 +434,10 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call *otto.FunctionCall) otto
 
 		var b *tsdb.Bucket
 		b, ok := e.db.GetBucket(name)
-		if !ok {
-			throw(vm, fmt.Sprintf("No measurement found with name %s", name))
-			return otto.Value{}
+		if ok {
+			queryResult = b.GetAllTimeseriesRange(startTime, endTime)
 		}
-		queryResult = b.GetAllTimeseriesRange(startTime, endTime)
-		e.logger.Infof("SelectRange query result: : %+v", queryResult)
+		// e.logger.Infof("SelectRange query result: : %+v", queryResult)
 		var res otto.Value
 		res, err = vm.ToValue(queryResult)
 		if err != nil {
@@ -461,12 +448,10 @@ func (e *MetricsEngine) selectRange(vm *otto.Otto, call *otto.FunctionCall) otto
 	}
 
 	b, ok := e.db.GetBucket(name)
-	if !ok {
-		throw(vm, fmt.Sprintf("No measurement found with name %s", name))
-		return otto.Value{}
+	if ok {
+		queryResult = b.GetTimeseriesRangeRegex(tagFilters, startTime, endTime)
 	}
-	queryResult = b.GetTimeseriesRangeRegex(tagFilters, startTime, endTime)
-	e.logger.Infof("SelectRange query result: : %+v", queryResult)
+	// e.logger.Infof("SelectRange query result: : %+v", queryResult)
 
 	res, err := vm.ToValue(queryResult)
 	if err != nil {
