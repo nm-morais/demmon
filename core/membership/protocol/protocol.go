@@ -36,9 +36,6 @@ type DemmonTreeConfig = struct {
 	ChildrenRefreshTickDuration time.Duration
 	RejoinTimerDuration         time.Duration
 
-	NrPeersToBecomeChildrenPerParentInAbsorb int
-	NrPeersToBecomeParentInAbsorb            int
-
 	PhiLevelForNodeDown                float64
 	MaxPeersInEView                    int
 	EmitWalkTimeout                    time.Duration
@@ -118,6 +115,7 @@ const (
 
 func New(config *DemmonTreeConfig, babel protocolManager.ProtocolManager, nw nodeWatcher.NodeWatcher) protocol.Protocol {
 	logger := logs.NewLogger(ProtoName)
+	// logger.SetLevel(logrus.ErrorLevel)
 	logger.Infof("Starting demmonTree with config: %+v", config)
 	return &DemmonTree{
 		nodeWatcher: nw,
@@ -438,6 +436,7 @@ func (d *DemmonTree) handleRefreshParentTimer(t timer.Timer) {
 	for _, child := range d.myChildren {
 		if !child.outConnActive {
 			d.logger.Warnf("Could not send message to children because there is no active conn to it %s", child.StringWithFields())
+			d.babel.Dial(d.ID(), child, child.ToTCPAddr())
 			continue
 		}
 		// d.logger.Infof("Sending children: %+v to %s", childrenArr, child.StringWithFields())
@@ -722,7 +721,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 		return
 	}
 
-	if len(d.myChildren) < d.config.NrPeersToBecomeChildrenPerParentInAbsorb+int(d.config.MinGrpSize) {
+	if len(d.myChildren) < int(d.config.MinGrpSize) {
 		d.logger.Info("handleCheckChildrenSize timer trigger returning due to goup size being too small")
 		return
 	}
@@ -814,9 +813,6 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 			}
 
 			if candidateToKickFromSelfPOV.Latency < candidateToKick.Latency {
-				if len(d.myChildren) < int(d.config.MaxGrpSize) {
-					break
-				}
 				latencyDowngrade := candidateToKick.Latency - candidateToKickFromSelfPOV.Latency
 				if latencyDowngrade >= d.config.MinLatencyImprovementToImprovePosition/5 {
 					break
@@ -856,21 +852,21 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 	}
 
 	for _, edge := range edgeList {
+
 		if _, ok := alreadyKicked[edge.peer1.String()]; ok {
 			continue
 		}
 		if _, ok := alreadyKicked[edge.peer2.String()]; ok {
 			continue
 		}
-		if _, ok := alreadyParent[edge.peer1.String()]; ok {
-			continue
-		}
-		if _, ok := alreadyParent[edge.peer2.String()]; ok {
-			continue
+
+		if len(d.myChildren)-len(alreadyKicked) <= int(d.config.MinGrpSize) {
+			break
 		}
 
 		if !d.config.UseBwScore || edge.peer1.bandwidth >= edge.peer2.bandwidth {
-			if edge.peer1.nChildren > 0 {
+			_, ok := alreadyParent[edge.peer1.String()]
+			if ok || edge.peer1.nChildren > 0 {
 				d.sendMessage(NewAbsorbMessage(edge.peer1.PeerWithIDChain), edge.peer2)
 				alreadyKicked[edge.peer2.String()] = true
 				alreadyParent[edge.peer1.String()] = true
@@ -890,12 +886,14 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 			}
 		}
 		if !d.config.UseBwScore || edge.peer1.bandwidth <= edge.peer2.bandwidth {
-			if edge.peer2.nChildren > 0 {
+			_, ok := alreadyParent[edge.peer2.String()]
+			if ok || edge.peer2.nChildren > 0 {
 				d.sendMessage(NewAbsorbMessage(edge.peer2.PeerWithIDChain), edge.peer1)
 				alreadyKicked[edge.peer1.String()] = true
 				alreadyParent[edge.peer2.String()] = true
 				continue
 			}
+
 			potentialChildren[edge.peer2.String()] = append(potentialChildren[edge.peer2.String()], edge.peer1.PeerWithIDChain)
 			if len(potentialChildren[edge.peer2.String()]) == int(d.config.MinGrpSize) {
 				alreadyParent[edge.peer2.String()] = true
@@ -1252,12 +1250,20 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 		!peer.PeersEqual(sender, d.myPendingParentInRecovery) &&
 		!peer.PeersEqual(sender, d.myPendingParentInImprovement) &&
 		!(d.myPendingParentInJoin != nil && peer.PeersEqual(sender, d.myPendingParentInJoin.peer)) {
-		d.logger.Errorf(
-			"Received UpdateParentMessage from not my parent (parent:%s sender:%s)",
-			getStringOrNil(d.myParent),
-			upMsg.Parent.StringWithFields(),
-		)
-		d.sendMessageTmpTCPChan(NewDisconnectAsChildMessage(), sender)
+		_, ok := d.danglingNeighCounters[sender.String()]
+		if !ok {
+			d.danglingNeighCounters[sender.String()] = 0
+		}
+		d.danglingNeighCounters[sender.String()]++
+		if d.danglingNeighCounters[sender.String()] >= 3 {
+			d.logger.Errorf(
+				"Received UpdateParentMessage from not my parent (parent:%s sender:%s)",
+				getStringOrNil(d.myParent),
+				upMsg.Parent.StringWithFields(),
+			)
+			d.sendMessageTmpTCPChan(NewDisconnectAsChildMessage(), sender)
+			delete(d.danglingNeighCounters, sender.String())
+		}
 		return
 	}
 
@@ -1269,7 +1275,7 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 		d.logger.Info("Discarding UpdateParentMessage because parent is changing")
 		return
 	}
-
+	delete(d.danglingNeighCounters, sender.String())
 	if upMsg.GrandParent != nil {
 		if !peer.PeersEqual(d.myGrandParent, upMsg.GrandParent) {
 			d.logger.Infof(

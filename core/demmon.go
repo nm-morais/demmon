@@ -36,10 +36,11 @@ const (
 )
 
 type DemmonConf struct {
-	Silent     bool
-	LogFolder  string
-	LogFile    string
-	ListenPort int
+	Silent      bool
+	LogFolder   string
+	LogFile     string
+	ListenPort  int
+	LoggerLevel *logrus.Level
 }
 
 type continuousQueryValueType struct {
@@ -220,6 +221,9 @@ func New(
 	babel protocolManager.ProtocolManager,
 ) *Demmon {
 	logger := logrus.New()
+	if dConf.LoggerLevel != nil {
+		logger.SetLevel(*dConf.LoggerLevel)
+	}
 	d := &Demmon{
 		alarms:                          &sync.Map{},
 		schedulerMu:                     &sync.Mutex{},
@@ -246,6 +250,7 @@ func New(
 	go d.handleBroadcastMessages()
 
 	setupLogger(d.logger, d.conf.LogFolder, d.conf.LogFile, d.conf.Silent)
+	d.logger.SetLevel(logrus.ErrorLevel)
 	return d
 }
 

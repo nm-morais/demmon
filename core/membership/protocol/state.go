@@ -56,6 +56,11 @@ func (d *DemmonTree) addParent(
 	hasOutConnection := false
 	var existingLatencyMeasurement *time.Duration
 
+	if peer.PeersEqual(newParent, d.myParent) {
+		d.logger.Info("re-added current parent")
+		return
+	}
+
 	// TODO add to measured peers
 	if peer.PeersEqual(newParent, d.myPendingParentInRecovery) {
 		d.myPendingParentInRecovery = nil

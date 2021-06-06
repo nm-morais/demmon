@@ -63,15 +63,12 @@ var (
 		MinGrpSize: 2,
 		MaxGrpSize: 9,
 
-		NrPeersToBecomeParentInAbsorb:            2,
-		NrPeersToBecomeChildrenPerParentInAbsorb: 3,
-
 		MinLatencyImprovementToImprovePosition: 50 * time.Millisecond,
 
 		PhiLevelForNodeDown: 5,
 
 		CheckChildenSizeTimerDuration: 10 * time.Second,
-		ParentRefreshTickDuration:     5 * time.Second,
+		ParentRefreshTickDuration:     1 * time.Second,
 		ChildrenRefreshTickDuration:   5 * time.Second,
 		RejoinTimerDuration:           10 * time.Second,
 
@@ -214,11 +211,13 @@ func main() {
 		babelConf.Peer = peer.NewPeer(net.ParseIP(advertiseListenAddr), uint16(protosPortVar), uint16(analyticsPortVar))
 	}
 
+	logLevel := logrus.ErrorLevel
 	dConf := &core.DemmonConf{
-		Silent:     silent,
-		LogFolder:  logFolder,
-		LogFile:    "metrics_frontend.log",
-		ListenPort: 8090,
+		Silent:      silent,
+		LogFolder:   logFolder,
+		LogFile:     "metrics_frontend.log",
+		ListenPort:  8090,
+		LoggerLevel: &logLevel,
 	}
 
 	meConf := &engine.Conf{
