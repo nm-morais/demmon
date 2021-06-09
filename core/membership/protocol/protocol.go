@@ -835,19 +835,11 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 	})
 	alreadyKicked := map[string]bool{}
 	alreadyParent := map[string]bool{}
-	potentialChildren := map[string][]*PeerWithIDChain{}
+	potentialChildren := map[string]map[string]*PeerWithIDChain{}
 
 	deleteFromPotentialChildren := func(toCompare string) {
-		for k, potentialChildrenArr := range potentialChildren {
-			tmp := 0
-			for i, c := range potentialChildrenArr {
-				if c.String() == toCompare {
-					continue
-				}
-				potentialChildrenArr[i] = c
-				tmp = i
-			}
-			potentialChildren[k] = potentialChildrenArr[:tmp]
+		for _, potentialChildrenMap := range potentialChildren {
+			delete(potentialChildrenMap, toCompare)
 		}
 	}
 
@@ -865,6 +857,10 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 		}
 
 		if !d.config.UseBwScore || edge.peer1.bandwidth >= edge.peer2.bandwidth {
+			if _, ok := alreadyParent[edge.peer2.String()]; ok {
+				continue
+			}
+
 			_, ok := alreadyParent[edge.peer1.String()]
 			if ok || edge.peer1.nChildren > 0 {
 				d.sendMessage(NewAbsorbMessage(edge.peer1.PeerWithIDChain), edge.peer2)
@@ -872,7 +868,10 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 				alreadyParent[edge.peer1.String()] = true
 				continue
 			}
-			potentialChildren[edge.peer1.String()] = append(potentialChildren[edge.peer1.String()], edge.peer2.PeerWithIDChain)
+			if _, ok := potentialChildren[edge.peer1.String()]; !ok {
+				potentialChildren[edge.peer1.String()] = map[string]*PeerWithIDChain{}
+			}
+			potentialChildren[edge.peer1.String()][edge.peer2.PeerWithIDChain.String()] = edge.peer2.PeerWithIDChain
 			if len(potentialChildren[edge.peer1.String()]) == int(d.config.MinGrpSize) {
 				alreadyParent[edge.peer1.String()] = true
 				for _, newC := range potentialChildren[edge.peer1.String()] {
@@ -881,11 +880,16 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 					deleteFromPotentialChildren(newC.String())
 				}
 				deleteFromPotentialChildren(edge.peer1.String())
-				potentialChildren[edge.peer1.String()] = []*PeerWithIDChain{}
+				potentialChildren[edge.peer1.String()] = make(map[string]*PeerWithIDChain)
 				continue
 			}
 		}
 		if !d.config.UseBwScore || edge.peer1.bandwidth <= edge.peer2.bandwidth {
+
+			if _, ok := alreadyParent[edge.peer1.String()]; ok {
+				continue
+			}
+
 			_, ok := alreadyParent[edge.peer2.String()]
 			if ok || edge.peer2.nChildren > 0 {
 				d.sendMessage(NewAbsorbMessage(edge.peer2.PeerWithIDChain), edge.peer1)
@@ -893,8 +897,10 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 				alreadyParent[edge.peer2.String()] = true
 				continue
 			}
-
-			potentialChildren[edge.peer2.String()] = append(potentialChildren[edge.peer2.String()], edge.peer1.PeerWithIDChain)
+			if _, ok := potentialChildren[edge.peer2.String()]; !ok {
+				potentialChildren[edge.peer2.String()] = map[string]*PeerWithIDChain{}
+			}
+			potentialChildren[edge.peer2.String()][edge.peer1.PeerWithIDChain.String()] = edge.peer1.PeerWithIDChain
 			if len(potentialChildren[edge.peer2.String()]) == int(d.config.MinGrpSize) {
 				alreadyParent[edge.peer2.String()] = true
 				for _, newC := range potentialChildren[edge.peer2.String()] {
@@ -903,7 +909,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 					deleteFromPotentialChildren(newC.String())
 				}
 				deleteFromPotentialChildren(edge.peer2.String())
-				potentialChildren[edge.peer2.String()] = []*PeerWithIDChain{}
+				potentialChildren[edge.peer2.String()] = make(map[string]*PeerWithIDChain)
 				continue
 			}
 		}
@@ -1651,6 +1657,7 @@ func (d *DemmonTree) attemptProgress() {
 		d.sendJoinAsChildMsg(d.bestPeerlastLevel.peer.PeerWithIDChain, d.bestPeerlastLevel.peer.Latency, false, false)
 		return
 	}
+
 	progress := d.progressToNextLevel(lowestLatencyPeer)
 	if progress {
 		return
