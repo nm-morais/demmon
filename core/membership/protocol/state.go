@@ -520,34 +520,34 @@ func (d *DemmonTree) updateAndMergeSampleEntriesWithEView(sample []*PeerWithIDCh
 			continue
 		}
 
-		if peer.PeersEqual(d.myParent, currPeer) {
-			if currPeer.IsHigherVersionThan(d.myParent) {
-				currPeer.inConnActive = d.myParent.inConnActive
-				currPeer.outConnActive = d.myParent.outConnActive
-				d.myParent = currPeer
-			}
+		// if peer.PeersEqual(d.myParent, currPeer) {
+		// 	if currPeer.IsHigherVersionThan(d.myParent) {
+		// 		currPeer.inConnActive = d.myParent.inConnActive
+		// 		currPeer.outConnActive = d.myParent.outConnActive
+		// 		d.myParent = currPeer
+		// 	}
 
-			continue
-		}
+		// 	continue
+		// }
 
-		if sibling, ok := d.mySiblings[currPeer.String()]; ok {
-			if currPeer.IsHigherVersionThan(sibling) {
-				currPeer.inConnActive = sibling.inConnActive
-				currPeer.outConnActive = sibling.outConnActive
-				d.mySiblings[currPeer.String()] = currPeer
-			}
+		// if sibling, ok := d.mySiblings[currPeer.String()]; ok {
+		// 	if currPeer.IsHigherVersionThan(sibling) {
+		// 		currPeer.inConnActive = sibling.inConnActive
+		// 		currPeer.outConnActive = sibling.outConnActive
+		// 		d.mySiblings[currPeer.String()] = currPeer
+		// 	}
 
-			continue
-		}
+		// 	continue
+		// }
 
-		if children, isChildren := d.myChildren[currPeer.String()]; isChildren {
-			if currPeer.IsHigherVersionThan(children) {
-				currPeer.inConnActive = children.inConnActive
-				currPeer.outConnActive = children.outConnActive
-				d.myChildren[currPeer.String()] = currPeer
-			}
-			continue
-		}
+		// if children, isChildren := d.myChildren[currPeer.String()]; isChildren {
+		// 	if currPeer.IsHigherVersionThan(children) {
+		// 		currPeer.inConnActive = children.inConnActive
+		// 		currPeer.outConnActive = children.outConnActive
+		// 		d.myChildren[currPeer.String()] = currPeer
+		// 	}
+		// 	continue
+		// }
 
 		eViewPeer, ok := d.eView[currPeer.String()]
 		if ok {

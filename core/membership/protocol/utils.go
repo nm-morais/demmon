@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/nm-morais/demmon/core/utils"
 	"github.com/nm-morais/go-babel/pkg/errors"
@@ -104,7 +105,8 @@ outer:
 			panic("could not generate child ID in 5 iterations")
 		}
 		var peerID PeerID
-		n, err := rand.Read(peerID[:])
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		n, err := r.Read(peerID[:])
 		if err != nil {
 			panic(err)
 		}
