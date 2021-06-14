@@ -69,9 +69,7 @@ func (c PeerIDChain) Level() int {
 }
 func (c PeerIDChain) Clone() PeerIDChain {
 	tmp := make(PeerIDChain, len(c))
-	for i, s := range c {
-		tmp[i] = s
-	}
+	copy(tmp, c)
 	return tmp
 }
 
@@ -126,12 +124,12 @@ func (c PeerIDChain) String() string {
 
 type PeerWithIDChain struct {
 	Coordinates
-	chain PeerIDChain
 	peer.Peer
+	chain         PeerIDChain
+	inConnActive  bool
 	version       PeerVersion
 	nChildren     uint16
 	outConnActive bool
-	inConnActive  bool
 	bandwidth     int
 	avgChildrenBW int
 }
@@ -148,11 +146,11 @@ func NewPeerWithIDChain(
 	return &PeerWithIDChain{
 		Coordinates:   coords,
 		chain:         peerIDChain,
+		outConnActive: false,
 		Peer:          self,
+		inConnActive:  false,
 		version:       version,
 		nChildren:     nChildren,
-		outConnActive: false,
-		inConnActive:  false,
 		bandwidth:     bandwidth,
 		avgChildrenBW: childBW,
 	}
@@ -167,7 +165,7 @@ func ClonePeerWithIDChainArr(pArr []*PeerWithIDChain) []*PeerWithIDChain {
 }
 
 func (p *PeerWithIDChain) Chain() PeerIDChain {
-	return p.chain
+	return p.chain.Clone()
 }
 
 func (p *PeerWithIDChain) StringWithFields() string {

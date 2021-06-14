@@ -104,7 +104,7 @@ outer:
 		if i == 5 { // for safety
 			panic("could not generate child ID in 5 iterations")
 		}
-		var peerID PeerID
+		peerID := PeerID{}
 		r := rand.New(rand.NewSource(time.Now().UnixNano()))
 		n, err := r.Read(peerID[:])
 		if err != nil {

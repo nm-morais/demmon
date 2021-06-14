@@ -142,8 +142,12 @@ func (d *DemmonTree) addParent(
 
 	for childStr, child := range d.myChildren {
 		childID := child.Chain()[len(child.Chain())-1]
+		newChildChain := make(PeerIDChain, 0)
+		newChildChain = append(newChildChain, myNewChain...)
+		newChildChain = append(newChildChain, childID)
+		d.logger.Infof("Setting child %s (%s) to id %s", child, childStr, newChildChain)
 		newChildrenPtr := NewPeerWithIDChain(
-			append(myNewChain, childID),
+			newChildChain,
 			child.Peer,
 			child.nChildren,
 			child.version,
@@ -156,6 +160,7 @@ func (d *DemmonTree) addParent(
 		d.myChildren[childStr] = newChildrenPtr
 	}
 	d.lastParentChange = time.Now()
+	d.checkRepeatedChildIDS()
 }
 
 func (d *DemmonTree) getNeighborsAsPeerWithIDChainArray() []*PeerWithIDChain {
@@ -178,9 +183,16 @@ func (d *DemmonTree) getNeighborsAsPeerWithIDChainArray() []*PeerWithIDChain {
 }
 
 func (d *DemmonTree) addChild(newChild *PeerWithIDChain, bwScore int, childrenLatency time.Duration, outConnActive, inConnActive bool) PeerID {
+	d.checkRepeatedChildIDS()
 	proposedID := d.generateChildID()
+
+	newPeerID := make(PeerIDChain, 0)
+	newPeerID = append(newPeerID, d.self.Chain()...)
+	newPeerID = append(newPeerID, proposedID)
+
+	d.logger.Infof("Self chain: %+v", d.self.Chain())
 	newChildWithID := NewPeerWithIDChain(
-		append(d.self.Chain(), proposedID),
+		newPeerID,
 		newChild.Peer,
 		newChild.nChildren,
 		newChild.Version(),
@@ -192,23 +204,22 @@ func (d *DemmonTree) addChild(newChild *PeerWithIDChain, bwScore int, childrenLa
 	newChildWithID.inConnActive = inConnActive
 	newChildWithID.outConnActive = outConnActive
 
-	d.logger.Infof("added children: %s", newChildWithID.String())
 	if !outConnActive {
+		d.logger.Info("Inside IF")
 		if childrenLatency != 0 {
 			d.nodeWatcher.WatchWithInitialLatencyValue(newChild, d.ID(), childrenLatency)
 		} else {
 			d.nodeWatcher.Watch(newChild, d.ID())
 		}
 		d.babel.Dial(d.ID(), newChild, newChild.ToTCPAddr())
+		d.updateSelfVersion()
+		d.removeFromEView(newChild)
 	} else {
-		d.myChildren[newChild.String()] = newChildWithID
+		d.logger.Info("Inside ELSE")
 		d.babel.SendNotification(NewNodeUpNotification(newChild, d.getInView()))
-		return proposedID
 	}
 
 	d.myChildren[newChild.String()] = newChildWithID
-	d.updateSelfVersion()
-	d.removeFromEView(newChild)
 	return proposedID
 }
 
