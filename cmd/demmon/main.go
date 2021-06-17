@@ -61,9 +61,9 @@ var (
 		MaxDiffForBWScore: 15,
 
 		MinGrpSize: 2,
-		MaxGrpSize: 6,
+		MaxGrpSize: 5,
 
-		MinLatencyImprovementToImprovePosition: 75 * time.Millisecond,
+		MinLatencyImprovementToImprovePosition: 100 * time.Millisecond,
 		MaxLatencyDowngrade:                    30 * time.Millisecond,
 		UseBwScore:                             true,
 
