@@ -259,7 +259,9 @@ func (ts *timeSeries) Last() Observable {
 	if ts.level.end.Before(now) {
 		ts.mu.RUnlock()
 		ts.mu.Lock()
-		ts._advance(now)
+		if ts.level.end.Before(now) {
+			ts._advance(now)
+		}
 		ts.mu.Unlock()
 		ts.mu.RLock()
 	}
