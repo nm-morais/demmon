@@ -791,9 +791,10 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 	// }
 
 	type edge struct {
-		peer1   *PeerWithIDChain
-		peer2   *PeerWithIDChain
-		latency time.Duration
+		peer1            *PeerWithIDChain
+		peer2            *PeerWithIDChain
+		latency          time.Duration
+		latencyDowngrade bool
 	}
 
 	edgeList := []edge{}
@@ -829,19 +830,19 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 				if latencyDowngrade >= d.config.MaxLatencyDowngrade {
 					break
 				}
+
+				if c, isChild := d.myChildren[candidateToKick.String()]; isChild {
+					edgeList = append(edgeList, edge{
+						peer1:            peerAbsorber.PeerWithIDChain,
+						peer2:            c,
+						latency:          candidateToKick.Latency,
+						latencyDowngrade: latencyDowngrade > 0,
+					})
+
+					peerAbsorberStats.PeersToKick = append(peerAbsorberStats.PeersToKick, candidateToKick)
+					peerAbsorberStats.TotalLatency += candidateToKick.Latency
+				}
 			}
-
-			if c, isChild := d.myChildren[candidateToKick.String()]; isChild {
-				edgeList = append(edgeList, edge{
-					peer1:   peerAbsorber.PeerWithIDChain,
-					peer2:   c,
-					latency: candidateToKick.Latency,
-				})
-
-				peerAbsorberStats.PeersToKick = append(peerAbsorberStats.PeersToKick, candidateToKick)
-				peerAbsorberStats.TotalLatency += candidateToKick.Latency
-			}
-
 		}
 	}
 
@@ -871,6 +872,10 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 			break
 		}
 
+		if edge.latencyDowngrade && len(d.myChildren)-len(alreadyKicked) <= int(d.config.MaxGrpSize) {
+			break
+		}
+
 		if !d.config.UseBwScore || edge.peer1.bandwidth >= edge.peer2.bandwidth {
 			if _, ok := alreadyParent[edge.peer2.String()]; ok {
 				goto Node2
@@ -890,7 +895,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 			}
 			potentialChildren[edge.peer1.String()][edge.peer2.String()] = edge.peer2
 			if len(potentialChildren[edge.peer1.String()]) == int(d.config.MinGrpSize) {
-				if len(d.myChildren)-len(potentialChildren[edge.peer1.String()]) <= int(idealNrPeers) {
+				if len(d.myChildren)-len(potentialChildren[edge.peer1.String()]) <= int(d.config.MinGrpSize) {
 					goto Node2
 				}
 				alreadyParent[edge.peer1.String()] = true
@@ -925,7 +930,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 			}
 			potentialChildren[edge.peer2.String()][edge.peer1.String()] = edge.peer1
 			if len(potentialChildren[edge.peer2.String()]) == int(d.config.MinGrpSize) {
-				if len(d.myChildren)-len(potentialChildren[edge.peer2.String()]) <= int(idealNrPeers) {
+				if len(d.myChildren)-len(potentialChildren[edge.peer2.String()]) <= int(d.config.MinGrpSize) {
 					continue
 				}
 				alreadyParent[edge.peer2.String()] = true
