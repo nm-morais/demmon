@@ -103,7 +103,9 @@ func (d *DemmonTree) addParent(
 	if d.myParent != nil && !peer.PeersEqual(d.myParent, newParent) {
 		toSend := NewDisconnectAsChildMessage()
 		d.myParent = nil
-		d.babel.SendNotification(NewNodeDownNotification(oldParent, d.getInView(), false))
+		if oldParent.outConnActive {
+			d.babel.SendNotification(NewNodeDownNotification(oldParent, d.getInView(), false))
+		}
 		d.sendMessageAndDisconnect(toSend, oldParent)
 		d.nodeWatcher.Unwatch(oldParent, d.ID())
 	}
@@ -324,7 +326,6 @@ func (d *DemmonTree) getInView() InView {
 			parent = d.myParent
 		} else {
 			d.logger.Infof("Have parent %s but no active connection to it", d.myParent.String())
-
 		}
 	}
 

@@ -14,6 +14,7 @@ import (
 	"github.com/nm-morais/go-babel/pkg/peer"
 	"github.com/nm-morais/go-babel/pkg/protocol"
 	"github.com/nm-morais/go-babel/pkg/protocolManager"
+	"github.com/nm-morais/go-babel/pkg/request"
 	"github.com/nm-morais/go-babel/pkg/timer"
 	"github.com/sirupsen/logrus"
 )
@@ -44,13 +45,14 @@ type Monitor struct {
 	treeAggFuncs      map[int64]*treeAggSet
 	globalAggFuncs    map[int64]*globalAggFunc
 
-	isLandmark      bool
-	currView        membershipProtocol.InView
-	logger          *logrus.Logger
-	babel           protocolManager.ProtocolManager
-	me              *engine.MetricsEngine
-	tsdb            *tsdb.TSDB
-	noParentCounter int
+	isLandmark          bool
+	currView            membershipProtocol.InView
+	logger              *logrus.Logger
+	babel               protocolManager.ProtocolManager
+	me                  *engine.MetricsEngine
+	tsdb                *tsdb.TSDB
+	noParentCounter     int
+	mismatchViewCounter int
 }
 
 func New(babel protocolManager.ProtocolManager, db *tsdb.TSDB, me *engine.MetricsEngine, isLandmark bool) *Monitor {
@@ -192,6 +194,7 @@ func (m *Monitor) Init() { // REPLY HANDLERS
 	// CLEANUP (SAME FOR ALL)
 
 	m.babel.RegisterTimerHandler(m.ID(), CleanupInsterestSetsTimerID, m.handleCleanupInterestSetsTimer)
+	// m.babel.RegisterRequestReplyHandler(m.ID(), membershipProtocol.GetNeighboursReqReplyID, m.handleGetNeighsReply)
 }
 
 func (m *Monitor) Start() {
@@ -220,6 +223,54 @@ func (m *Monitor) Start() {
 	)
 }
 
+func (m *Monitor) handleGetNeighsReply(r request.Reply) {
+	reply := r.(membershipProtocol.GetNeighboutsReply)
+	m.logger.Infof("Curr View: %+v", m.currView)
+	m.logger.Infof("received View: %+v", reply.InView)
+	for _, c := range m.currView.Children {
+		found := false
+		for _, c2 := range reply.InView.Children {
+			if peer.PeersEqual(c, c2) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			m.mismatchViewCounter++
+			if m.mismatchViewCounter >= 4 {
+				m.logger.Panic("Mismatched views")
+			}
+			return
+		}
+	}
+	for _, c := range m.currView.Siblings {
+		found := false
+		for _, c2 := range reply.InView.Siblings {
+			if peer.PeersEqual(c, c2) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			m.mismatchViewCounter++
+			if m.mismatchViewCounter >= 4 {
+				m.logger.Panic("Mismatched views")
+			}
+			return
+		}
+	}
+	if reply.InView.Parent != nil || m.currView.Parent != nil {
+		if !peer.PeersEqual(m.currView.Parent, reply.InView.Parent) {
+			m.mismatchViewCounter++
+			if m.mismatchViewCounter >= 4 {
+				m.logger.Panic("Mismatched views")
+			}
+			return
+		}
+	}
+	m.mismatchViewCounter = 0
+}
+
 // TIMER HANDLERS
 
 func (m *Monitor) handleCleanupInterestSetsTimer(t timer.Timer) {
@@ -236,6 +287,9 @@ func (m *Monitor) handleCleanupInterestSetsTimer(t timer.Timer) {
 	m.cleanupNeighInterestSets()
 	m.cleanupTreeInterestSets()
 	m.cleanupGlobalAggFuncs()
+
+	reply, _ := m.babel.SendRequestSync(membershipProtocol.NewGetNeighboursReq(""), m.ID(), membershipProtocol.ProtoID)
+	m.handleGetNeighsReply(reply)
 }
 
 // NOTIFICATION HANDLERS
