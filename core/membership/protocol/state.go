@@ -203,6 +203,7 @@ func (d *DemmonTree) addChild(newChild *PeerWithIDChain, bwScore int, childrenLa
 
 	newChildWithID.inConnActive = inConnActive
 	newChildWithID.outConnActive = outConnActive
+	d.myChildren[newChild.String()] = newChildWithID
 
 	if !outConnActive {
 		d.logger.Info("Inside IF")
@@ -218,8 +219,6 @@ func (d *DemmonTree) addChild(newChild *PeerWithIDChain, bwScore int, childrenLa
 		d.logger.Info("Inside ELSE")
 		d.babel.SendNotification(NewNodeUpNotification(newChild, d.getInView()))
 	}
-
-	d.myChildren[newChild.String()] = newChildWithID
 	return proposedID
 }
 

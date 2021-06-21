@@ -44,12 +44,13 @@ type Monitor struct {
 	treeAggFuncs      map[int64]*treeAggSet
 	globalAggFuncs    map[int64]*globalAggFunc
 
-	isLandmark bool
-	currView   membershipProtocol.InView
-	logger     *logrus.Logger
-	babel      protocolManager.ProtocolManager
-	me         *engine.MetricsEngine
-	tsdb       *tsdb.TSDB
+	isLandmark      bool
+	currView        membershipProtocol.InView
+	logger          *logrus.Logger
+	babel           protocolManager.ProtocolManager
+	me              *engine.MetricsEngine
+	tsdb            *tsdb.TSDB
+	noParentCounter int
 }
 
 func New(babel protocolManager.ProtocolManager, db *tsdb.TSDB, me *engine.MetricsEngine, isLandmark bool) *Monitor {
@@ -138,11 +139,11 @@ func (m *Monitor) Init() { // REPLY HANDLERS
 		NewInstallTreeAggFuncMessage(nil, nil),
 		m.handleInstallTreeAggFuncMetricsMessage,
 	)
-	m.babel.RegisterMessageHandler(
-		m.ID(),
-		NewRequestTreeAggFuncMessage(nil),
-		m.handleRequestTreeAggFuncMsg,
-	)
+	// m.babel.RegisterMessageHandler(
+	// 	m.ID(),
+	// 	NewRequestTreeAggFuncMessage(nil),
+	// 	m.handleRequestTreeAggFuncMsg,
+	// )
 	m.babel.RegisterMessageHandler(
 		m.ID(),
 		NewPropagateTreeAggFuncMetricsMessage(0, 0, nil, false),
@@ -222,6 +223,16 @@ func (m *Monitor) Start() {
 // TIMER HANDLERS
 
 func (m *Monitor) handleCleanupInterestSetsTimer(t timer.Timer) {
+	if !m.isLandmark && m.currView.Parent == nil {
+		m.noParentCounter++
+		if m.noParentCounter >= 3 {
+			m.logger.Panic("No parent for over 15 seconds")
+		}
+
+	} else {
+		m.noParentCounter = 0
+	}
+
 	m.cleanupNeighInterestSets()
 	m.cleanupTreeInterestSets()
 	m.cleanupGlobalAggFuncs()

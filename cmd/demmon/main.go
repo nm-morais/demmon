@@ -54,8 +54,8 @@ var (
 
 	demmonTreeConf = &membershipProtocol.DemmonTreeConfig{
 		LandmarkRedialTimer: 5 * time.Second,
-		JoinMessageTimeout:  10 * time.Second,
-		MaxRetriesJoinMsg:   3,
+		JoinMessageTimeout:  2 * time.Second,
+		MaxRetriesJoinMsg:   2,
 		Landmarks:           nil,
 
 		MaxDiffForBWScore: 15,
@@ -81,8 +81,8 @@ var (
 		BiasedWalkProbability:              0.2,
 		BiasedWalkTTL:                      5,
 		RandomWalkTTL:                      6,
-		EmitWalkTimeout:                    8 * time.Second,
 		MaxPeersInEView:                    20,
+		EmitWalkTimeout:                    8 * time.Second,
 		MeasureNewPeersRefreshTickDuration: 7 * time.Second,
 		MaxMeasuredPeers:                   15,
 		NrHopsToIgnoreWalk:                 2,

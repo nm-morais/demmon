@@ -80,6 +80,9 @@ type DemmonTree struct {
 	logger      *logrus.Logger
 	config      *DemmonTreeConfig
 
+	noParentCounter   int
+	lastParentContact time.Time
+
 	// join state
 	lastLevelProgress     time.Time
 	joined                bool
@@ -135,7 +138,8 @@ func New(config *DemmonTreeConfig, babel protocolManager.ProtocolManager, nw nod
 		joinTimeoutTimerIds:   make(map[string]int),
 		danglingNeighCounters: make(map[string]int),
 
-		lastParentChange: time.Now(),
+		noParentCounter:   0,
+		lastParentContact: time.Now(),
 
 		// improvement state
 		eView:                        make(map[string]*PeerWithIDChain),
@@ -157,6 +161,7 @@ func (d *DemmonTree) Logger() *logrus.Logger {
 }
 
 func (d *DemmonTree) Start() {
+	d.lastParentChange = time.Now()
 	d.logger.Infof("Landmarks: %+v", d.config.Landmarks)
 	d.self = NewPeerWithIDChain(nil, d.babel.SelfPeer(), 0, 0, make(Coordinates, len(d.config.Landmarks)), d.config.BandwidthScore, 0)
 	// d.logger.Infof("Self: %+v", d.self)
@@ -191,7 +196,7 @@ func (d *DemmonTree) Start() {
 			c := nodeWatcher.Condition{
 				Repeatable:                false,
 				CondFunc:                  func(nodeWatcher.NodeInfo) bool { return true },
-				EvalConditionTickDuration: 1000 * time.Millisecond,
+				EvalConditionTickDuration: 200 * time.Millisecond,
 				Notification:              LandmarkMeasuredNotification{landmarkMeasured: landmark},
 				Peer:                      landmark,
 				EnableGracePeriod:         false,
@@ -379,12 +384,28 @@ func (d *DemmonTree) getAvgChildrenBW() int {
 }
 
 func (d *DemmonTree) HandleMaintenanceTimer(t timer.Timer) {
+
 	if d.myParent != nil {
 		if d.myParent.outConnActive {
+			d.noParentCounter = 0
 			d.sendMessage(NeighbourMaintenanceMessage{}, d.myParent)
 		} else {
+			d.noParentCounter++
+			if d.noParentCounter > 15 {
+				d.logger.Panic("Do not have parent for more than 15 seconds")
+			}
 			d.babel.Dial(d.ID(), d.myParent, d.myParent.ToTCPAddr())
 		}
+	} else {
+		if !d.landmark {
+			d.noParentCounter++
+			if d.noParentCounter > 15 {
+				d.logger.Panic("Do not have parent for more than 15 seconds")
+			}
+		}
+	}
+	if !d.landmark && time.Since(d.lastParentContact) > 15*time.Second {
+		d.logger.Panic("Do not have parent for more than 10 seconds")
 	}
 }
 
@@ -423,7 +444,7 @@ func (d *DemmonTree) handleLandmarkRedialTimer(t timer.Timer) {
 	c := nodeWatcher.Condition{
 		Repeatable:                false,
 		CondFunc:                  func(nodeWatcher.NodeInfo) bool { return true },
-		EvalConditionTickDuration: 1000 * time.Millisecond,
+		EvalConditionTickDuration: 200 * time.Millisecond,
 		Notification:              LandmarkMeasuredNotification{landmarkMeasured: landmark},
 		Peer:                      landmark,
 		EnableGracePeriod:         false,
@@ -712,7 +733,7 @@ func (d *DemmonTree) measurePeerExternalProcedure(p *PeerWithIDChain) bool {
 	c := nodeWatcher.Condition{
 		Repeatable:                false,
 		CondFunc:                  func(nodeWatcher.NodeInfo) bool { return true },
-		EvalConditionTickDuration: 1000 * time.Millisecond,
+		EvalConditionTickDuration: 200 * time.Millisecond,
 		Notification:              NewPeerMeasuredNotification(p, false),
 		Peer:                      p,
 		EnableGracePeriod:         false,
@@ -1238,6 +1259,7 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 	}
 
 	delete(d.danglingNeighCounters, sender.String())
+	d.lastParentContact = time.Now()
 	if upMsg.GrandParent != nil {
 		if !peer.PeersEqual(d.myGrandParent, upMsg.GrandParent) {
 			d.logger.Infof(
@@ -1376,7 +1398,7 @@ func (d *DemmonTree) installNotifyOnCondition(p *PeerWithIDChain) {
 	c := nodeWatcher.Condition{
 		Repeatable:                false,
 		CondFunc:                  d.isNodeDown,
-		EvalConditionTickDuration: 1000 * time.Millisecond,
+		EvalConditionTickDuration: 200 * time.Millisecond,
 		Notification:              SuspectNotification{peerDown: p},
 		Peer:                      p,
 		EnableGracePeriod:         false,
@@ -1591,7 +1613,8 @@ func (d *DemmonTree) attemptProgress() {
 	}
 
 	if len(nextLevelPeers) == 0 {
-		d.fallbackToPreviousLevel(d.bestPeerlastLevel)
+		d.myPendingParentInJoin = d.bestPeerlastLevel
+		d.sendJoinAsChildMsg(d.bestPeerlastLevel.peer.PeerWithIDChain, d.bestPeerlastLevel.peer.Latency, false, false)
 		return
 	}
 
@@ -1671,7 +1694,7 @@ func (d *DemmonTree) sendMessageAndMeasureLatency(toSend message.Message, destPe
 	c := nodeWatcher.Condition{
 		Repeatable:                false,
 		CondFunc:                  func(nodeWatcher.NodeInfo) bool { return true },
-		EvalConditionTickDuration: 1000 * time.Millisecond,
+		EvalConditionTickDuration: 200 * time.Millisecond,
 		Notification:              NewPeerMeasuredNotification(destPeer, true),
 		Peer:                      destPeer,
 		EnableGracePeriod:         false,
@@ -1722,6 +1745,7 @@ func (d *DemmonTree) getPeersInNextLevelByLat(lastLevelPeer *PeerWithParentAndCh
 				d.logger.Infof("Cannot progress because peer %s has not been measured", peerWithChildren.peer.String())
 				return false, nil
 			}
+
 			coordsCopy := d.self.Coordinates
 			coordsCopy[idx] = uint64(peerWithChildren.peer.Latency.Milliseconds())
 			d.self = NewPeerWithIDChain(d.self.chain, d.self, d.self.nChildren, d.self.version+1, coordsCopy, d.config.BandwidthScore, d.getAvgChildrenBW())
@@ -1738,9 +1762,11 @@ func (d *DemmonTree) getPeersInNextLevelByLat(lastLevelPeer *PeerWithParentAndCh
 	d.logger.Infof("Getting peers in next level with lastLevelPeer: %s", getStringOrNil(lastLevelPeer.peer.PeerWithIDChain))
 	for _, aux := range lastLevelPeer.children {
 		childrenStr := aux.String()
+		if aux.nChildren == 0 {
+			continue
+		}
 		c, ok := d.joinMap[childrenStr]
 		if !ok {
-			d.logger.Infof("Cannot progress because peer %s has went down", childrenStr)
 			continue
 		}
 		if !c.replied {

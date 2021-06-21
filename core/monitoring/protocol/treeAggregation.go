@@ -37,26 +37,32 @@ func (m *Monitor) AddTreeAggregationFuncReq(key int64, interestSet *body_types.T
 // BROADCAST TIMER
 
 func (m *Monitor) handleRebroadcastTreeInterestSetsTimer(t timer.Timer) {
-	if m.currView.Parent != nil {
-		m.requestInterestSets(true)
+	// if m.currView.Parent != nil {
+	// 	m.requestInterestSets(true)
+	// }
+
+	// treeAggFuncstoSend := make([]int64, 0, len(m.treeAggFuncs))
+	// for isID := range m.treeAggFuncs {
+	// 	treeAggFuncstoSend = append(treeAggFuncstoSend, isID)
+	// }
+
+	// toSend := NewRequestTreeAggFuncMessage(treeAggFuncstoSend)
+	// m.SendMessage(toSend, m.currView.Parent, batch)
+	tmp := make([]peer.Peer, len(m.currView.Children))
+	for i := 0; i < len(m.currView.Children); i++ {
+		tmp[i] = m.currView.Children[i]
 	}
+	m.sendPropagateTreeAggFuncMsg(tmp...)
 }
 
-func (m *Monitor) requestInterestSets(batch bool) {
+// func (m *Monitor) requestInterestSets(batch bool) {
 
-	if m.currView.Parent == nil {
-		m.logger.Warn("Attempt to send requestInterestSetMessage to nil parent")
-		return
-	}
+// 	if m.currView.Parent == nil {
+// 		m.logger.Warn("Attempt to send requestInterestSetMessage to nil parent")
+// 		return
+// 	}
 
-	treeAggFuncstoSend := make([]int64, 0, len(m.treeAggFuncs))
-	for isID := range m.treeAggFuncs {
-		treeAggFuncstoSend = append(treeAggFuncstoSend, isID)
-	}
-
-	toSend := NewRequestTreeAggFuncMessage(treeAggFuncstoSend)
-	m.SendMessage(toSend, m.currView.Parent, batch)
-}
+// }
 
 // EXPORT TIMER
 
@@ -189,6 +195,11 @@ func (m *Monitor) propagateTreeIntSetMetrics(treeAggFuncID int64, treeAggFunc *t
 			return
 		}
 
+		if !peer.PeersEqual(treeAggFunc.sender, m.currView.Parent) {
+			m.logger.Warnf("TreeAggFunc sender is not parent")
+			return
+		}
+
 		toSendMsg := NewPropagateTreeAggFuncMetricsMessage(treeAggFuncID, int64(treeAggFunc.AggSet.Levels), &body_types.ObservableDTO{TS: time.Now(), Fields: mergedVal}, membershipChange)
 		// m.logger.Infof(
 		// 	"propagating metrics for tree aggregation function %d (%+v) to: %s",
@@ -197,7 +208,7 @@ func (m *Monitor) propagateTreeIntSetMetrics(treeAggFuncID int64, treeAggFunc *t
 		// 	treeAggFunc.sender.String(),
 		// )
 
-		m.SendMessage(toSendMsg, treeAggFunc.sender, !membershipChange)
+		m.SendMessage(toSendMsg, treeAggFunc.sender, false)
 	}
 }
 
@@ -251,21 +262,21 @@ func (m *Monitor) handlePropagateTreeAggFuncMetricsMessage(sender peer.Peer, msg
 
 }
 
-func (m *Monitor) handleRequestTreeAggFuncMsg(sender peer.Peer, msg message.Message) {
-	requestTreeAggFuncMsg := msg.(RequestTreeAggFuncMsg)
-	aux := map[int64]bool{}
-	for _, intSetID := range requestTreeAggFuncMsg.OwnedIntSets {
-		aux[intSetID] = true
-	}
+func (m *Monitor) sendPropagateTreeAggFuncMsg(to ...peer.Peer) {
+	// requestTreeAggFuncMsg := msg.(RequestTreeAggFuncMsg)
+	// aux := map[int64]bool{}
+	// for _, intSetID := range requestTreeAggFuncMsg.OwnedIntSets {
+	// 	aux[intSetID] = true
+	// }
 
 	treeAggFuncsToInstall := make(map[int64]*body_types.TreeAggregationSet)
-	treeAggFuncsToConfirm := make([]int64, 0)
+	// treeAggFuncsToConfirm := make([]int64, 0)
 
 	for ID, owned := range m.treeAggFuncs {
-		if _, ok := aux[ID]; ok {
-			treeAggFuncsToConfirm = append(treeAggFuncsToConfirm, ID)
-			continue
-		}
+		// if _, ok := aux[ID]; ok {
+		// 	treeAggFuncsToConfirm = append(treeAggFuncsToConfirm, ID)
+		// 	continue
+		// }
 
 		if owned.AggSet.Levels == 0 {
 			continue
@@ -295,8 +306,10 @@ func (m *Monitor) handleRequestTreeAggFuncMsg(sender peer.Peer, msg message.Mess
 		}
 	}
 
-	replyMsg := NewInstallTreeAggFuncMessage(treeAggFuncsToInstall, treeAggFuncsToConfirm)
-	m.SendMessage(replyMsg, sender, false)
+	replyMsg := NewInstallTreeAggFuncMessage(treeAggFuncsToInstall, []int64{})
+	for _, c := range to {
+		m.SendMessage(replyMsg, c, false)
+	}
 }
 
 func (m *Monitor) handleInstallTreeAggFuncMetricsMessage(sender peer.Peer, msg message.Message) {
@@ -485,8 +498,9 @@ func (m *Monitor) handleNodeDownTreeAggFunc(nodeDown peer.Peer, crash bool) {
 // HANDLE NODE UP
 func (m *Monitor) handleNodeUpTreeAggFunc(nodeUp peer.Peer) {
 	// remove all child values from tree agg func
-	_, _, isParent := m.getPeerRelationshipType(nodeUp)
-	if isParent {
-		m.requestInterestSets(false)
+	_, isChild, _ := m.getPeerRelationshipType(nodeUp)
+	if isChild {
+		m.sendPropagateTreeAggFuncMsg(nodeUp)
+		// m.requestInterestSets(false)
 	}
 }
