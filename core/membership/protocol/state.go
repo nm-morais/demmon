@@ -87,6 +87,11 @@ func (d *DemmonTree) addParent(
 		hasInConnection = d.myPendingParentInAbsorb.inConnActive
 		d.myPendingParentInAbsorb = nil
 		haveCause = true
+
+		if _, ok := d.mySiblings[newParent.String()]; ok {
+			delete(d.mySiblings, newParent.String())
+			d.babel.SendNotification(NewNodeDownNotification(newParent, d.getInView(), false))
+		}
 	}
 
 	if peer.PeersEqual(newParent, d.myPendingParentInClimb) {

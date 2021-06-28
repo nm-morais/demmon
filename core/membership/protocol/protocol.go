@@ -393,21 +393,26 @@ func (d *DemmonTree) HandleMaintenanceTimer(t timer.Timer) {
 			d.sendMessage(NeighbourMaintenanceMessage{}, d.myParent)
 		} else {
 			d.noParentCounter++
-			if d.noParentCounter > 15 {
+			if d.noParentCounter > 30 {
 				d.logger.Panic("Do not have parent for more than 15 seconds")
 			}
-			d.babel.Dial(d.ID(), d.myParent, d.myParent.ToTCPAddr())
+			if err := d.babel.Dial(d.ID(), d.myParent, d.myParent.ToTCPAddr()); err != nil {
+				if err.Reason() == "Stream already exists" {
+					d.myParent.outConnActive = true
+					d.babel.SendNotification(NewNodeUpNotification(d.myParent, d.getInView()))
+				}
+			}
 		}
 	} else {
 		if !d.landmark {
 			d.noParentCounter++
-			if d.noParentCounter > 15 {
+			if d.noParentCounter > 30 {
 				d.logger.Panic("Do not have parent for more than 15 seconds")
 			}
 		}
 	}
-	if !d.landmark && time.Since(d.lastParentContact) > 15*time.Second {
-		d.logger.Panic("Do not have parent for more than 10 seconds")
+	if !d.landmark && time.Since(d.lastParentContact) > 30*time.Second {
+		d.logger.Panic("Do not have parent for more than 15 seconds")
 	}
 }
 
@@ -483,7 +488,12 @@ func (d *DemmonTree) handleRefreshParentTimer(t timer.Timer) {
 
 		if !child.outConnActive {
 			d.logger.Warnf("Could not send message to children because there is no active conn to it %s", child.StringWithFields())
-			d.babel.Dial(d.ID(), child, child.ToTCPAddr())
+			if err := d.babel.Dial(d.ID(), child, child.ToTCPAddr()); err != nil {
+				if err.Reason() == "Stream already exists" {
+					child.outConnActive = true
+					d.babel.SendNotification(NewNodeUpNotification(child, d.getInView()))
+				}
+			}
 			continue
 		}
 
@@ -764,7 +774,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 	}
 
 	edgeList := []edge{}
-	d.logger.Info("handleCheckChildrenSize timer triggered")
+	// d.logger.Info("handleCheckChildrenSize timer triggered")
 
 	for _, peerAbsorberStats := range d.myChildren {
 		peerAbsorberSiblingLatencies := d.myChildrenLatencies[peerAbsorberStats.String()]
@@ -776,7 +786,7 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 			}
 
 			if _, isChild := d.myChildren[candidateToKick.String()]; !isChild {
-				d.logger.Infof("handleCheckChildrenSize Skipping edge as target is not child")
+				// d.logger.Infof("handleCheckChildrenSize Skipping edge as target is not child")
 				continue
 			}
 
@@ -785,20 +795,20 @@ func (d *DemmonTree) handleCheckChildrenSizeTimer(checkChildrenTimer timer.Timer
 			}
 
 			if candidateToKick.Latency == 0 || candidateToKick.Latency == math.MaxInt64 {
-				d.logger.Infof("handleCheckChildrenSize Skipping edge as lat value is max val")
+				// d.logger.Infof("handleCheckChildrenSize Skipping edge as lat value is max val")
 				continue
 			}
 
 			candidateToKickFromSelfPOV, err := d.getPeerWithChainAsMeasuredPeer(candidateToKick.PeerWithIDChain)
 			if err != nil {
-				d.logger.Infof("handleCheckChildrenSize Skipping edge as i do not have lat val for node")
+				// d.logger.Infof("handleCheckChildrenSize Skipping edge as i do not have lat val for node")
 				continue
 			}
 
 			if candidateToKickFromSelfPOV.Latency < candidateToKick.Latency {
 				latencyDowngrade := candidateToKick.Latency - candidateToKickFromSelfPOV.Latency
 				if latencyDowngrade >= d.config.MaxLatencyDowngrade {
-					d.logger.Infof("handleCheckChildrenSize Skipping edge as it is a downgrade candidate. lat:(%v), self lat to candidate: (%+v) dowgrade: (%+v)", candidateToKick.Latency, candidateToKickFromSelfPOV.Latency, latencyDowngrade)
+					// d.logger.Infof("handleCheckChildrenSize Skipping edge as it is a downgrade candidate. lat:(%v), self lat to candidate: (%+v) dowgrade: (%+v)", candidateToKick.Latency, candidateToKickFromSelfPOV.Latency, latencyDowngrade)
 					continue
 				}
 			}
@@ -1002,7 +1012,6 @@ func (d *DemmonTree) handleAbsorbMessage(sender peer.Peer, m message.Message) {
 	d.logger.Infof("Got absorbMessage with peer absorber: %+v from %s", newParent.StringWithFields(), sender.String())
 
 	if sibling, ok := d.mySiblings[newParent.String()]; ok && sibling.outConnActive {
-		delete(d.mySiblings, newParent.String())
 		var peerLat time.Duration
 		if nodeInfo, err := d.nodeWatcher.GetNodeInfo(sibling); err == nil {
 			peerLat = nodeInfo.LatencyCalc().CurrValue()
@@ -1326,7 +1335,12 @@ func (d *DemmonTree) handleUpdateParentMessage(sender peer.Peer, m message.Messa
 func (d *DemmonTree) HandleNeighbourMaintenanceMessage(sender peer.Peer, msg message.Message) {
 	if c, ok := d.myChildren[sender.String()]; ok {
 		if !c.outConnActive {
-			d.babel.Dial(d.ID(), sender, sender.ToTCPAddr())
+			if err := d.babel.Dial(d.ID(), c, c.ToTCPAddr()); err != nil {
+				if err.Reason() == "Stream already exists" {
+					c.outConnActive = true
+					d.babel.SendNotification(NewNodeUpNotification(c, d.getInView()))
+				}
+			}
 		}
 		delete(d.danglingNeighCounters, sender.String())
 		return
@@ -1488,8 +1502,6 @@ func (d *DemmonTree) handlePeerDownNotification(n notification.Notification) {
 func (d *DemmonTree) handlePeerDown(p peer.Peer, crash bool) {
 	// special case for parent in recovery
 	d.logger.Warnf("Node down: %s", p)
-	d.nodeWatcher.Unwatch(p, d.ID())
-	d.babel.Disconnect(d.ID(), p)
 
 	if d.myPendingParentInJoin != nil && peer.PeersEqual(p, d.myPendingParentInJoin.peer) {
 		d.logger.Warnf("Falling back from Pending Parent In join procedure")
@@ -1510,8 +1522,22 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer, crash bool) {
 	}
 
 	if peer.PeersEqual(p, d.myPendingParentInAbsorb) {
-		d.logger.Warnf("Falling back from Pending Parent In Absorb")
+		d.logger.Warnf("Falling back from Pending Parent In Absorb (crash=%+v)", crash)
 		d.myPendingParentInAbsorb = nil
+		if crash {
+			if sibling, isSibling := d.mySiblings[p.String()]; isSibling {
+				d.logger.Warnf("Sibling down %s", p.String())
+				d.removeSibling(sibling, crash)
+				if l, ok := d.isLandmark(p); d.landmark && ok {
+					d.logger.Warnf("registering redial for sibling %s", p.String())
+					d.babel.RegisterTimer(d.ID(), NewLandmarkRedialTimer(d.config.LandmarkRedialTimer, l))
+					return
+				}
+				return
+			} else {
+				d.logger.Errorf("Pending Parent In Absorb not in siblings %s", p.String())
+			}
+		}
 		return
 	}
 	if d.myPendingParentInClimb != nil && peer.PeersEqual(p, d.myPendingParentInClimb) {
@@ -1527,7 +1553,6 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer, crash bool) {
 		if aux.outConnActive {
 			d.babel.SendNotification(NewNodeDownNotification(aux, d.getInView(), crash))
 		}
-		d.nodeWatcher.Unwatch(p, d.ID())
 		if d.myGrandParent != nil {
 			d.logger.Warnf("Falling back to grandparent %s", d.myGrandParent.String())
 			d.myPendingParentInRecovery = d.myGrandParent
@@ -1535,6 +1560,8 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer, crash bool) {
 			d.myGrandParent = nil
 			return
 		}
+		d.nodeWatcher.Unwatch(p, d.ID())
+		d.babel.Disconnect(d.ID(), p)
 		d.logger.Warnf("Grandparent is nil... falling back to measured peers")
 		d.fallbackToEView()
 		return
@@ -1543,6 +1570,8 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer, crash bool) {
 	if child, isChildren := d.myChildren[p.String()]; isChildren {
 		d.logger.Warnf("Child down %s", p.String())
 		d.removeChild(child, crash)
+		d.nodeWatcher.Unwatch(p, d.ID())
+		d.babel.Disconnect(d.ID(), p)
 		return
 	}
 
