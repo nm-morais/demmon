@@ -54,7 +54,7 @@ var (
 
 	demmonTreeConf = &membershipProtocol.DemmonTreeConfig{
 		LandmarkRedialTimer: 5 * time.Second,
-		JoinMessageTimeout:  2 * time.Second,
+		JoinMessageTimeout:  7 * time.Second,
 		MaxRetriesJoinMsg:   2,
 		Landmarks:           nil,
 
@@ -69,8 +69,8 @@ var (
 
 		PhiLevelForNodeDown: 5,
 
-		CheckChildenSizeTimerDuration: 10 * time.Second,
-		ParentRefreshTickDuration:     1 * time.Second,
+		CheckChildenSizeTimerDuration: 7 * time.Second,
+		ParentRefreshTickDuration:     3 * time.Second,
 		ChildrenRefreshTickDuration:   5 * time.Second,
 		RejoinTimerDuration:           10 * time.Second,
 
@@ -160,15 +160,14 @@ func main() {
 
 	nodeWatcherConf := &pkg.NodeWatcherConf{
 		PrintLatencyToInterval:    10 * time.Second,
-		EvalConditionTickDuration: 1500 * time.Millisecond,
+		EvalConditionTickDuration: 200 * time.Millisecond,
 		MaxRedials:                2,
 		TcpTestTimeout:            10 * time.Second,
 		UdpTestTimeout:            10 * time.Second,
-		NrTestMessagesToSend:      1,
-		NrMessagesWithoutWait:     3,
+		NrTestMessagesToSend:      2,
 		NrTestMessagesToReceive:   1,
 		HbTickDuration:            1000 * time.Millisecond,
-		MinSamplesLatencyEstimate: 3,
+		MinSamplesLatencyEstimate: 1,
 		OldLatencyWeight:          0.75,
 		NewLatencyWeight:          0.25,
 		PhiThreshold:              8.0,

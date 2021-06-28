@@ -276,8 +276,8 @@ func (m *Monitor) handleGetNeighsReply(r request.Reply) {
 func (m *Monitor) handleCleanupInterestSetsTimer(t timer.Timer) {
 	if !m.isLandmark && m.currView.Parent == nil {
 		m.noParentCounter++
-		if m.noParentCounter >= 3 {
-			m.logger.Panic("No parent for over 15 seconds")
+		if m.noParentCounter >= 5 {
+			m.logger.Panic("No parent for over 25 seconds")
 		}
 
 	} else {

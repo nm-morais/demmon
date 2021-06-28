@@ -285,3 +285,25 @@ func (MaintenanceTimer) ID() timer.ID {
 func (s MaintenanceTimer) Duration() time.Duration {
 	return s.duration
 }
+
+const peerJoinAsChildMessageResponseTimeoutID = 2013
+
+type peerJoinAsChildMessageResponseTimeout struct {
+	duration time.Duration
+	Peer     peer.Peer
+}
+
+func NewJoinAsChildMessageResponseTimeout(duration time.Duration, p peer.Peer) timer.Timer {
+	return &peerJoinAsChildMessageResponseTimeout{
+		duration: duration,
+		Peer:     p,
+	}
+}
+
+func (t *peerJoinAsChildMessageResponseTimeout) ID() timer.ID {
+	return peerJoinAsChildMessageResponseTimeoutID
+}
+
+func (t *peerJoinAsChildMessageResponseTimeout) Duration() time.Duration {
+	return t.duration
+}

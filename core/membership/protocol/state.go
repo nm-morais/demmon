@@ -95,6 +95,11 @@ func (d *DemmonTree) addParent(
 		haveCause = true
 	}
 
+	if d.joinAsChildTimerID != -1 {
+		d.babel.CancelTimer(d.joinAsChildTimerID)
+		d.joinAsChildTimerID = -1
+	}
+
 	if !haveCause {
 		d.logger.Panicf("adding parent but peer is not in possible pending parents")
 	}
