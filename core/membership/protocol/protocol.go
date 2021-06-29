@@ -1506,7 +1506,6 @@ func (d *DemmonTree) handlePeerDown(p peer.Peer, crash bool) {
 	if d.myPendingParentInJoin != nil && peer.PeersEqual(p, d.myPendingParentInJoin.peer) {
 		d.logger.Warnf("Falling back from Pending Parent In join procedure")
 		d.fallbackToPreviousLevel(d.myPendingParentInJoin)
-		d.myPendingParentInJoin = nil
 		return
 	}
 

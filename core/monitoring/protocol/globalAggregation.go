@@ -97,7 +97,6 @@ func (m *Monitor) handleExportGlobalAggFuncIntermediateValuesTimer(t timer.Timer
 		if v.values == nil {
 			continue
 		}
-
 		// m.logger.Info("Adding merged values locally")
 		err := m.tsdb.AddMetric(
 			globalAggFunc.AF.IntermediateBucketOpts.Name,
