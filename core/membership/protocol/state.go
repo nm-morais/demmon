@@ -49,7 +49,7 @@ func (d *DemmonTree) getPeerRelationshipType(p peer.Peer) (isSibling, isChildren
 func (d *DemmonTree) addParent(
 	newParent *PeerWithIDChain,
 	newGrandParent *PeerWithIDChain,
-	myNewChain PeerIDChain) {
+	myNewChain PeerIDChain) bool {
 
 	haveCause := false
 	hasInConnection := false
@@ -58,7 +58,7 @@ func (d *DemmonTree) addParent(
 
 	if peer.PeersEqual(newParent, d.myParent) {
 		d.logger.Info("re-added current parent")
-		return
+		return true
 	}
 
 	// TODO add to measured peers
@@ -106,7 +106,8 @@ func (d *DemmonTree) addParent(
 	}
 
 	if !haveCause {
-		d.logger.Panicf("adding parent but peer is not in possible pending parents")
+		d.logger.Errorf("adding parent but peer is not in possible pending parents")
+		return false
 	}
 
 	oldParent := d.myParent
@@ -173,6 +174,7 @@ func (d *DemmonTree) addParent(
 	}
 	d.lastParentChange = time.Now()
 	d.checkRepeatedChildIDS()
+	return true
 }
 
 func (d *DemmonTree) getNeighborsAsPeerWithIDChainArray() []*PeerWithIDChain {

@@ -316,6 +316,91 @@ func (e *MetricsEngine) setVMFunctions(vm *otto.Otto) {
 	if err != nil {
 		panic(err)
 	}
+
+	err = vm.Set(
+		"NewTimeSeries", func(call otto.FunctionCall) otto.Value {
+			return e.newTimeSeries(vm, &call)
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	err = vm.Set(
+		"NewObservable", func(call otto.FunctionCall) otto.Value {
+			return e.newObservable(vm, &call)
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (e *MetricsEngine) newObservable(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
+	argTags := call.Argument(0).Object()
+	fields := map[string]interface{}{}
+	fieldKeys := argTags.Keys()
+	for _, fieldKey := range fieldKeys {
+		fieldVal, err := argTags.Get(fieldKey)
+		if err != nil {
+			throw(vm, "Invalid arg: field is not a map[string]interface{}")
+		}
+		exported, err := fieldVal.Export()
+		if err != nil {
+			throw(vm, err.Error())
+		}
+		fields[fieldKey] = exported
+	}
+
+	tsTimeGeneric, err := call.Argument(2).ToInteger()
+	if err != nil {
+		throw(vm, fmt.Sprintf("err converting ts date to integer: %s", err.Error()))
+		return otto.Value{}
+	}
+	tsTime := time.Unix(tsTimeGeneric, 0)
+
+	obs := tsdb.NewObservable(fields, tsTime)
+	res, err := vm.ToValue(obs)
+	if err != nil {
+		throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
+		return otto.Value{}
+	}
+	return res
+}
+
+func (e *MetricsEngine) newTimeSeries(vm *otto.Otto, call *otto.FunctionCall) otto.Value {
+
+	name, err := call.Argument(0).ToString()
+	if err != nil {
+		throw(vm, "Invalid arg: Name is not a string")
+	}
+
+	argTags := call.Argument(1).Object()
+	tags := map[string]string{}
+	tagKeys := argTags.Keys()
+	for _, tagKey := range tagKeys {
+		tagVal, err := argTags.Get(tagKey)
+		if err != nil {
+			throw(vm, "Invalid arg: tag filters is not a map[string]string")
+		}
+		tags[tagKey] = tagVal.String()
+	}
+
+	exportedVals, err := call.Argument(2).Export()
+	if err != nil {
+		throw(vm, err.Error())
+	}
+	vals, ok := exportedVals.([]tsdb.Observable)
+	if !ok {
+		throw(vm, "incorrect observable type")
+	}
+	ts := tsdb.NewStaticTimeSeries(name, tags, vals...)
+	res, err := vm.ToValue(ts)
+	if err != nil {
+		throw(vm, fmt.Sprintf("An error occurred transforming timeseries to js object (%s)", err.Error()))
+		return otto.Value{}
+	}
+	return res
 }
 
 func (e *MetricsEngine) selectTs(vm *otto.Otto, call *otto.FunctionCall) otto.Value {

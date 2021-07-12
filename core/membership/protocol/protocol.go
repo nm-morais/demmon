@@ -407,12 +407,12 @@ func (d *DemmonTree) HandleMaintenanceTimer(t timer.Timer) {
 		if !d.landmark {
 			d.noParentCounter++
 			if d.noParentCounter > 30 {
-				d.logger.Panic("Do not have parent for more than 15 seconds")
+				d.logger.Panic("Do not have parent for more than 30 seconds")
 			}
 		}
 	}
 	if !d.landmark && time.Since(d.lastParentContact) > 30*time.Second {
-		d.logger.Panic("Do not have parent for more than 15 seconds")
+		d.logger.Error("Have not received updateParent message for more than 30 secons")
 	}
 }
 
@@ -1218,11 +1218,13 @@ func (d *DemmonTree) handleJoinAsChildMessageReply(sender peer.Peer, m message.M
 		myNewID := make(PeerIDChain, 0)
 		myNewID = append(myNewID, japrMsg.Parent.chain...)
 		myNewID = append(myNewID, japrMsg.ProposedID)
-		d.addParent(
+		if !d.addParent(
 			japrMsg.Parent,
 			japrMsg.GrandParent,
 			myNewID,
-		)
+		) {
+			d.sendMessageTmpTCPChan(NewDisconnectAsChildMessage(), sender)
+		}
 		return
 	}
 
@@ -1594,17 +1596,17 @@ func (d *DemmonTree) MessageDelivered(msg message.Message, p peer.Peer) {
 
 func (d *DemmonTree) MessageDeliveryErr(msg message.Message, p peer.Peer, err errors.Error) {
 	d.logger.Warnf("Message of type %s (%+v) failed to deliver to: %s because: %s", reflect.TypeOf(msg), msg, p.String(), err.Reason())
-	switch msg := msg.(type) {
+	switch msg.(type) {
 	case JoinMessage:
 		if !d.joined {
 			d.handlePeerDownInJoin(p)
 		}
 	case JoinAsChildMessage:
 		d.handlePeerDown(p, true)
-	case RandomWalkMessage:
-		d.sendMessageTmpUDPChan(msg, p)
-	case WalkReplyMessage:
-		d.sendMessageTmpUDPChan(msg, p)
+	// case RandomWalkMessage:
+	// 	d.sendMessageTmpUDPChan(msg, p)
+	// case WalkReplyMessage:
+	// 	d.sendMessageTmpUDPChan(msg, p)
 	case DisconnectAsChildMessage:
 		d.babel.Disconnect(d.ID(), p)
 	}
